@@ -72,7 +72,7 @@ No breaking changes. Drop-in replacement for vX.Y.Z-1.
 ## Links
 
 - CHANGELOG: ../CHANGELOG.md
-- Full diff: https://github.com/Nizoka/pdfnative-mcp/compare/vX.Y.Z-1...vX.Y.Z
+- Full diff: https://github.com/Nizoka/pdfnative-mpc/compare/vX.Y.Z-1...vX.Y.Z
 ```
 
 ## Conventions
@@ -92,3 +92,4 @@ No breaking changes. Drop-in replacement for vX.Y.Z-1.
 4. Merge to main.
 5. Tag vX.Y.Z and publish GitHub Release.
 6. Publish workflow releases to npm via OIDC Trusted Publishing.
+

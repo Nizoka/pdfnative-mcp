@@ -21,5 +21,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Strict JSON Schema + Zod validation at every tool boundary.
 - Vitest test suite with sandbox security checks.
 
-[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/Nizoka/pdfnative-mcp/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Nizoka/pdfnative-mpc/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Nizoka/pdfnative-mpc/releases/tag/v0.1.0
+

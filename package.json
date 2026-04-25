@@ -27,13 +27,13 @@
         "typescript",
         "esm"
     ],
-    "homepage": "https://github.com/Nizoka/pdfnative-mcp#readme",
+    "homepage": "https://github.com/Nizoka/pdfnative-mpc#readme",
     "bugs": {
-        "url": "https://github.com/Nizoka/pdfnative-mcp/issues"
+        "url": "https://github.com/Nizoka/pdfnative-mpc/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/Nizoka/pdfnative-mcp.git"
+        "url": "git+https://github.com/Nizoka/pdfnative-mpc.git"
     },
     "license": "MIT",
     "author": "Nizoka",
@@ -91,3 +91,4 @@
         "provenance": true
     }
 }
+
