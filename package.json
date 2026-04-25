@@ -75,7 +75,7 @@
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",
         "pdfnative": "^1.0.4",
-        "zod": "^3.23.8"
+        "zod": "^4.3.6"
     },
     "devDependencies": {
         "@eslint/js": "^9.18.0",
