@@ -5,7 +5,7 @@ Thanks for considering a contribution! This project is intentionally small, focu
 ## Quick start
 
 ```bash
-git clone https://github.com/Nizoka/pdfnative-mpc.git
+git clone https://github.com/Nizoka/pdfnative-mcp.git
 cd pdfnative-mcp
 npm install
 npm run typecheck && npm run lint && npm test
@@ -40,7 +40,7 @@ npm run typecheck && npm run lint && npm test
 
 ## Reporting bugs
 
-Use [GitHub Issues](https://github.com/Nizoka/pdfnative-mpc/issues) with:
+Use [GitHub Issues](https://github.com/Nizoka/pdfnative-mcp/issues) with:
 - Reproduction steps (ideally a JSON-RPC payload sent to the stdio server).
 - Expected vs. actual output.
 - Node version (`node -v`) and OS.
@@ -52,4 +52,5 @@ Use [GitHub Issues](https://github.com/Nizoka/pdfnative-mpc/issues) with:
 ## License
 
 By contributing you agree that your contributions will be licensed under the [MIT License](LICENSE).
+
 

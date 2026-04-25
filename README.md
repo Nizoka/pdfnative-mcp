@@ -6,7 +6,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/pdfnative-mcp.svg?logo=npm)](https://www.npmjs.com/package/pdfnative-mcp)
 [![Node version](https://img.shields.io/node/v/pdfnative-mcp.svg?logo=node.js)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/Nizoka/pdfnative-mpc/actions/workflows/ci.yml/badge.svg)](https://github.com/Nizoka/pdfnative-mpc/actions/workflows/ci.yml)
+[![CI](https://github.com/Nizoka/pdfnative-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Nizoka/pdfnative-mcp/actions/workflows/ci.yml)
 [![MCP](https://img.shields.io/badge/MCP-1.x-6f42c1.svg)](https://modelcontextprotocol.io)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
@@ -173,7 +173,7 @@ See [SECURITY.md](SECURITY.md) for the responsible disclosure process.
 ## 🧪 Local development
 
 ```bash
-git clone https://github.com/Nizoka/pdfnative-mpc.git
+git clone https://github.com/Nizoka/pdfnative-mcp.git
 cd pdfnative-mcp
 npm install
 npm run typecheck
@@ -235,7 +235,7 @@ Open an issue or PR if you'd like to contribute one of these.
 
 ## 🤝 Contributing
 
-Contributions are very welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md), check the [open issues](https://github.com/Nizoka/pdfnative-mpc/issues), and follow the [code of conduct](CODE_OF_CONDUCT.md).
+Contributions are very welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md), check the [open issues](https://github.com/Nizoka/pdfnative-mcp/issues), and follow the [code of conduct](CODE_OF_CONDUCT.md).
 
 ---
 
@@ -244,4 +244,5 @@ Contributions are very welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md), 
 [MIT](LICENSE) © 2026 Nizoka
 
 `pdfnative-mcp` is built on top of [`pdfnative`](https://github.com/Nizoka/pdfnative) and the [Model Context Protocol TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk).
+
 
