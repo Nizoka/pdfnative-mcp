@@ -1,0 +1,148 @@
+import { describe, it, expect, beforeAll } from 'vitest';
+import os from 'node:os';
+import path from 'node:path';
+import { promises as fs } from 'node:fs';
+import { createServer, ensureCompressionReady, __serverMetadata } from '../src/server.js';
+
+const OUTPUT_ENV = 'PDFNATIVE_MPC_OUTPUT_DIR';
+
+describe('server', () => {
+    beforeAll(async () => {
+        await ensureCompressionReady();
+        await ensureCompressionReady();
+    });
+
+    it('exposes stable metadata', () => {
+        expect(__serverMetadata.name).toBe('pdfnative-mcp');
+        expect(__serverMetadata.version).toBe('0.1.0');
+    });
+
+    it('lists all tools', async () => {
+        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
+        const listHandler = server._requestHandlers.get('tools/list');
+        expect(listHandler).toBeDefined();
+
+        const response = (await listHandler!({ method: 'tools/list', params: {} })) as {
+            tools: Array<{ name: string }>;
+        };
+
+        const names = response.tools.map((t) => t.name).sort();
+        expect(names).toEqual([
+            'add_barcode',
+            'add_international_text',
+            'generate_basic_pdf',
+            'sign_pdf',
+        ]);
+    });
+
+    it('returns an MCP tool error for unknown tools', async () => {
+        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
+        const callHandler = server._requestHandlers.get('tools/call');
+        expect(callHandler).toBeDefined();
+
+        const response = (await callHandler!({
+            method: 'tools/call',
+            params: { name: 'nope', arguments: {} },
+        })) as { isError?: boolean; content: Array<{ text: string }> };
+
+        expect(response.isError).toBe(true);
+        expect(response.content[0]?.text).toContain('Unknown tool: nope');
+    });
+
+    it('returns success payload for a valid base64 tool call', async () => {
+        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
+        const callHandler = server._requestHandlers.get('tools/call');
+
+        const response = (await callHandler!({
+            method: 'tools/call',
+            params: {
+                name: 'generate_basic_pdf',
+                arguments: {
+                    title: 'Smoke',
+                    blocks: [{ type: 'paragraph', text: 'hello' }],
+                },
+            },
+        })) as {
+            isError?: boolean;
+            content: Array<{ type: string; text?: string }>;
+            structuredContent?: { mode?: string; base64?: string };
+        };
+
+        expect(response.isError).not.toBe(true);
+        expect(response.content[0]?.text ?? '').toContain('produced');
+        expect(response.structuredContent?.mode).toBe('base64');
+        expect(typeof response.structuredContent?.base64).toBe('string');
+    });
+
+    it('returns success payload for file mode tool call', async () => {
+        const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfnative-mcp-server-file-'));
+        process.env[OUTPUT_ENV] = sandboxDir;
+
+        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
+        const callHandler = server._requestHandlers.get('tools/call');
+
+        const response = (await callHandler!({
+            method: 'tools/call',
+            params: {
+                name: 'generate_basic_pdf',
+                arguments: {
+                    title: 'File',
+                    blocks: [{ type: 'paragraph', text: 'saved' }],
+                    outputMode: 'file',
+                    outputPath: 'from-server/file.pdf',
+                },
+            },
+        })) as {
+            isError?: boolean;
+            content: Array<{ text?: string }>;
+            structuredContent?: { mode?: string; filePath?: string };
+        };
+
+        expect(response.isError).not.toBe(true);
+        expect(response.content[0]?.text ?? '').toContain('wrote');
+        expect(response.structuredContent?.mode).toBe('file');
+        expect(response.structuredContent?.filePath?.startsWith(sandboxDir)).toBe(true);
+
+        delete process.env[OUTPUT_ENV];
+    });
+
+    it('surfaces tool validation failures as isError responses', async () => {
+        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
+        const callHandler = server._requestHandlers.get('tools/call');
+
+        const response = (await callHandler!({
+            method: 'tools/call',
+            params: {
+                name: 'generate_basic_pdf',
+                arguments: {
+                    title: '',
+                    blocks: [],
+                },
+            },
+        })) as { isError?: boolean; content: Array<{ text: string }> };
+
+        expect(response.isError).toBe(true);
+        expect(response.content[0]?.text).toContain('VALIDATION_ERROR');
+    });
+
+    it('surfaces non-ToolError failures as generic isError responses', async () => {
+        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
+        const callHandler = server._requestHandlers.get('tools/call');
+
+        const response = (await callHandler!({
+            method: 'tools/call',
+            params: {
+                name: 'sign_pdf',
+                arguments: {
+                    pdfBase64: 'AQID',
+                    algorithm: 'rsa-sha256',
+                    certDerBase64: 'AAAA',
+                    rsaKeyPkcs1DerBase64: 'AQID',
+                },
+            },
+        })) as { isError?: boolean; content: Array<{ text: string }> };
+
+        expect(response.isError).toBe(true);
+        expect(response.content[0]?.text).toContain('sign_pdf failed:');
+    });
+});

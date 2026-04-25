@@ -33,6 +33,23 @@ describe('generate_basic_pdf', () => {
         await expect(generateBasicPdf({ title: '', blocks: [] })).rejects.toThrow(ToolError);
         await expect(generateBasicPdf({ title: 'X' })).rejects.toThrow(ToolError);
     });
+
+    it('handles all supported block variants', async () => {
+        const result = await generateBasicPdf({
+            title: 'Variants',
+            blocks: [
+                { type: 'heading', text: 'Top', level: 1 },
+                { type: 'list', style: 'numbered', items: ['a', 'b'] },
+                { type: 'spacer', height: 24 },
+                { type: 'pageBreak' },
+                { type: 'paragraph', text: 'after break' },
+            ],
+            footerText: 'footer',
+        });
+
+        expect(result.mode).toBe('base64');
+        expect(decode(result.base64!)).toBe(PDF_HEADER);
+    });
 });
 
 describe('add_barcode', () => {

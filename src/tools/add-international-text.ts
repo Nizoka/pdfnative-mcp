@@ -52,8 +52,10 @@ const SUPPORTED_LANGS = Object.keys(LANG_TO_FONT_FILE) as ReadonlyArray<keyof ty
  *  `exports` map (the font modules are listed in `files` but not in `exports`). */
 function getFontsDir(): string {
     const requireFn = createRequire(import.meta.url);
-    const pkgJsonPath = requireFn.resolve('pdfnative/package.json');
-    return path.join(path.dirname(pkgJsonPath), 'fonts');
+    // Resolve the package entrypoint (dist/index.*) and walk up to package root.
+    // This avoids resolving a non-exported subpath like `pdfnative/package.json`.
+    const entryPath = requireFn.resolve('pdfnative');
+    return path.resolve(path.dirname(entryPath), '..', 'fonts');
 }
 
 /** Lazily import a Noto font data module from disk and unwrap a default export if present. */

@@ -9,6 +9,11 @@ import { SecurityError, ToolError } from './errors.js';
 const OUTPUT_DIR_ENV = 'PDFNATIVE_MPC_OUTPUT_DIR';
 
 /**
+ * Detect Windows absolute and UNC paths even when running on POSIX CI.
+ */
+const WINDOWS_ABSOLUTE_OR_UNC = /^(?:[A-Za-z]:[\\/]|\\\\)/;
+
+/**
  * Maximum allowed file size when writing to disk (50 MB).
  */
 const MAX_OUTPUT_BYTES = 50 * 1024 * 1024;
@@ -45,7 +50,7 @@ export function resolveSandboxedPath(userPath: string): string {
     if (userPath.includes('\0')) {
         throw new SecurityError('outputPath contains a NUL byte.');
     }
-    if (path.isAbsolute(userPath)) {
+    if (path.isAbsolute(userPath) || WINDOWS_ABSOLUTE_OR_UNC.test(userPath)) {
         throw new SecurityError('outputPath must be relative to the configured sandbox directory.');
     }
 

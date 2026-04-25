@@ -12,6 +12,12 @@ export default defineConfig({
                 'src/cli.ts',
                 'src/index.ts',
             ],
+            thresholds: {
+                statements: 90,
+                branches: 80,
+                functions: 85,
+                lines: 90,
+            },
         },
     },
 });

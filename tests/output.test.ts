@@ -40,6 +40,7 @@ describe('output sandbox', () => {
 
     it('rejects absolute paths', () => {
         expect(() => resolveSandboxedPath('C:\\Windows\\System32\\evil.pdf')).toThrow(SecurityError);
+        expect(() => resolveSandboxedPath('\\\\server\\share\\evil.pdf')).toThrow(SecurityError);
         expect(() => resolveSandboxedPath('/etc/passwd.pdf')).toThrow(SecurityError);
     });
 

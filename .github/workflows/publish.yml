@@ -52,4 +52,4 @@ jobs:
           test -f dist/cli.js
 
       - name: Publish
-        run: npm publish --access public
+        run: npm publish --access public --provenance
