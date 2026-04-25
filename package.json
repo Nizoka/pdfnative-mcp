@@ -1,0 +1,92 @@
+{
+    "name": "pdfnative-mcp",
+    "version": "0.1.0",
+    "description": "Model Context Protocol (MCP) server bridging the zero-dependency pdfnative library — generate PDFs, embed barcodes & QR codes, sign documents, and render international text from any MCP-compatible AI client (Claude, Cursor, ChatGPT, Continue, etc.).",
+    "keywords": [
+        "mcp",
+        "model-context-protocol",
+        "pdf",
+        "pdfnative",
+        "pdf-generation",
+        "barcode",
+        "qrcode",
+        "digital-signature",
+        "rsa",
+        "ecdsa",
+        "unicode",
+        "arabic",
+        "thai",
+        "devanagari",
+        "claude",
+        "cursor",
+        "chatgpt",
+        "ai",
+        "llm",
+        "tools",
+        "stdio",
+        "typescript",
+        "esm"
+    ],
+    "homepage": "https://github.com/Nizoka/pdfnative-mcp#readme",
+    "bugs": {
+        "url": "https://github.com/Nizoka/pdfnative-mcp/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Nizoka/pdfnative-mcp.git"
+    },
+    "license": "MIT",
+    "author": "Nizoka",
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "bin": {
+        "pdfnative-mcp": "./dist/cli.js"
+    },
+    "files": [
+        "dist/",
+        "LICENSE",
+        "README.md",
+        "CHANGELOG.md"
+    ],
+    "engines": {
+        "node": ">=22"
+    },
+    "sideEffects": false,
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "dev": "tsc -p tsconfig.build.json --watch",
+        "clean": "node -e \"import('node:fs').then(m=>m.rmSync('dist',{recursive:true,force:true}))\"",
+        "lint": "eslint src",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage",
+        "prepare": "npm run build",
+        "prepublishOnly": "npm run clean && npm run lint && npm run typecheck && npm run test && npm run build"
+    },
+    "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.29.0",
+        "pdfnative": "^1.0.4",
+        "zod": "^3.23.8"
+    },
+    "devDependencies": {
+        "@eslint/js": "^9.18.0",
+        "@types/node": "^22.10.5",
+        "@vitest/coverage-v8": "^4.1.5",
+        "eslint": "^9.18.0",
+        "typescript": "^5.7.3",
+        "typescript-eslint": "^8.20.0",
+        "vitest": "^4.1.5"
+    },
+    "publishConfig": {
+        "access": "public",
+        "provenance": true
+    }
+}

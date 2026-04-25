@@ -1,0 +1,134 @@
+/**
+ * Tool: add_international_text
+ *
+ * Generates a PDF that contains text in non-Latin scripts (Arabic, Hebrew, Thai,
+ * CJK, Devanagari, Bengali, Tamil, Cyrillic, Greek, Georgian, Armenian, Vietnamese,
+ * Turkish, Polish). Uses the pre-built Noto font data modules shipped with
+ * `pdfnative` via `pdfnative/fonts/*.js` and registers them on demand.
+ *
+ * BiDi reordering, Arabic positional shaping, Thai/Devanagari/Bengali/Tamil
+ * OpenType shaping, and CIDFont Type2 / Identity-H embedding are all handled
+ * transparently by pdfnative.
+ */
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import {
+    buildDocumentPDFBytes,
+    registerFont,
+    loadFontData,
+    type DocumentBlock,
+    type FontEntry,
+} from 'pdfnative';
+import { z } from 'zod';
+import { emitPdf, type OutputResult } from '../output.js';
+import { ToolError } from '../errors.js';
+
+export const ADD_INTERNATIONAL_TEXT_NAME = 'add_international_text';
+
+/** Mapping from the public `lang` code to pdfnative's bundled Noto font data file. */
+const LANG_TO_FONT_FILE: Readonly<Record<string, string>> = {
+    ar: 'noto-arabic-data.js',
+    he: 'noto-hebrew-data.js',
+    th: 'noto-thai-data.js',
+    ja: 'noto-jp-data.js',
+    zh: 'noto-sc-data.js',
+    ko: 'noto-kr-data.js',
+    el: 'noto-greek-data.js',
+    hi: 'noto-devanagari-data.js',
+    bn: 'noto-bengali-data.js',
+    ta: 'noto-tamil-data.js',
+    ru: 'noto-cyrillic-data.js',
+    ka: 'noto-georgian-data.js',
+    hy: 'noto-armenian-data.js',
+    tr: 'noto-turkish-data.js',
+    pl: 'noto-polish-data.js',
+    vi: 'noto-vietnamese-data.js',
+};
+
+const SUPPORTED_LANGS = Object.keys(LANG_TO_FONT_FILE) as ReadonlyArray<keyof typeof LANG_TO_FONT_FILE>;
+
+/** Resolve pdfnative's bundled fonts directory in a way that bypasses the package's
+ *  `exports` map (the font modules are listed in `files` but not in `exports`). */
+function getFontsDir(): string {
+    const requireFn = createRequire(import.meta.url);
+    const pkgJsonPath = requireFn.resolve('pdfnative/package.json');
+    return path.join(path.dirname(pkgJsonPath), 'fonts');
+}
+
+/** Lazily import a Noto font data module from disk and unwrap a default export if present. */
+async function importFontModule(fontFile: string): Promise<unknown> {
+    const fileUrl = pathToFileURL(path.join(getFontsDir(), fontFile)).href;
+    const mod = (await import(fileUrl)) as Record<string, unknown>;
+    return 'default' in mod ? mod['default'] : mod;
+}
+
+const _registered = new Set<string>();
+function ensureFontRegistered(lang: string): void {
+    if (_registered.has(lang)) return;
+    const fontFile = LANG_TO_FONT_FILE[lang];
+    if (fontFile === undefined) {
+        throw new ToolError('UNSUPPORTED_LANG', `Unsupported lang '${lang}'. Supported: ${SUPPORTED_LANGS.join(', ')}.`);
+    }
+    registerFont(lang, async () => {
+        const data = await importFontModule(fontFile);
+        return data as Awaited<ReturnType<Parameters<typeof registerFont>[1]>>;
+    });
+    _registered.add(lang);
+}
+
+export const ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+        title: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 200,
+            description: 'PDF title (rendered as page heading and stored as document metadata).',
+        },
+        lang: {
+            type: 'string',
+            enum: [...SUPPORTED_LANGS],
+            description: 'BCP-47-style 2-letter language code selecting which Noto font to embed.',
+        },
+        paragraphs: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 1000,
+            description: 'Ordered list of paragraphs to render in the chosen script.',
+            items: { type: 'string', minLength: 1, maxLength: 50000 },
+        },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
+        outputPath: { type: 'string' },
+    },
+    required: ['title', 'lang', 'paragraphs'],
+} as const;
+
+const InputSchema = z.object({
+    title: z.string().min(1).max(200),
+    lang: z.enum(SUPPORTED_LANGS as [string, ...string[]]),
+    paragraphs: z.array(z.string().min(1).max(50000)).min(1).max(1000),
+    outputMode: z.enum(['base64', 'file']).default('base64'),
+    outputPath: z.string().optional(),
+});
+
+export async function addInternationalText(rawInput: unknown): Promise<OutputResult> {
+    const parsed = InputSchema.safeParse(rawInput);
+    if (!parsed.success) {
+        throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
+    }
+    const { title, lang, paragraphs, outputMode, outputPath } = parsed.data;
+
+    ensureFontRegistered(lang);
+    const fontData = await loadFontData(lang);
+    if (fontData === null) {
+        throw new ToolError('FONT_LOAD_FAILED', `Failed to load font data for lang '${lang}'.`);
+    }
+
+    const fontEntries: FontEntry[] = [{ fontData, fontRef: '/F3', lang }];
+    const blocks: DocumentBlock[] = paragraphs.map((text) => ({ type: 'paragraph', text }));
+
+    const bytes = buildDocumentPDFBytes({ title, blocks, fontEntries });
+    return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
+}
