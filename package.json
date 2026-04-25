@@ -65,6 +65,7 @@
         "clean": "node -e \"import('node:fs').then(m=>m.rmSync('dist',{recursive:true,force:true}))\"",
         "lint": "eslint src",
         "typecheck": "tsc --noEmit",
+        "typecheck:all": "npm run typecheck",
         "test": "vitest run",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",

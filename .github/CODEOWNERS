@@ -1,0 +1,17 @@
+# CODEOWNERS
+
+# Default owner for everything
+* @Nizoka
+
+# MCP server runtime and tool surface
+src/ @Nizoka
+src/tools/ @Nizoka
+
+# Public API and package contract
+src/index.ts @Nizoka
+package.json @Nizoka
+
+# CI/CD and release automation
+.github/workflows/ @Nizoka
+release-notes/ @Nizoka
+CHANGELOG.md @Nizoka

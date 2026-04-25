@@ -1,25 +1,16 @@
-## Summary
+## Description
 
-<!-- 1–3 sentences describing the change. -->
+<!-- What does this PR change and why? -->
 
-## Type of change
+## Related Issues
 
-- [ ] 🐛 Bug fix
-- [ ] ✨ New feature
-- [ ] 🛠 Refactor / internal change
-- [ ] 📝 Documentation
-- [ ] 🔐 Security fix
+<!-- Link related issues: Fixes #123, Relates to #456 -->
 
 ## Checklist
 
-- [ ] `npm run typecheck` passes
-- [ ] `npm run lint` passes (zero warnings)
-- [ ] `npm test` passes
-- [ ] Added/updated tests covering the change
-- [ ] Updated `CHANGELOG.md` under `## [Unreleased]`
-- [ ] Updated `README.md` if user-facing behaviour changed
-- [ ] Conventional Commit-style PR title (`feat:`, `fix:`, `docs:`, …)
-
-## Related issues
-
-<!-- Closes #123 -->
+- [ ] Tests pass (`npm run test`)
+- [ ] Type check passes (`npm run typecheck:all`)
+- [ ] Lint passes (`npm run lint`)
+- [ ] New code has tests
+- [ ] CHANGELOG.md updated (if user-facing change)
+- [ ] No breaking changes (or documented in description)

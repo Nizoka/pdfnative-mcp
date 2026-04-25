@@ -1,30 +1,55 @@
-name: Publish to npm
+name: Publish
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
+
+# Trusted Publishing (npmjs.com OIDC):
+#   This workflow uses npm Trusted Publishing — no long-lived NPM_TOKEN secret.
+#   The OIDC id-token permission mints a short-lived token that:
+#     1. Authorises the `npm publish` HTTP request
+#     2. Signs the provenance attestation (SLSA Level 2+ via Sigstore)
+#   Configure at npmjs.com -> package settings -> Configure Trusted Publishing.
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write # required for npm provenance
+    timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: 22
-          registry-url: 'https://registry.npmjs.org'
+          node-version: '>=22.14.0'
+          registry-url: https://registry.npmjs.org
           cache: npm
 
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run test
-      - run: npm run build
-      - run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck:all
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test with coverage
+        run: npm run test:coverage
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify dist output
+        run: |
+          test -f dist/index.js
+          test -f dist/index.d.ts
+          test -f dist/cli.js
+
+      - name: Publish
+        run: npm publish --access public

@@ -189,6 +189,17 @@ node dist/cli.js
 # In another terminal, send a JSON-RPC initialize request via stdin (e.g. with mcp-inspector).
 ```
 
+## 📣 Release process
+
+`pdfnative-mcp` follows the same release formalism as `pdfnative`:
+
+- One release note file per tag in `release-notes/vX.Y.Z.md`
+- `CHANGELOG.md` mirrors each release bullet list
+- GitHub Release body is copied from `release-notes/vX.Y.Z.md`
+- npm publication is handled by GitHub Actions Trusted Publishing (OIDC), without `NPM_TOKEN`
+
+See `release-notes/TEMPLATE.md` for the canonical structure and publication checklist.
+
 ---
 
 ## 📚 Project structure
