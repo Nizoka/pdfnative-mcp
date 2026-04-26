@@ -14,14 +14,18 @@
 
 ## ✨ Features
 
-`pdfnative-mcp` exposes four production-grade tools to any MCP host:
+`pdfnative-mcp` exposes eight production-grade tools to any MCP host:
 
-| Tool                       | Purpose                                                                                  |
-| -------------------------- | ---------------------------------------------------------------------------------------- |
-| `generate_basic_pdf`       | Multi-page A4 documents from structured blocks (headings, paragraphs, lists, page breaks). |
-| `add_barcode`              | QR Code, Code 128, EAN-13, Data Matrix, PDF417 — embedded in a single-page PDF.            |
-| `add_international_text`   | 16 non-Latin scripts (Arabic, Hebrew, Thai, CJK, Devanagari, Bengali, Tamil, …) with BiDi & OpenType shaping. |
-| `sign_pdf`                 | PAdES-style CMS digital signatures (RSA-SHA256 / ECDSA-SHA256 P-256).                      |
+| Tool                               | Purpose                                                                                          |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `generate_basic_pdf`               | Multi-page A4 documents from structured blocks (headings, paragraphs, lists, page breaks).       |
+| `add_barcode`                      | QR Code, Code 128, EAN-13, Data Matrix, PDF417 — embedded in a single-page PDF.                 |
+| `add_international_text`           | 16 non-Latin scripts (Arabic, Hebrew, Thai, CJK, Devanagari, Bengali, Tamil, …) with BiDi & OpenType shaping. |
+| `sign_pdf`                         | PAdES-style CMS digital signatures (RSA-SHA256 / ECDSA-SHA256 P-256).                           |
+| `add_table`                        | Tabular PDF reports from column headers and data rows.                                           |
+| `add_form`                         | Interactive AcroForm PDFs with text fields, checkboxes, radio buttons, and dropdowns.            |
+| `embed_image`                      | Embed a JPEG or PNG image (base64-encoded) into a titled PDF document.                          |
+| `prepare_signature_placeholder`    | Create a PDF with a `/Sig` AcroForm placeholder ready to be signed by `sign_pdf`.               |
 
 All tools support two output modes:
 
@@ -84,6 +88,7 @@ Any MCP-compatible client that supports stdio servers will work. Use the same `c
 | Variable                      | Purpose                                                                            |
 | ----------------------------- | ---------------------------------------------------------------------------------- |
 | `PDFNATIVE_MPC_OUTPUT_DIR`    | Absolute path to the sandbox directory. **Required to enable `outputMode: 'file'`.** |
+| `PDFNATIVE_MCP_PORT`          | When set to a valid port (1–65535), starts an HTTP server on `http://127.0.0.1:<port>/mcp` instead of stdio. |
 
 ---
 
@@ -153,7 +158,71 @@ Supported `lang` codes: `ar`, `he`, `th`, `ja`, `zh`, `ko`, `el`, `hi`, `bn`, `t
 
 For ECDSA P-256: omit `rsaKeyPkcs1DerBase64`, use `algorithm: "ecdsa-sha256"`, and supply `ecPrivateScalarHex` (64 hex chars).
 
-> **Note on placeholder PDFs.** `sign_pdf` is a faithful wrapper around `pdfnative.signPdfBytes`, which expects a PDF that already contains a `/Sig` dictionary with a reserved `/Contents` placeholder. Producing such a PDF is the caller's responsibility (see [pdfnative's signature samples](https://github.com/Nizoka/pdfnative/tree/main/scripts/generators)). A higher-level "create + sign in one shot" tool may be added in a future release.
+> **Note on placeholder PDFs.** `sign_pdf` is a faithful wrapper around `pdfnative.signPdfBytes`. Use `prepare_signature_placeholder` to produce a ready-to-sign PDF in one step, then pass the result to `sign_pdf`.
+
+---
+
+### `add_table`
+
+```jsonc
+{
+  "title": "Monthly Sales",
+  "headers": ["Region", "Units", "Revenue"],
+  "rows": [
+    ["APAC", "1200", "$240,000"],
+    ["EMEA", "800", "$160,000"]
+  ],
+  "infoItems": [{ "label": "Period", "value": "January 2025" }],
+  "footerText": "Internal use only",
+  "outputMode": "base64"
+}
+```
+
+### `add_form`
+
+```jsonc
+{
+  "title": "Employee Onboarding",
+  "fields": [
+    { "fieldType": "text", "name": "fullName", "label": "Full Name", "required": true },
+    { "fieldType": "dropdown", "name": "dept", "label": "Department", "options": ["Engineering", "Sales", "HR"] },
+    { "fieldType": "checkbox", "name": "agree", "label": "I agree to the terms", "checked": false }
+  ],
+  "outputMode": "base64"
+}
+```
+
+### `embed_image`
+
+```jsonc
+{
+  "title": "Product Photo",
+  "imageBase64": "<base64-encoded JPEG bytes>",
+  "mimeType": "image/jpeg",
+  "caption": "Front view of Model X",
+  "width": 400,
+  "outputMode": "base64"
+}
+```
+
+> **Note:** pdfnative does not support alpha-channel PNGs (color type 6). Pre-process such images to remove the alpha channel before embedding.
+
+### `prepare_signature_placeholder`
+
+```jsonc
+{
+  "title": "Service Agreement",
+  "signerName": "Alice Dupont",
+  "reason": "Approved",
+  "location": "Paris, FR",
+  "blocks": [
+    { "type": "paragraph", "text": "By signing below, I accept the terms and conditions." }
+  ],
+  "outputMode": "base64"
+}
+```
+
+Pass the returned PDF bytes to `sign_pdf` to complete the signing workflow.
 
 ---
 
@@ -215,7 +284,11 @@ src/
     ├── generate-basic-pdf.ts
     ├── add-barcode.ts
     ├── sign-pdf.ts
-    └── add-international-text.ts
+    ├── add-international-text.ts
+    ├── add-table.ts
+    ├── add-form.ts
+    ├── embed-image.ts
+    └── prepare-signature-placeholder.ts
 tests/                          # vitest suites
 ```
 
@@ -223,13 +296,15 @@ tests/                          # vitest suites
 
 ## 🗺 Roadmap
 
-- [ ] `prepare_signature_placeholder` — high-level helper that builds a PDF already containing the `/Sig` placeholder.
-- [ ] `add_table` — structured tabular output exposing pdfnative's `buildPDFBytes`.
-- [ ] `add_form` — AcroForm field generation.
-- [ ] Streamable HTTP transport (in addition to stdio).
-- [ ] Image embedding tool (JPEG / PNG via base64).
+All v0.2.0 planned items have been shipped:
 
-Open an issue or PR if you'd like to contribute one of these.
+- [x] `prepare_signature_placeholder` — high-level helper that builds a PDF with the `/Sig` AcroForm placeholder.
+- [x] `add_table` — structured tabular output via pdfnative's `buildPDFBytes`.
+- [x] `add_form` — AcroForm field generation (text, textarea, checkbox, radio, dropdown).
+- [x] Streamable HTTP transport (set `PDFNATIVE_MCP_PORT`).
+- [x] `embed_image` — JPEG / PNG embedding via base64.
+
+Have a feature idea? Open an issue or PR!
 
 ---
 

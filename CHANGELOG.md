@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-07-29
+
+### Added
+
+- Tool `add_table`: tabular PDF reports from column headers + data rows via `buildPDFBytes`. Supports `infoItems`, `footerText`, and file output mode.
+- Tool `add_form`: interactive AcroForm PDFs with text fields, text areas, checkboxes, radio buttons, and dropdowns via `formField` blocks.
+- Tool `embed_image`: embed a JPEG or PNG image (base64-encoded) into a titled PDF document with optional caption and render dimensions. Magic-byte validation prevents mime type mismatch.
+- Tool `prepare_signature_placeholder`: creates a PDF with an embedded `/Sig` AcroForm placeholder ready for `sign_pdf` (step 1 of a two-step signing workflow). Supports signer metadata and optional body blocks.
+- HTTP transport: `PDFNATIVE_MCP_PORT` environment variable enables Streamable HTTP mode on `http://127.0.0.1:<port>/mcp` (falls back to stdio when unset).
+
+### Changed
+
+- Server version bumped to `0.2.0`.
+- `SERVER_INSTRUCTIONS` updated to document all 8 tools.
+
 ## [0.1.0] - 2026-04-26
 
 ### Added
@@ -21,7 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Strict JSON Schema + Zod validation at every tool boundary.
 - Vitest test suite with sandbox security checks.
 
-[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Nizoka/pdfnative-mcp/releases/tag/v0.1.0
 
 
