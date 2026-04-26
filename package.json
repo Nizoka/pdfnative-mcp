@@ -1,7 +1,7 @@
 {
     "name": "pdfnative-mcp",
-    "version": "0.1.0",
-    "description": "Model Context Protocol (MCP) server bridging the zero-dependency pdfnative library — generate PDFs, embed barcodes & QR codes, sign documents, and render international text from any MCP-compatible AI client (Claude, Cursor, ChatGPT, Continue, etc.).",
+    "version": "0.2.0",
+    "description": "Model Context Protocol (MCP) server bridging the zero-dependency pdfnative library — generate PDFs, embed barcodes & QR codes, sign documents, render international text, create forms and tables, embed images, and prepare digital signature placeholders from any MCP-compatible AI client (Claude, Cursor, ChatGPT, Continue, etc.).",
     "keywords": [
         "mcp",
         "model-context-protocol",

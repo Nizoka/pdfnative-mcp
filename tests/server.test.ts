@@ -14,7 +14,7 @@ describe('server', () => {
 
     it('exposes stable metadata', () => {
         expect(__serverMetadata.name).toBe('pdfnative-mcp');
-        expect(__serverMetadata.version).toBe('0.1.0');
+        expect(__serverMetadata.version).toBe('0.2.0');
     });
 
     it('lists all tools', async () => {
@@ -29,8 +29,12 @@ describe('server', () => {
         const names = response.tools.map((t) => t.name).sort();
         expect(names).toEqual([
             'add_barcode',
+            'add_form',
             'add_international_text',
+            'add_table',
+            'embed_image',
             'generate_basic_pdf',
+            'prepare_signature_placeholder',
             'sign_pdf',
         ]);
     });

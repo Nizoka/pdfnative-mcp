@@ -34,10 +34,30 @@ import {
     ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA,
     addInternationalText,
 } from './tools/add-international-text.js';
+import {
+    ADD_TABLE_NAME,
+    ADD_TABLE_INPUT_SCHEMA,
+    addTable,
+} from './tools/add-table.js';
+import {
+    ADD_FORM_NAME,
+    ADD_FORM_INPUT_SCHEMA,
+    addForm,
+} from './tools/add-form.js';
+import {
+    EMBED_IMAGE_NAME,
+    EMBED_IMAGE_INPUT_SCHEMA,
+    embedImage,
+} from './tools/embed-image.js';
+import {
+    PREPARE_SIGNATURE_PLACEHOLDER_NAME,
+    PREPARE_SIGNATURE_PLACEHOLDER_INPUT_SCHEMA,
+    prepareSignaturePlaceholder,
+} from './tools/prepare-signature-placeholder.js';
 
 // JSON import attribute (Node 22+, TS 5.3+) keeps version in lock-step with package.json.
 // Hardcoded here to keep the build rootDir limited to ./src; tests assert it stays in sync.
-const SERVER_VERSION = '0.1.0';
+const SERVER_VERSION = '0.2.0';
 const SERVER_NAME = 'pdfnative-mcp';
 
 
@@ -92,16 +112,56 @@ const TOOLS: readonly ToolDefinition[] = [
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         handler: addInternationalText,
     },
+    {
+        name: ADD_TABLE_NAME,
+        title: 'Add table / report',
+        description:
+            'Generate a tabular PDF report from column headers and data rows. Ideal for data exports, financial summaries, schedules, and any content that fits naturally into rows and columns.',
+        inputSchema: ADD_TABLE_INPUT_SCHEMA,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        handler: addTable,
+    },
+    {
+        name: ADD_FORM_NAME,
+        title: 'Add interactive form',
+        description:
+            'Generate a PDF containing an interactive AcroForm with text fields, text areas, checkboxes, radio buttons, and dropdowns. Suitable for data-capture forms, surveys, and fillable templates.',
+        inputSchema: ADD_FORM_INPUT_SCHEMA,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        handler: addForm,
+    },
+    {
+        name: EMBED_IMAGE_NAME,
+        title: 'Embed image in PDF',
+        description:
+            'Generate a PDF document with an embedded JPEG or PNG image. The image is accepted as a base64-encoded string and can include an optional caption and custom render dimensions.',
+        inputSchema: EMBED_IMAGE_INPUT_SCHEMA,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        handler: embedImage,
+    },
+    {
+        name: PREPARE_SIGNATURE_PLACEHOLDER_NAME,
+        title: 'Prepare signature placeholder',
+        description:
+            "Create a PDF with an embedded /Sig AcroForm placeholder ready to be digitally signed by the sign_pdf tool. Optionally accepts document body blocks and signer metadata (name, reason, location). Use this as step 1 of a two-step sign workflow: prepare → sign.",
+        inputSchema: PREPARE_SIGNATURE_PLACEHOLDER_INPUT_SCHEMA,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        handler: prepareSignaturePlaceholder,
+    },
 ];
 
 const TOOL_INDEX: ReadonlyMap<string, ToolDefinition> = new Map(TOOLS.map((t) => [t.name, t]));
 
 const SERVER_INSTRUCTIONS = `pdfnative-mcp bridges the zero-dependency 'pdfnative' library to MCP.
 Available tools:
-  • ${GENERATE_BASIC_PDF_NAME} — multi-page documents from structured blocks (preferred for reports, letters, manuals).
+  • ${GENERATE_BASIC_PDF_NAME} — multi-page documents from structured blocks (headings, paragraphs, lists).
   • ${ADD_BARCODE_NAME} — barcodes / QR codes (tickets, labels, vouchers).
   • ${ADD_INTERNATIONAL_TEXT_NAME} — non-Latin scripts via embedded Noto fonts (BiDi + shaping handled).
   • ${SIGN_PDF_NAME} — apply a CMS signature to a PDF that already has a /Sig placeholder.
+  • ${ADD_TABLE_NAME} — tabular PDF reports from headers + data rows.
+  • ${ADD_FORM_NAME} — interactive AcroForm PDFs (text fields, checkboxes, dropdowns).
+  • ${EMBED_IMAGE_NAME} — embed a JPEG or PNG image into a PDF document.
+  • ${PREPARE_SIGNATURE_PLACEHOLDER_NAME} — create a PDF with a /Sig placeholder ready for sign_pdf (step 1 of two-step signing).
 Output is always returned as base64 unless the host has set the PDFNATIVE_MPC_OUTPUT_DIR env var, in which case outputMode='file' writes to a sandboxed path.`;
 
 function buildSuccessResult(output: OutputResult, toolName: string): CallToolResult {
