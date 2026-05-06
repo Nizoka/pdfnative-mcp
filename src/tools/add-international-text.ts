@@ -44,6 +44,9 @@ const LANG_TO_FONT_FILE: Readonly<Record<string, string>> = {
     tr: 'noto-turkish-data.js',
     pl: 'noto-polish-data.js',
     vi: 'noto-vietnamese-data.js',
+    // Added in v0.3.0 / pdfnative v1.1.0:
+    latin: 'noto-sans-data.js',
+    emoji: 'noto-emoji-data.js',
 };
 
 const SUPPORTED_LANGS = Object.keys(LANG_TO_FONT_FILE) as ReadonlyArray<keyof typeof LANG_TO_FONT_FILE>;
@@ -90,9 +93,18 @@ export const ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA = {
             description: 'PDF title (rendered as page heading and stored as document metadata).',
         },
         lang: {
-            type: 'string',
-            enum: [...SUPPORTED_LANGS],
-            description: 'BCP-47-style 2-letter language code selecting which Noto font to embed.',
+            description:
+                "Language / script identifier. Either a single code (e.g. 'ar'), a comma-separated list ('ar,emoji'), or an array (['ar','emoji']). Multiple codes enable multi-font run splitting (script + emoji + Latin fallback).",
+            oneOf: [
+                { type: 'string', enum: [...SUPPORTED_LANGS] },
+                {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: SUPPORTED_LANGS.length,
+                    items: { type: 'string', enum: [...SUPPORTED_LANGS] },
+                },
+                { type: 'string', minLength: 2, maxLength: 80, description: 'Comma-separated list of supported codes.' },
+            ],
         },
         paragraphs: {
             type: 'array',
@@ -101,36 +113,85 @@ export const ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA = {
             description: 'Ordered list of paragraphs to render in the chosen script.',
             items: { type: 'string', minLength: 1, maxLength: 50000 },
         },
+        pdfA: {
+            type: 'string',
+            enum: ['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b'],
+            description: "Optional PDF/A conformance level. When set, Tagged PDF + sRGB OutputIntent + XMP metadata are emitted; the 'latin' Noto Sans fallback is auto-registered for non-WinAnsi Latin (ISO 19005-1 \u00a76.3.4).",
+        },
         outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
         outputPath: { type: 'string' },
     },
     required: ['title', 'lang', 'paragraphs'],
 } as const;
 
+const LangInput = z.union([
+    z.enum(SUPPORTED_LANGS as [string, ...string[]]),
+    z.array(z.enum(SUPPORTED_LANGS as [string, ...string[]])).min(1).max(SUPPORTED_LANGS.length),
+    z.string().min(2).max(80),
+]);
+
 const InputSchema = z.object({
     title: z.string().min(1).max(200),
-    lang: z.enum(SUPPORTED_LANGS as [string, ...string[]]),
+    lang: LangInput,
     paragraphs: z.array(z.string().min(1).max(50000)).min(1).max(1000),
+    pdfA: z.enum(['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b']).optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
+
+/** Normalise the polymorphic `lang` input into a unique, validated list of codes. */
+function normaliseLangs(raw: string | string[]): string[] {
+    const tokens = Array.isArray(raw) ? raw : raw.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const t of tokens) {
+        if (LANG_TO_FONT_FILE[t] === undefined) {
+            throw new ToolError(
+                'UNSUPPORTED_LANG',
+                `Unsupported lang '${t}'. Supported: ${SUPPORTED_LANGS.join(', ')}.`,
+            );
+        }
+        if (!seen.has(t)) {
+            seen.add(t);
+            out.push(t);
+        }
+    }
+    if (out.length === 0) {
+        throw new ToolError('UNSUPPORTED_LANG', 'lang must resolve to at least one supported code.');
+    }
+    return out;
+}
 
 export async function addInternationalText(rawInput: unknown): Promise<OutputResult> {
     const parsed = InputSchema.safeParse(rawInput);
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, lang, paragraphs, outputMode, outputPath } = parsed.data;
+    const { title, lang, paragraphs, pdfA, outputMode, outputPath } = parsed.data;
 
-    ensureFontRegistered(lang);
-    const fontData = await loadFontData(lang);
-    if (fontData === null) {
-        throw new ToolError('FONT_LOAD_FAILED', `Failed to load font data for lang '${lang}'.`);
+    const langs = normaliseLangs(lang);
+    // Auto-register Noto Sans Latin fallback under PDF/A so non-WinAnsi Latin (smart
+    // quotes, em-dash, ellipsis) is embedded and veraPDF rule 6.3.4 passes.
+    if (pdfA !== undefined && !langs.includes('latin')) {
+        langs.push('latin');
     }
 
-    const fontEntries: FontEntry[] = [{ fontData, fontRef: '/F3', lang }];
+    const fontEntries: FontEntry[] = [];
+    for (let i = 0; i < langs.length; i += 1) {
+        const code = langs[i] as string;
+        ensureFontRegistered(code);
+        const fontData = await loadFontData(code);
+        if (fontData === null) {
+            throw new ToolError('FONT_LOAD_FAILED', `Failed to load font data for lang '${code}'.`);
+        }
+        fontEntries.push({ fontData, fontRef: `/F${3 + i}`, lang: code });
+    }
+
     const blocks: DocumentBlock[] = paragraphs.map((text) => ({ type: 'paragraph', text }));
 
-    const bytes = buildDocumentPDFBytes({ title, blocks, fontEntries });
+    const bytes = buildDocumentPDFBytes(
+        { title, blocks, fontEntries },
+        pdfA !== undefined ? { tagged: pdfA } : {},
+    );
     return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
 }

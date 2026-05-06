@@ -99,6 +99,11 @@ export const ADD_FORM_INPUT_SCHEMA = {
             maxLength: 200,
             description: 'Optional footer text rendered at the bottom of every page.',
         },
+        pdfA: {
+            type: 'string',
+            enum: ['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b'],
+            description: 'Optional PDF/A conformance level (pdfnative v1.1). Mutually exclusive with PDF encryption.',
+        },
         outputMode: {
             type: 'string',
             enum: ['base64', 'file'],
@@ -133,6 +138,7 @@ const InputSchema = z.object({
     title: z.string().min(1).max(200),
     fields: z.array(FieldSchema).min(1).max(200),
     footerText: z.string().max(200).optional(),
+    pdfA: z.enum(['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b']).optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -142,7 +148,7 @@ export async function addForm(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, fields, footerText, outputMode, outputPath } = parsed.data;
+    const { title, fields, footerText, pdfA, outputMode, outputPath } = parsed.data;
 
     // Validate that radio/dropdown fields have options
     for (const field of fields) {
@@ -173,11 +179,14 @@ export async function addForm(rawInput: unknown): Promise<OutputResult> {
         }),
     );
 
-    const bytes = buildDocumentPDFBytes({
-        title,
-        blocks,
-        ...(footerText !== undefined ? { footerText } : {}),
-    });
+    const bytes = buildDocumentPDFBytes(
+        {
+            title,
+            blocks,
+            ...(footerText !== undefined ? { footerText } : {}),
+        },
+        pdfA !== undefined ? { tagged: pdfA } : {},
+    );
 
     return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
 }

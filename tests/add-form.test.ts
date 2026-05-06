@@ -78,4 +78,23 @@ describe('add_form', () => {
             }),
         ).rejects.toThrow(ToolError);
     });
+
+    it('covers optional field props: readOnly, maxLength, width, fontSize', async () => {
+        const result = await addForm({
+            title: 'Extended Props',
+            fields: [
+                {
+                    fieldType: 'text',
+                    name: 'code',
+                    label: 'Code',
+                    readOnly: true,
+                    maxLength: 10,
+                    width: 200,
+                    fontSize: 12,
+                },
+            ],
+        });
+        expect(result.mode).toBe('base64');
+        expect(decode(result.base64!)).toBe(PDF_HEADER);
+    });
 });

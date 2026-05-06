@@ -102,4 +102,24 @@ describe('sign_pdf tool', () => {
             }),
         ).rejects.toThrow('Failed to sign PDF: bad signature state');
     });
+
+    it('includes optional metadata fields in the signing options', async () => {
+        const { signPdf } = await import('../src/tools/sign-pdf.js');
+        await signPdf({
+            pdfBase64: b64([1, 2, 3]),
+            algorithm: 'rsa-sha256',
+            certDerBase64: b64([4, 5, 6]),
+            rsaKeyPkcs1DerBase64: b64([7, 8, 9]),
+            signerName: 'Bob',
+            reason: 'Reviewed and approved',
+            location: 'Berlin, DE',
+            contactInfo: 'bob@example.com',
+            signingTime: '2026-01-15T10:30:00Z',
+        });
+        const firstCall = signPdfBytesMock.mock.calls[0] as unknown as [Uint8Array, Record<string, unknown>];
+        expect(firstCall[1]['reason']).toBe('Reviewed and approved');
+        expect(firstCall[1]['location']).toBe('Berlin, DE');
+        expect(firstCall[1]['contactInfo']).toBe('bob@example.com');
+        expect(firstCall[1]['signingTime']).toBeInstanceOf(Date);
+    });
 });

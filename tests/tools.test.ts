@@ -66,4 +66,16 @@ describe('add_barcode', () => {
     it('validates EAN-13 length', async () => {
         await expect(addBarcode({ format: 'ean13', data: 'abc' })).rejects.toThrow(ToolError);
     });
+
+    it('produces a PDF for a non-QR format without a caption', async () => {
+        const result = await addBarcode({ format: 'code128', data: 'HELLO-123' });
+        expect(result.mode).toBe('base64');
+        expect(decode(result.base64!)).toBe(PDF_HEADER);
+    });
+
+    it('applies pdfA flag to barcode documents', async () => {
+        const result = await addBarcode({ format: 'qr', data: 'pdfA test', pdfA: 'pdfa2b' });
+        expect(result.mode).toBe('base64');
+        expect(decode(result.base64!)).toBe(PDF_HEADER);
+    });
 });

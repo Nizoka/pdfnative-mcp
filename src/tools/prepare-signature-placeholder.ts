@@ -46,6 +46,11 @@ export const PREPARE_SIGNATURE_PLACEHOLDER_INPUT_SCHEMA = {
             maxLength: 200,
             description: 'Contact information for the signer.',
         },
+        pdfA: {
+            type: 'string',
+            enum: ['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b'],
+            description: 'Optional PDF/A conformance level (pdfnative v1.1) for the underlying document. Note: PDF/A + signatures requires PAdES-A; verify with inspect_pdf.',
+        },
         blocks: {
             type: 'array',
             description: 'Optional document body blocks rendered before the signature field.',
@@ -119,6 +124,7 @@ const InputSchema = z.object({
     reason: z.string().max(500).optional(),
     location: z.string().max(200).optional(),
     contactInfo: z.string().max(200).optional(),
+    pdfA: z.enum(['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b']).optional(),
     blocks: z.array(BlockSchema).max(2000).optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
@@ -182,13 +188,14 @@ function serializePdfValue(val: PdfValue): string {
         for (const [k, v] of val) s += ` /${k} ${serializePdfValue(v)}`;
         return s + ' >>';
     }
+    /* v8 ignore start - streams and unknown values are never passed in normal traversal; defensive only. */
     if (isStream(val)) {
-        // Streams appear as dicts in context (used only for dict-level serialization)
         let s = '<<';
         for (const [k, v] of val.dict) s += ` /${k} ${serializePdfValue(v)}`;
         return s + ' >>';
     }
     return 'null';
+    /* v8 ignore stop */
 }
 
 /**
@@ -222,7 +229,7 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, signerName, reason, location, contactInfo, blocks, outputMode, outputPath } = parsed.data;
+    const { title, signerName, reason, location, contactInfo, blocks, pdfA, outputMode, outputPath } = parsed.data;
 
     // --- Build base document ---
     const contentBlocks: DocumentBlock[] = (blocks ?? []).map((b): DocumentBlock => {
@@ -239,7 +246,10 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
         contentBlocks.push({ type: 'paragraph', text: 'This document contains a digital signature field.' });
     }
 
-    const baseBytes = buildDocumentPDFBytes({ title, blocks: contentBlocks });
+    const baseBytes = buildDocumentPDFBytes(
+        { title, blocks: contentBlocks },
+        pdfA !== undefined ? { tagged: pdfA } : {},
+    );
 
     // --- Parse structure ---
     const reader = openPdf(baseBytes);
@@ -251,11 +261,14 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
     // Navigate to first page object number
     const catalog = reader.getCatalog();
     const pagesTreeVal = reader.resolveValue(catalog.get('Pages') as PdfValue);
+    // pdfnative always emits a proper /Pages tree for its own documents; these guards are safety nets.
+    /* v8 ignore next 3 */
     if (!isDict(pagesTreeVal)) {
         throw new ToolError('INTERNAL_ERROR', 'Cannot locate /Pages tree in generated PDF.');
     }
     const kidsRaw = pagesTreeVal.get('Kids');
     const kidsVal = kidsRaw !== undefined ? kidsRaw : null;
+    /* v8 ignore next 3 */
     if (!isArray(kidsVal) || kidsVal.length === 0) {
         throw new ToolError('INTERNAL_ERROR', 'Cannot locate page objects in generated PDF.');
     }

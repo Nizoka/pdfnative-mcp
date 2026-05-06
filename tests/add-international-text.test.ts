@@ -76,7 +76,7 @@ describe('add_international_text tool', () => {
                 lang: 'zz',
                 paragraphs: ['x'],
             }),
-        ).rejects.toThrow('Invalid arguments');
+        ).rejects.toThrow("Unsupported lang 'zz'");
     });
 
     it('registers a lazily-loadable font loader callback', async () => {
@@ -91,5 +91,40 @@ describe('add_international_text tool', () => {
         expect(loader).not.toBeNull();
         const loaded = await loader!();
         expect(typeof loaded).toBe('object');
+    });
+
+    it('accepts an array of lang codes and registers each once', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        await addInternationalText({ title: 'Multi', lang: ['ar', 'he'], paragraphs: ['x'] });
+        expect(registerFontMock).toHaveBeenCalledTimes(2);
+        expect(loadFontDataMock).toHaveBeenCalledWith('ar');
+        expect(loadFontDataMock).toHaveBeenCalledWith('he');
+    });
+
+    it('accepts a comma-separated lang string', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        await addInternationalText({ title: 'Comma', lang: 'ar,he', paragraphs: ['x'] });
+        expect(loadFontDataMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('deduplicates repeated lang codes', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        await addInternationalText({ title: 'Dedup', lang: ['ar', 'ar'], paragraphs: ['x'] });
+        expect(loadFontDataMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('auto-pushes latin when pdfA is set and latin is not already in langs', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        await addInternationalText({ title: 'PdfA', lang: 'ar', pdfA: 'pdfa2b', paragraphs: ['x'] });
+        // ar + auto-latin = 2 font loads
+        expect(loadFontDataMock).toHaveBeenCalledTimes(2);
+        expect(loadFontDataMock).toHaveBeenCalledWith('latin');
+    });
+
+    it('does not push latin twice when latin is already in langs with pdfA', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        await addInternationalText({ title: 'NoDouble', lang: ['ar', 'latin'], pdfA: 'pdfa2b', paragraphs: ['x'] });
+        // ar + latin, no extra latin push
+        expect(loadFontDataMock).toHaveBeenCalledTimes(2);
     });
 });

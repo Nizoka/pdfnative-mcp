@@ -14,18 +14,24 @@
 
 ## ✨ Features
 
-`pdfnative-mcp` exposes eight production-grade tools to any MCP host:
+`pdfnative-mcp` exposes nine production-grade tools to any MCP host:
 
 | Tool                               | Purpose                                                                                          |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `generate_basic_pdf`               | Multi-page A4 documents from structured blocks (headings, paragraphs, lists, page breaks).       |
 | `add_barcode`                      | QR Code, Code 128, EAN-13, Data Matrix, PDF417 — embedded in a single-page PDF.                 |
-| `add_international_text`           | 16 non-Latin scripts (Arabic, Hebrew, Thai, CJK, Devanagari, Bengali, Tamil, …) with BiDi & OpenType shaping. |
+| `add_international_text`           | 18 scripts (now incl. **Latin** & **Emoji**) with BiDi & OpenType shaping; multi-lang per doc. |
 | `sign_pdf`                         | PAdES-style CMS digital signatures (RSA-SHA256 / ECDSA-SHA256 P-256).                           |
-| `add_table`                        | Tabular PDF reports from column headers and data rows.                                           |
+| `add_table`                        | Tabular reports; v0.3.0 adds optional `autoFitColumns` and `clipCells`.                         |
 | `add_form`                         | Interactive AcroForm PDFs with text fields, checkboxes, radio buttons, and dropdowns.            |
 | `embed_image`                      | Embed a JPEG or PNG image (base64-encoded) into a titled PDF document.                          |
 | `prepare_signature_placeholder`    | Create a PDF with a `/Sig` AcroForm placeholder ready to be signed by `sign_pdf`.               |
+| `inspect_pdf` *(new in v0.3.0)*    | Read-only inspection: PDF version, page count, encryption, PDF/A claim, signature count, info dict. |
+
+**New in v0.3.0** — every document-producing tool now accepts an optional `pdfA` flag
+(`pdfa1b` | `pdfa2b` | `pdfa2u` | `pdfa3b`) to emit PDF/A-conformant output, powered by
+[pdfnative v1.1](https://github.com/Nizoka/pdfnative). Each tool also publishes an
+MCP `outputSchema` (per the 2025-06 spec) so clients can validate responses statically.
 
 All tools support two output modes:
 
@@ -139,7 +145,18 @@ Supported formats: `qr`, `code128`, `ean13`, `datamatrix`, `pdf417`.
 }
 ```
 
-Supported `lang` codes: `ar`, `he`, `th`, `ja`, `zh`, `ko`, `el`, `hi`, `bn`, `ta`, `ru`, `ka`, `hy`, `tr`, `vi`, `pl`.
+Supported `lang` codes: `ar`, `he`, `th`, `ja`, `zh`, `ko`, `el`, `hi`, `bn`, `ta`, `ru`, `ka`, `hy`, `tr`, `vi`, `pl`, **`latin`** *(new in v0.3.0)*, **`emoji`** *(new in v0.3.0)*.
+
+Multi-script documents — pass an array or comma-separated list:
+
+```jsonc
+{
+  "title": "Mixed Script",
+  "lang": ["ar", "emoji"],
+  "paragraphs": ["العربية مع رموز 🎉🚀"],
+  "pdfA": "pdfa2u"
+}
+```
 
 ### `sign_pdf`
 
@@ -224,6 +241,34 @@ For ECDSA P-256: omit `rsaKeyPkcs1DerBase64`, use `algorithm: "ecdsa-sha256"`, a
 
 Pass the returned PDF bytes to `sign_pdf` to complete the signing workflow.
 
+### `inspect_pdf` *(new in v0.3.0)*
+
+Read-only structural and security inspection — useful for downstream verification, CI assertions, and AI agents that need to reason about a PDF before acting on it.
+
+```jsonc
+{
+  "pdfBase64": "<base64 PDF>",
+  "pages": true,
+  "check": ["pdfa", "signed"]
+}
+```
+
+Returns:
+
+```jsonc
+{
+  "version": "1.7",
+  "pageCount": 3,
+  "encryption": "none",          // 'none' | 'aes-128' | 'aes-256' | 'rc4' | 'unknown'
+  "pdfA": "2B",                  // null when no PDF/A claim is present
+  "signatureCount": 1,
+  "info": { "Producer": "pdfnative", "Title": "Service Agreement" },
+  "perPage": [{ "index": 0, "width": 595, "height": 842 }],
+  "checks": { "pdfa": true, "signed": true },
+  "checksPassed": true
+}
+```
+
 ---
 
 ## 🔐 Security model
@@ -288,6 +333,7 @@ src/
     ├── add-table.ts
     ├── add-form.ts
     ├── embed-image.ts
+    ├── inspect-pdf.ts
     └── prepare-signature-placeholder.ts
 tests/                          # vitest suites
 ```
@@ -296,15 +342,22 @@ tests/                          # vitest suites
 
 ## 🗺 Roadmap
 
-All v0.2.0 planned items have been shipped:
+v0.3.0 is shipped. The full plan — released milestones, in-progress work, planned releases (v0.4.0 → v1.0.0) and long-term direction — lives in [ROADMAP.md](ROADMAP.md).
 
-- [x] `prepare_signature_placeholder` — high-level helper that builds a PDF with the `/Sig` AcroForm placeholder.
-- [x] `add_table` — structured tabular output via pdfnative's `buildPDFBytes`.
-- [x] `add_form` — AcroForm field generation (text, textarea, checkbox, radio, dropdown).
-- [x] Streamable HTTP transport (set `PDFNATIVE_MCP_PORT`).
-- [x] `embed_image` — JPEG / PNG embedding via base64.
+**Up next in v0.4.0:**
 
-Have a feature idea? Open an issue or PR!
+- `verify_pdf` — verify CMS digital signatures end-to-end (cert-chain validation, ByteRange hash check, tampering detection).
+- `sign_pdf` placeholder auto-injection — sign any PDF in a single call.
+- ECDSA DER-encoded private-key input (today only the raw 32-byte scalar is accepted).
+- Encrypted-PDF fixtures so `inspect_pdf` AES detection branches are unit-tested.
+
+Have a feature idea? Open an issue or PR.
+
+---
+
+## ⭐ Star the project
+
+If `pdfnative-mcp` is useful to you, please ⭐ this repository — and consider also starring the underlying engine [Nizoka/pdfnative](https://github.com/Nizoka/pdfnative). Stars help others discover the project and motivate continued development.
 
 ---
 
