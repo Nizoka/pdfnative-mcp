@@ -58,6 +58,11 @@ export const ADD_BARCODE_INPUT_SCHEMA = {
             default: 'M',
             description: 'QR error correction level (L=7%, M=15%, Q=25%, H=30%). Ignored for non-QR formats.',
         },
+        pdfA: {
+            type: 'string',
+            enum: ['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b'],
+            description: 'Optional PDF/A conformance level (pdfnative v1.1).',
+        },
         outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
         outputPath: { type: 'string' },
     },
@@ -72,6 +77,7 @@ const InputSchema = z.object({
     width: z.number().min(30).max(500).default(200),
     height: z.number().min(30).max(500).default(200),
     ecLevel: z.enum(['L', 'M', 'Q', 'H']).default('M'),
+    pdfA: z.enum(['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b']).optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -81,7 +87,7 @@ export async function addBarcode(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { format, data, caption, title, width, height, ecLevel, outputMode, outputPath } = parsed.data;
+    const { format, data, caption, title, width, height, ecLevel, pdfA, outputMode, outputPath } = parsed.data;
 
     if (format === 'ean13' && !/^\d{12,13}$/.test(data)) {
         throw new ToolError('VALIDATION_ERROR', 'EAN-13 data must be 12 or 13 digits.');
@@ -101,6 +107,6 @@ export async function addBarcode(rawInput: unknown): Promise<OutputResult> {
         ...(format === 'qr' ? { ecLevel } : {}),
     });
 
-    const bytes = buildDocumentPDFBytes({ title, blocks });
+    const bytes = buildDocumentPDFBytes({ title, blocks }, pdfA !== undefined ? { tagged: pdfA } : {});
     return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
 }

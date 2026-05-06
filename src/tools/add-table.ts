@@ -4,8 +4,14 @@
  * Generates a tabular PDF report from a title, column headers, and data rows
  * using pdfnative's table/report builder. Ideal for data exports, financial
  * summaries, schedules, and any content that fits naturally into rows and columns.
+ *
+ * Backends:
+ *   - Default: `buildPDFBytes` (PdfParams) — byte-identical with v0.2.0 callers.
+ *   - When `autoFitColumns` and/or `clipCells` is set, switches to
+ *     `buildDocumentPDFBytes` + `TableBlock` since those props live on TableBlock
+ *     in pdfnative v1.1.
  */
-import { buildPDFBytes } from 'pdfnative';
+import { buildDocumentPDFBytes, buildPDFBytes, type DocumentBlock, type TableBlock } from 'pdfnative';
 import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
@@ -60,6 +66,21 @@ export const ADD_TABLE_INPUT_SCHEMA = {
             maxLength: 200,
             description: 'Optional text rendered at the bottom of every page.',
         },
+        autoFitColumns: {
+            type: 'boolean',
+            description:
+                'When true, column widths auto-fit content (pdfnative v1.1). Switches the backend to buildDocumentPDFBytes; byte output differs from the default path.',
+        },
+        clipCells: {
+            type: 'boolean',
+            description:
+                'When true, cell contents are clipped to column bounds via PDF clip-path operators (pdfnative v1.1). Recommended for PDF/A and visual safety. Switches the backend to buildDocumentPDFBytes.',
+        },
+        pdfA: {
+            type: 'string',
+            enum: ['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b'],
+            description: 'Optional PDF/A conformance level. Mutually exclusive with PDF encryption.',
+        },
         outputMode: {
             type: 'string',
             enum: ['base64', 'file'],
@@ -89,6 +110,9 @@ const InputSchema = z.object({
         .max(20)
         .optional(),
     footerText: z.string().max(200).optional(),
+    autoFitColumns: z.boolean().optional(),
+    clipCells: z.boolean().optional(),
+    pdfA: z.enum(['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b']).optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -98,7 +122,7 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, headers, rows, infoItems, footerText, outputMode, outputPath } = parsed.data;
+    const { title, headers, rows, infoItems, footerText, autoFitColumns, clipCells, pdfA, outputMode, outputPath } = parsed.data;
 
     // Validate column count consistency: every row must have the same length as headers
     for (let i = 0; i < rows.length; i++) {
@@ -110,15 +134,39 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
         }
     }
 
-    const bytes = buildPDFBytes({
-        title,
-        infoItems: (infoItems ?? []).map((item) => ({ label: item.label, value: item.value })),
-        balanceText: '',
-        countText: '',
-        headers,
-        rows: rows.map((cells) => ({ cells, type: '', pointed: false })),
-        footerText: footerText ?? '',
-    });
+    const useDocumentBackend = autoFitColumns !== undefined || clipCells !== undefined || pdfA !== undefined;
+
+    let bytes: Uint8Array;
+    if (useDocumentBackend) {
+        const tableBlock: TableBlock = {
+            type: 'table',
+            headers,
+            rows: rows.map((cells) => ({ cells, type: '', pointed: false })),
+            ...(autoFitColumns !== undefined ? { autoFitColumns } : {}),
+            ...(clipCells !== undefined ? { clipCells } : {}),
+        };
+        const blocks: DocumentBlock[] = [];
+        if (infoItems !== undefined && infoItems.length > 0) {
+            for (const item of infoItems) {
+                blocks.push({ type: 'paragraph', text: `${item.label}: ${item.value}` });
+            }
+        }
+        blocks.push(tableBlock);
+        bytes = buildDocumentPDFBytes(
+            { title, blocks, ...(footerText !== undefined ? { footerText } : {}) },
+            pdfA !== undefined ? { tagged: pdfA } : {},
+        );
+    } else {
+        bytes = buildPDFBytes({
+            title,
+            infoItems: (infoItems ?? []).map((item) => ({ label: item.label, value: item.value })),
+            balanceText: '',
+            countText: '',
+            headers,
+            rows: rows.map((cells) => ({ cells, type: '', pointed: false })),
+            footerText: footerText ?? '',
+        });
+    }
 
     return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
 }

@@ -57,6 +57,8 @@ describe('prepare_signature_placeholder', () => {
                 { type: 'heading', text: 'Terms and Conditions', level: 1 },
                 { type: 'paragraph', text: 'The parties agree to the following.' },
                 { type: 'spacer', height: 20 },
+                { type: 'pageBreak' },
+                { type: 'paragraph', text: 'Continued.' },
             ],
         });
         expect(result.mode).toBe('base64');

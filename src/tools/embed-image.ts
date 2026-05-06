@@ -49,6 +49,11 @@ export const EMBED_IMAGE_INPUT_SCHEMA = {
             maximum: 1000,
             description: 'Render height in points. If omitted, aspect ratio is preserved.',
         },
+        pdfA: {
+            type: 'string',
+            enum: ['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b'],
+            description: 'Optional PDF/A conformance level (pdfnative v1.1). Mutually exclusive with PDF encryption.',
+        },
         outputMode: {
             type: 'string',
             enum: ['base64', 'file'],
@@ -71,6 +76,7 @@ const InputSchema = z.object({
     caption: z.string().max(500).optional(),
     width: z.number().min(10).max(800).optional(),
     height: z.number().min(10).max(1000).optional(),
+    pdfA: z.enum(['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b']).optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -80,7 +86,7 @@ export async function embedImage(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, imageBase64, mimeType, caption, width, height, outputMode, outputPath } = parsed.data;
+    const { title, imageBase64, mimeType, caption, width, height, pdfA, outputMode, outputPath } = parsed.data;
 
     // Decode base64 to raw bytes
     let imageBytes: Uint8Array;
@@ -116,25 +122,30 @@ export async function embedImage(rawInput: unknown): Promise<OutputResult> {
     }
 
     let bytes: Uint8Array;
+    /* v8 ignore start - buildDocumentPDFBytes only throws on internal pdfnative errors; defensive guard. */
     try {
-        bytes = buildDocumentPDFBytes({
-            title,
-            blocks: [
-                {
-                    type: 'image',
-                    data: imageBytes,
-                    ...(width !== undefined ? { width } : {}),
-                    ...(height !== undefined ? { height } : {}),
-                },
-                ...(caption !== undefined
-                    ? [{ type: 'paragraph' as const, text: caption }]
-                    : []),
-            ],
-        });
+        bytes = buildDocumentPDFBytes(
+            {
+                title,
+                blocks: [
+                    {
+                        type: 'image',
+                        data: imageBytes,
+                        ...(width !== undefined ? { width } : {}),
+                        ...(height !== undefined ? { height } : {}),
+                    },
+                    ...(caption !== undefined
+                        ? [{ type: 'paragraph' as const, text: caption }]
+                        : []),
+                ],
+            },
+            pdfA !== undefined ? { tagged: pdfA } : {},
+        );
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         throw new ToolError('VALIDATION_ERROR', `Failed to embed image: ${msg}`);
     }
+    /* v8 ignore stop */
 
     return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
 }

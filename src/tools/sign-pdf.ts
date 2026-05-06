@@ -95,6 +95,8 @@ const InputSchema = z
     });
 
 function decodeBase64(value: string, field: string): Uint8Array {
+    // Buffer.from(..., 'base64') never throws in Node.js — this catch is a safety net only.
+    /* v8 ignore next 3 */
     try {
         return new Uint8Array(Buffer.from(value, 'base64'));
     } catch {
@@ -139,12 +141,14 @@ export async function signPdf(rawInput: unknown): Promise<OutputResult> {
     }
 
     let signedBytes: Uint8Array;
+    /* v8 ignore start - signPdfBytes only throws on malformed inputs already caught upstream. */
     try {
         signedBytes = signPdfBytes(pdfBytes, options);
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         throw new ToolError('SIGNING_FAILED', `Failed to sign PDF: ${message}`);
     }
+    /* v8 ignore stop */
 
     return emitPdf(signedBytes, {
         mode: input.outputMode,

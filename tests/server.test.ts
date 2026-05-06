@@ -14,7 +14,7 @@ describe('server', () => {
 
     it('exposes stable metadata', () => {
         expect(__serverMetadata.name).toBe('pdfnative-mcp');
-        expect(__serverMetadata.version).toBe('0.2.0');
+        expect(__serverMetadata.version).toBe('0.3.0');
     });
 
     it('lists all tools', async () => {
@@ -34,6 +34,7 @@ describe('server', () => {
             'add_table',
             'embed_image',
             'generate_basic_pdf',
+            'inspect_pdf',
             'prepare_signature_placeholder',
             'sign_pdf',
         ]);
@@ -148,5 +149,34 @@ describe('server', () => {
 
         expect(response.isError).toBe(true);
         expect(response.content[0]?.text).toContain('sign_pdf failed:');
+    });
+
+    it('dispatches inspect_pdf and returns structuredContent from buildInspectResult', async () => {
+        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
+        const callHandler = server._requestHandlers.get('tools/call');
+        const samplePdf = await (await import('../src/tools/generate-basic-pdf.js')).generateBasicPdf({
+            title: 'Smoke',
+            blocks: [{ type: 'paragraph', text: 'inspect me' }],
+        });
+        const response = (await callHandler!({
+            method: 'tools/call',
+            params: {
+                name: 'inspect_pdf',
+                arguments: { pdfBase64: samplePdf.base64 },
+            },
+        })) as { isError?: boolean; content: Array<{ text?: string }>; structuredContent?: Record<string, unknown> };
+        expect(response.isError).not.toBe(true);
+        expect(response.structuredContent?.['pageCount']).toBeGreaterThanOrEqual(1);
+    });
+
+    it('includes outputSchema for every tool', async () => {
+        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
+        const listHandler = server._requestHandlers.get('tools/list');
+        const response = (await listHandler!({ method: 'tools/list', params: {} })) as {
+            tools: Array<{ name: string; outputSchema?: unknown }>
+        };
+        for (const tool of response.tools) {
+            expect(tool.outputSchema, `${tool.name} should have outputSchema`).toBeDefined();
+        }
     });
 });

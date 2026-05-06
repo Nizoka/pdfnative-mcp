@@ -78,4 +78,31 @@ describe('add_table', () => {
         await expect(addTable({ title: 'Report' })).rejects.toThrow(ToolError);
         await expect(addTable({})).rejects.toThrow(ToolError);
     });
+
+    it('switches to document backend when autoFitColumns/clipCells/pdfA are set', async () => {
+        const result = await addTable({
+            title: 'AutoFit',
+            headers: ['A', 'B'],
+            rows: [['1', '2']],
+            infoItems: [{ label: 'Date', value: '2025-01-01' }],
+            footerText: 'Footer',
+            autoFitColumns: true,
+            clipCells: true,
+            pdfA: 'pdfa2b',
+        });
+        expect(result.mode).toBe('base64');
+        expect(decode(result.base64!)).toBe(PDF_HEADER);
+        expect(result.sizeBytes).toBeGreaterThan(100);
+    });
+
+    it('document backend with pdfA only and no infoItems/footerText', async () => {
+        const result = await addTable({
+            title: 'PdfA Only',
+            headers: ['X'],
+            rows: [['1']],
+            pdfA: 'pdfa1b',
+        });
+        expect(result.mode).toBe('base64');
+        expect(decode(result.base64!)).toBe(PDF_HEADER);
+    });
 });

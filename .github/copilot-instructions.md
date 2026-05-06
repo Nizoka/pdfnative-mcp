@@ -1,5 +1,8 @@
 # pdfnative-mcp - Project Guidelines
 
+> For full architectural context, tool schemas, output system details, and security design notes,
+> see [`docs/KNOWLEDGE_BASE.md`](../docs/KNOWLEDGE_BASE.md).
+
 ## Overview
 
 MCP server bridging pdfnative to AI clients over stdio.
