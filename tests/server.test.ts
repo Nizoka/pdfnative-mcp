@@ -23,7 +23,7 @@ describe('server', () => {
         expect(listHandler).toBeDefined();
 
         const response = (await listHandler!({ method: 'tools/list', params: {} })) as {
-            tools: Array<{ name: string }>;
+            tools: Array<{ name: string; _meta?: { apiVersion?: string; examples?: unknown[] } }>;
         };
 
         const names = response.tools.map((t) => t.name).sort();
@@ -41,6 +41,13 @@ describe('server', () => {
             'sign_pdf',
             'verify_pdf',
         ]);
+
+        // Every tool advertises _meta.apiVersion and at least one example.
+        for (const t of response.tools) {
+            expect(t._meta?.apiVersion).toBe('1.0.0');
+            expect(Array.isArray(t._meta?.examples)).toBe(true);
+            expect((t._meta?.examples ?? []).length).toBeGreaterThan(0);
+        }
     });
 
     it('returns an MCP tool error for unknown tools', async () => {

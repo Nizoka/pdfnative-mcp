@@ -143,6 +143,8 @@ interface ToolDefinition {
         idempotentHint?: boolean;
         openWorldHint?: boolean;
     };
+    /** Minimal MCP `_meta.examples` payload — each entry is a self-contained input. */
+    examples?: ReadonlyArray<{ readonly title: string; readonly input: Record<string, unknown> }>;
     handler: (args: unknown) => Promise<OutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult>;
 }
 
@@ -155,6 +157,10 @@ const TOOLS: readonly ToolDefinition[] = [
         inputSchema: GENERATE_BASIC_PDF_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Plain document', input: { title: 'Hello', blocks: [{ type: 'paragraph', text: 'Hi world' }] } },
+            { title: 'PDF/A-2b archival', input: { title: 'Archival', blocks: [{ type: 'paragraph', text: 'Conformant' }], pdfA: 'pdfa2b' } },
+        ],
         handler: generateBasicPdf,
     },
     {
@@ -165,6 +171,9 @@ const TOOLS: readonly ToolDefinition[] = [
         inputSchema: ADD_BARCODE_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'QR code', input: { data: 'https://example.com', format: 'qr', caption: 'Scan me' } },
+        ],
         handler: addBarcode,
     },
     {
@@ -175,6 +184,10 @@ const TOOLS: readonly ToolDefinition[] = [
         inputSchema: SIGN_PDF_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+        examples: [
+            { title: 'Sign with RSA-SHA256', input: { pdfBase64: '<placeholder-pdf-base64>', certificateDerBase64: '<cert-der>', rsaPrivateKeyPemOrDer: '<pkcs8-pem>' } },
+            { title: 'Sign with ECDSA (DER PKCS#8)', input: { pdfBase64: '<placeholder-pdf-base64>', certificateDerBase64: '<cert-der>', ecPrivateKeyDerBase64: '<pkcs8-der-base64>' } },
+        ],
         handler: signPdf,
     },
     {
@@ -185,6 +198,9 @@ const TOOLS: readonly ToolDefinition[] = [
         inputSchema: ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Arabic', input: { text: 'مرحبا', lang: 'ar', title: 'Hello in Arabic' } },
+        ],
         handler: addInternationalText,
     },
     {
@@ -195,6 +211,10 @@ const TOOLS: readonly ToolDefinition[] = [
         inputSchema: ADD_TABLE_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Sales report', input: { title: 'Sales', headers: ['Item', 'Qty', 'Total'], rows: [['Widget', '100', '$1,000']] } },
+            { title: 'Smart table with caption + zebra', input: { title: 'Q4', headers: ['Col'], rows: [['1']], caption: 'Quarterly', zebra: true, repeatHeader: true } },
+        ],
         handler: addTable,
     },
     {
@@ -205,6 +225,9 @@ const TOOLS: readonly ToolDefinition[] = [
         inputSchema: ADD_FORM_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Simple form', input: { title: 'Survey', fields: [{ type: 'text', name: 'name', label: 'Your name' }, { type: 'checkbox', name: 'subscribe', label: 'Subscribe' }] } },
+        ],
         handler: addForm,
     },
     {
@@ -215,6 +238,9 @@ const TOOLS: readonly ToolDefinition[] = [
         inputSchema: EMBED_IMAGE_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Embed a PNG logo', input: { imageBase64: '<base64-png>', imageType: 'png', caption: 'Company logo' } },
+        ],
         handler: embedImage,
     },
     {
@@ -225,6 +251,9 @@ const TOOLS: readonly ToolDefinition[] = [
         inputSchema: PREPARE_SIGNATURE_PLACEHOLDER_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Signature placeholder for PAdES', input: { title: 'Contract', signerName: 'Alice', reason: 'I approve' } },
+        ],
         handler: prepareSignaturePlaceholder,
     },
     {
@@ -235,6 +264,9 @@ const TOOLS: readonly ToolDefinition[] = [
         inputSchema: INSPECT_PDF_INPUT_SCHEMA,
         outputSchema: INSPECT_PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'CI: assert PDF/A + signed', input: { pdfBase64: '<base64>', check: ['pdfa', 'signed'] } },
+        ],
         handler: inspectPdf,
     },
     {
@@ -245,6 +277,10 @@ const TOOLS: readonly ToolDefinition[] = [
         inputSchema: VERIFY_PDF_INPUT_SCHEMA,
         outputSchema: VERIFY_PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Verify a signed PDF', input: { pdfBase64: '<base64>' } },
+            { title: 'Verify with trusted root', input: { pdfBase64: '<base64>', trustedRootsDerBase64: ['<derBase64>'] } },
+        ],
         handler: verifyPdf,
     },
     {
@@ -255,6 +291,9 @@ const TOOLS: readonly ToolDefinition[] = [
         inputSchema: ADD_ATTACHMENT_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Factur-X invoice', input: { title: 'Invoice INV-2025-001', attachments: [{ filename: 'factur-x.xml', mimeType: 'application/xml', dataBase64: '<base64-xml>', relationship: 'Source' }] } },
+        ],
         handler: addAttachment,
     },
     {
@@ -265,6 +304,10 @@ const TOOLS: readonly ToolDefinition[] = [
         inputSchema: EXTRACT_TEXT_INPUT_SCHEMA,
         outputSchema: EXTRACT_TEXT_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Extract all pages', input: { pdfBase64: '<base64>' } },
+            { title: 'Extract first page only', input: { pdfBase64: '<base64>', pages: [0] } },
+        ],
         handler: extractText,
     },
 ];
@@ -388,6 +431,10 @@ export function createServer(): Server {
             inputSchema: t.inputSchema as Record<string, unknown>,
             ...(t.outputSchema !== undefined ? { outputSchema: t.outputSchema as Record<string, unknown> } : {}),
             ...(t.annotations !== undefined ? { annotations: t.annotations } : {}),
+            _meta: {
+                apiVersion: TOOL_API_VERSION,
+                ...(t.examples !== undefined ? { examples: t.examples } : {}),
+            },
         })),
     }));
 
