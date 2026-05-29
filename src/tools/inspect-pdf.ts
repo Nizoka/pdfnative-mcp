@@ -29,7 +29,7 @@ import { ToolError } from '../errors.js';
 
 export const INSPECT_PDF_NAME = 'inspect_pdf';
 
-const CHECK_VALUES = ['pdfa', 'signed', 'encrypted'] as const;
+const CHECK_VALUES = ['pdfa', 'signed', 'encrypted', 'placeholder', 'attachments'] as const;
 type CheckValue = (typeof CHECK_VALUES)[number];
 
 export const INSPECT_PDF_INPUT_SCHEMA = {
@@ -60,7 +60,7 @@ export const INSPECT_PDF_INPUT_SCHEMA = {
 export const INSPECT_PDF_OUTPUT_SCHEMA = {
     type: 'object',
     additionalProperties: false,
-    required: ['version', 'pageCount', 'encryption', 'signatureCount'],
+    required: ['version', 'pageCount', 'encryption', 'signatureCount', 'hasSignaturePlaceholder', 'attachments'],
     properties: {
         version: { type: 'string', description: 'PDF version (e.g. "1.7").' },
         pageCount: { type: 'integer', minimum: 0 },
@@ -70,6 +70,26 @@ export const INSPECT_PDF_OUTPUT_SCHEMA = {
             description: "Detected PDF/A claim (e.g. '1B', '2B', '2U', '3B') from XMP metadata, or null when absent.",
         },
         signatureCount: { type: 'integer', minimum: 0 },
+        hasSignaturePlaceholder: {
+            type: 'boolean',
+            description: 'True when at least one signature widget exists with empty /Contents — i.e. an unsigned placeholder awaiting `sign_pdf`.',
+        },
+        attachments: {
+            type: 'array',
+            description: 'Embedded files exposed via /Names → /EmbeddedFiles (PDF/A-3, Factur-X).',
+            items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['name'],
+                properties: {
+                    name: { type: 'string' },
+                    sizeBytes: { type: 'integer', minimum: 0 },
+                    mimeType: { type: 'string' },
+                    relationship: { type: 'string' },
+                    description: { type: 'string' },
+                },
+            },
+        },
         info: {
             type: 'object',
             additionalProperties: { type: 'string' },
@@ -101,12 +121,22 @@ const InputSchema = z.object({
     check: z.array(z.enum(CHECK_VALUES)).max(8).optional(),
 });
 
+export interface AttachmentSummary {
+    readonly name: string;
+    readonly sizeBytes?: number;
+    readonly mimeType?: string;
+    readonly relationship?: string;
+    readonly description?: string;
+}
+
 export interface InspectPdfResult {
     readonly version: string;
     readonly pageCount: number;
     readonly encryption: 'none' | 'aes-128' | 'aes-256' | 'rc4' | 'unknown';
     readonly pdfA: string | null;
     readonly signatureCount: number;
+    readonly hasSignaturePlaceholder: boolean;
+    readonly attachments: readonly AttachmentSummary[];
     readonly info: Readonly<Record<string, string>>;
     readonly perPage?: ReadonlyArray<{ readonly index: number; readonly width: number; readonly height: number }>;
     readonly checks?: Readonly<Record<CheckValue, boolean>>;
@@ -149,33 +179,126 @@ function readInfoDict(reader: PdfReader): Record<string, string> {
 }
 
 /**
- * Detect the encryption scheme in use, based on the /Encrypt dictionary's /V and /Length keys.
+ * Classify an /Encrypt dictionary's /V and /Length keys into a high-level scheme name.
  *
- * Coverage note: pdfnative v1.1 produces unencrypted output by default and we have no
- * fixture key material to round-trip an encrypted document inside the unit suite. The
- * branches below are therefore exercised by integration testing only; we mark them as
- * intentionally ignored for coverage and will add encrypted fixtures alongside the
- * v0.4.0 `verify_pdf` work.
+ * Exported as a pure helper so unit tests can exercise every branch without
+ * having to round-trip an actually-encrypted PDF (pdfnative does not currently
+ * expose an encryption-writer API). Real-PDF coverage will be lifted further
+ * in pdfnative-mcp v1.1 when fixture keys are available.
  */
-/* v8 ignore start */
+export function classifyEncryption(
+    v: unknown,
+    length: unknown,
+): InspectPdfResult['encryption'] {
+    if (typeof v !== 'number') return 'unknown';
+    if (v === 5) return 'aes-256';
+    if (v === 4) {
+        const len = typeof length === 'number' ? length : 128;
+        return len >= 256 ? 'aes-256' : 'aes-128';
+    }
+    if (v === 1 || v === 2) return 'rc4';
+    return 'unknown';
+}
+
 function detectEncryption(reader: PdfReader): InspectPdfResult['encryption'] {
     const enc = reader.trailer.get('Encrypt');
     if (enc === undefined) return 'none';
     const dict = isRef(enc) ? reader.resolve(enc) : enc;
     if (!isDict(dict)) return 'unknown';
-    const v = dict.get('V');
-    const length = dict.get('Length');
-    if (typeof v === 'number') {
-        if (v === 5) return 'aes-256';
-        if (v === 4) {
-            const len = typeof length === 'number' ? length : 128;
-            return len >= 256 ? 'aes-256' : 'aes-128';
-        }
-        if (v === 1 || v === 2) return 'rc4';
-    }
-    return 'unknown';
+    return classifyEncryption(dict.get('V'), dict.get('Length'));
 }
-/* v8 ignore stop */
+
+function inspectSignatures(reader: PdfReader): { count: number; hasPlaceholder: boolean } {
+    const af = findAcroFormDict(reader);
+    if (af === null) return { count: 0, hasPlaceholder: false };
+    const fields = af.get('Fields');
+    if (fields === undefined) return { count: 0, hasPlaceholder: false };
+    const arr = isRef(fields) ? reader.resolve(fields) : fields;
+    if (!isArray(arr)) return { count: 0, hasPlaceholder: false };
+    let count = 0;
+    let hasPlaceholder = false;
+    for (const entry of arr) {
+        const fieldDict = isRef(entry) ? reader.resolve(entry) : entry;
+        if (!isDict(fieldDict)) continue;
+        const ft = fieldDict.get('FT');
+        if (!isName(ft) || ft.value !== 'Sig') continue;
+        count += 1;
+        const vRaw = fieldDict.get('V');
+        if (vRaw === undefined) {
+            hasPlaceholder = true;
+            continue;
+        }
+        const v = isRef(vRaw) ? reader.resolve(vRaw) : vRaw;
+        if (!isDict(v)) {
+            hasPlaceholder = true;
+            continue;
+        }
+        const contents = v.get('Contents');
+        if (typeof contents !== 'string' || isAllZero(contents)) {
+            hasPlaceholder = true;
+        }
+    }
+    return { count, hasPlaceholder };
+}
+
+function isAllZero(s: string): boolean {
+    for (let i = 0; i < s.length; i++) {
+        if (s.charCodeAt(i) !== 0) return false;
+    }
+    return true;
+}
+
+function readAttachments(reader: PdfReader): AttachmentSummary[] {
+    const catalog = reader.getCatalog();
+    const namesEntry = catalog.get('Names');
+    if (namesEntry === undefined) return [];
+    const names = isRef(namesEntry) ? reader.resolve(namesEntry) : namesEntry;
+    if (!isDict(names)) return [];
+    const embEntry = names.get('EmbeddedFiles');
+    if (embEntry === undefined) return [];
+    const emb = isRef(embEntry) ? reader.resolve(embEntry) : embEntry;
+    if (!isDict(emb)) return [];
+    const namesArrEntry = emb.get('Names');
+    if (namesArrEntry === undefined) return [];
+    const namesArr = isRef(namesArrEntry) ? reader.resolve(namesArrEntry) : namesArrEntry;
+    if (!isArray(namesArr)) return [];
+    const out: AttachmentSummary[] = [];
+    for (let i = 0; i + 1 < namesArr.length; i += 2) {
+        const name = namesArr[i];
+        if (typeof name !== 'string') continue;
+        const fsEntry = namesArr[i + 1];
+        const fileSpec = fsEntry !== undefined && isRef(fsEntry) ? reader.resolve(fsEntry) : fsEntry;
+        if (!isDict(fileSpec)) {
+            out.push({ name });
+            continue;
+        }
+        const summary: { -readonly [K in keyof AttachmentSummary]: AttachmentSummary[K] } = { name };
+        const rel = fileSpec.get('AFRelationship');
+        if (rel !== undefined && isName(rel)) summary.relationship = rel.value;
+        const desc = fileSpec.get('Desc');
+        if (typeof desc === 'string') summary.description = desc;
+        const efEntry = fileSpec.get('EF');
+        const ef = efEntry !== undefined && isRef(efEntry) ? reader.resolve(efEntry) : efEntry;
+        if (ef !== undefined && isDict(ef)) {
+            const fEntry = ef.get('F') ?? ef.get('UF');
+            const fStream = fEntry !== undefined && isRef(fEntry) ? reader.resolve(fEntry) : fEntry;
+            if (fStream !== undefined && isStream(fStream)) {
+                const len = fStream.dict.get('Length');
+                if (typeof len === 'number') summary.sizeBytes = len;
+                const params = fStream.dict.get('Params');
+                const paramsDict = params !== undefined && isRef(params) ? reader.resolve(params) : params;
+                if (paramsDict !== undefined && isDict(paramsDict)) {
+                    const sz = paramsDict.get('Size');
+                    if (typeof sz === 'number') summary.sizeBytes = sz;
+                }
+                const subtype = fStream.dict.get('Subtype');
+                if (subtype !== undefined && isName(subtype)) summary.mimeType = subtype.value.replace(/#2F/gi, '/');
+            }
+        }
+        out.push(summary);
+    }
+    return out;
+}
 
 function findAcroFormDict(reader: PdfReader): PdfDict | null {
     const catalog = reader.getCatalog();
@@ -183,23 +306,6 @@ function findAcroFormDict(reader: PdfReader): PdfDict | null {
     if (af === undefined) return null;
     const resolved = isRef(af) ? reader.resolve(af) : af;
     return isDict(resolved) ? resolved : null;
-}
-
-function countSignatures(reader: PdfReader): number {
-    const af = findAcroFormDict(reader);
-    if (af === null) return 0;
-    const fields = af.get('Fields');
-    if (fields === undefined) return 0;
-    const arr = isRef(fields) ? reader.resolve(fields) : fields;
-    if (!isArray(arr)) return 0;
-    let count = 0;
-    for (const entry of arr) {
-        const fieldDict = isRef(entry) ? reader.resolve(entry) : entry;
-        if (!isDict(fieldDict)) continue;
-        const ft = fieldDict.get('FT');
-        if (isName(ft) && ft.value === 'Sig') count += 1;
-    }
-    return count;
 }
 
 /** Best-effort PDF/A claim detection by scanning the XMP metadata stream for `pdfaid:part`. */
@@ -263,9 +369,10 @@ export async function inspectPdf(rawInput: unknown): Promise<InspectPdfResult> {
     const version = extractVersion(bytes);
     const pageCount = reader.pageCount;
     const encryption = detectEncryption(reader);
-    const signatureCount = countSignatures(reader);
     const pdfA = detectPdfAClaim(reader);
     const info = readInfoDict(reader);
+    const { count: signatureCount, hasPlaceholder } = inspectSignatures(reader);
+    const attachments = readAttachments(reader);
 
     const result: {
         -readonly [K in keyof InspectPdfResult]: InspectPdfResult[K];
@@ -275,6 +382,8 @@ export async function inspectPdf(rawInput: unknown): Promise<InspectPdfResult> {
         encryption,
         pdfA,
         signatureCount,
+        hasSignaturePlaceholder: hasPlaceholder,
+        attachments,
         info,
     };
 
@@ -285,13 +394,17 @@ export async function inspectPdf(rawInput: unknown): Promise<InspectPdfResult> {
     if (check !== undefined && check.length > 0) {
         const checks: Record<CheckValue, boolean> = {
             pdfa: pdfA !== null,
-            signed: signatureCount > 0,
+            signed: signatureCount > 0 && !hasPlaceholder,
             encrypted: encryption !== 'none',
+            placeholder: hasPlaceholder,
+            attachments: attachments.length > 0,
         };
         const requested: Record<CheckValue, boolean> = {
             pdfa: false,
             signed: false,
             encrypted: false,
+            placeholder: false,
+            attachments: false,
         };
         for (const c of check) requested[c] = checks[c];
         result.checks = requested;
