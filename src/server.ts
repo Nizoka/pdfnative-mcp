@@ -61,6 +61,13 @@ import {
     inspectPdf,
     type InspectPdfResult,
 } from './tools/inspect-pdf.js';
+import {
+    VERIFY_PDF_NAME,
+    VERIFY_PDF_INPUT_SCHEMA,
+    VERIFY_PDF_OUTPUT_SCHEMA,
+    verifyPdf,
+    type VerifyPdfResult,
+} from './tools/verify-pdf.js';
 
 // JSON import attribute (Node 22+, TS 5.3+) keeps version in lock-step with package.json.
 // Hardcoded here to keep the build rootDir limited to ./src; tests assert it stays in sync.
@@ -93,7 +100,7 @@ interface ToolDefinition {
         idempotentHint?: boolean;
         openWorldHint?: boolean;
     };
-    handler: (args: unknown) => Promise<OutputResult | InspectPdfResult>;
+    handler: (args: unknown) => Promise<OutputResult | InspectPdfResult | VerifyPdfResult>;
 }
 
 const TOOLS: readonly ToolDefinition[] = [
@@ -187,12 +194,22 @@ const TOOLS: readonly ToolDefinition[] = [
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         handler: inspectPdf,
     },
+    {
+        name: VERIFY_PDF_NAME,
+        title: 'Verify PDF signatures',
+        description:
+            'Read-only verification of every PAdES Baseline / adbe.pkcs7.detached signature in a PDF. For each /Sig widget, recomputes the ByteRange SHA-256, validates the CMS messageDigest (integrity), and verifies the CMS signatureValue with the embedded signer certificate. Optional trustedRootsDerBase64 enables chain trust (otherwise chainTrust is self-signed or unverified). Supports RSA-SHA256 and ECDSA-SHA256 (P-256).',
+        inputSchema: VERIFY_PDF_INPUT_SCHEMA,
+        outputSchema: VERIFY_PDF_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        handler: verifyPdf,
+    },
 ];
 
 const TOOL_INDEX: ReadonlyMap<string, ToolDefinition> = new Map(TOOLS.map((t) => [t.name, t]));
 
 const SERVER_INSTRUCTIONS = `pdfnative-mcp bridges the zero-dependency 'pdfnative' v1.1 library to MCP.
-Available tools (9):
+Available tools (10):
   • ${GENERATE_BASIC_PDF_NAME} — multi-page documents from structured blocks (headings, paragraphs, lists). Optional pdfA flag (pdfa1b/2b/2u/3b).
   • ${ADD_BARCODE_NAME} — barcodes / QR codes (tickets, labels, vouchers).
   • ${ADD_INTERNATIONAL_TEXT_NAME} — 18 scripts via embedded Noto fonts (BiDi isolates + Arabic harakat + emoji handled).
@@ -202,6 +219,7 @@ Available tools (9):
   • ${EMBED_IMAGE_NAME} — embed a JPEG or PNG image into a PDF document.
   • ${PREPARE_SIGNATURE_PLACEHOLDER_NAME} — create a PDF with a /Sig placeholder ready for sign_pdf (step 1 of two-step signing).
   • ${INSPECT_PDF_NAME} — read-only inspection (version, pages, encryption, PDF/A claim, signature count).
+  • ${VERIFY_PDF_NAME} — verify every PAdES signature in a PDF (integrity + signature value + optional chain trust).
 Output is always returned as base64 unless the host has set the PDFNATIVE_MCP_OUTPUT_DIR env var, in which case outputMode='file' writes to a sandboxed path.`;
 
 function buildInspectResult(output: InspectPdfResult, toolName: string): CallToolResult {
@@ -212,6 +230,13 @@ function buildInspectResult(output: InspectPdfResult, toolName: string): CallToo
                 text: `${toolName}: PDF v${output.version}, ${output.pageCount} page(s), encryption=${output.encryption}, pdfA=${output.pdfA ?? 'none'}, signatures=${output.signatureCount}.`,
             },
         ],
+        structuredContent: output as unknown as Record<string, unknown>,
+    };
+}
+
+function buildVerifyResult(output: VerifyPdfResult, toolName: string): CallToolResult {
+    return {
+        content: [{ type: 'text', text: `${toolName}: ${output.summary}` }],
         structuredContent: output as unknown as Record<string, unknown>,
     };
 }
@@ -302,6 +327,9 @@ export function createServer(): Server {
             const output = await tool.handler(args ?? {});
             if ('mode' in output) {
                 return buildSuccessResult(output, name);
+            }
+            if ('signatureCount' in output && 'allValid' in output) {
+                return buildVerifyResult(output, name);
             }
             return buildInspectResult(output, name);
         } catch (err) {

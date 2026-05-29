@@ -37,6 +37,7 @@ describe('server', () => {
             'inspect_pdf',
             'prepare_signature_placeholder',
             'sign_pdf',
+            'verify_pdf',
         ]);
     });
 
