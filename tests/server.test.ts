@@ -28,11 +28,13 @@ describe('server', () => {
 
         const names = response.tools.map((t) => t.name).sort();
         expect(names).toEqual([
+            'add_attachment',
             'add_barcode',
             'add_form',
             'add_international_text',
             'add_table',
             'embed_image',
+            'extract_text',
             'generate_basic_pdf',
             'inspect_pdf',
             'prepare_signature_placeholder',

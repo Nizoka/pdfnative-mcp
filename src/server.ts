@@ -68,6 +68,18 @@ import {
     verifyPdf,
     type VerifyPdfResult,
 } from './tools/verify-pdf.js';
+import {
+    ADD_ATTACHMENT_NAME,
+    ADD_ATTACHMENT_INPUT_SCHEMA,
+    addAttachment,
+} from './tools/add-attachment.js';
+import {
+    EXTRACT_TEXT_NAME,
+    EXTRACT_TEXT_INPUT_SCHEMA,
+    EXTRACT_TEXT_OUTPUT_SCHEMA,
+    extractText,
+    type ExtractTextResult,
+} from './tools/extract-text.js';
 
 // JSON import attribute (Node 22+, TS 5.3+) keeps version in lock-step with package.json.
 // Hardcoded here to keep the build rootDir limited to ./src; tests assert it stays in sync.
@@ -100,7 +112,7 @@ interface ToolDefinition {
         idempotentHint?: boolean;
         openWorldHint?: boolean;
     };
-    handler: (args: unknown) => Promise<OutputResult | InspectPdfResult | VerifyPdfResult>;
+    handler: (args: unknown) => Promise<OutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult>;
 }
 
 const TOOLS: readonly ToolDefinition[] = [
@@ -204,12 +216,32 @@ const TOOLS: readonly ToolDefinition[] = [
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         handler: verifyPdf,
     },
+    {
+        name: ADD_ATTACHMENT_NAME,
+        title: 'Add embedded file attachment (PDF/A-3)',
+        description:
+            'Generate a PDF/A-3 (ISO 19005-3) document with one or more embedded files. Primary use case: Factur-X / ZUGFeRD electronic invoices (single XML payload with relationship=Source). Each attachment is validated against the 8 MiB per-file cap; tool emits PDF/A-3b automatically (the only PDF/A part that allows attachments).',
+        inputSchema: ADD_ATTACHMENT_INPUT_SCHEMA,
+        outputSchema: PDF_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        handler: addAttachment,
+    },
+    {
+        name: EXTRACT_TEXT_NAME,
+        title: 'Extract plain text from PDF',
+        description:
+            "Best-effort plain-text extraction from a non-encrypted PDF. Walks each page's content stream and pulls the operands of Tj/'/\"/TJ text operators. The result.extractable flag is false when any requested page has a non-empty content stream but yields no text (typically subset fonts without /ToUnicode). Encrypted PDFs are rejected with EXTRACTION_UNSUPPORTED.",
+        inputSchema: EXTRACT_TEXT_INPUT_SCHEMA,
+        outputSchema: EXTRACT_TEXT_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        handler: extractText,
+    },
 ];
 
 const TOOL_INDEX: ReadonlyMap<string, ToolDefinition> = new Map(TOOLS.map((t) => [t.name, t]));
 
 const SERVER_INSTRUCTIONS = `pdfnative-mcp bridges the zero-dependency 'pdfnative' v1.1 library to MCP.
-Available tools (10):
+Available tools (12):
   • ${GENERATE_BASIC_PDF_NAME} — multi-page documents from structured blocks (headings, paragraphs, lists). Optional pdfA flag (pdfa1b/2b/2u/3b).
   • ${ADD_BARCODE_NAME} — barcodes / QR codes (tickets, labels, vouchers).
   • ${ADD_INTERNATIONAL_TEXT_NAME} — 18 scripts via embedded Noto fonts (BiDi isolates + Arabic harakat + emoji handled).
@@ -220,6 +252,8 @@ Available tools (10):
   • ${PREPARE_SIGNATURE_PLACEHOLDER_NAME} — create a PDF with a /Sig placeholder ready for sign_pdf (step 1 of two-step signing).
   • ${INSPECT_PDF_NAME} — read-only inspection (version, pages, encryption, PDF/A claim, signature count).
   • ${VERIFY_PDF_NAME} — verify every PAdES signature in a PDF (integrity + signature value + optional chain trust).
+  • ${ADD_ATTACHMENT_NAME} — generate a PDF/A-3 document with embedded files (Factur-X / ZUGFeRD).
+  • ${EXTRACT_TEXT_NAME} — extract plain text from a PDF (best effort; reports extractable=false for subset-font PDFs).
 Output is always returned as base64 unless the host has set the PDFNATIVE_MCP_OUTPUT_DIR env var, in which case outputMode='file' writes to a sandboxed path.`;
 
 function buildInspectResult(output: InspectPdfResult, toolName: string): CallToolResult {
@@ -237,6 +271,18 @@ function buildInspectResult(output: InspectPdfResult, toolName: string): CallToo
 function buildVerifyResult(output: VerifyPdfResult, toolName: string): CallToolResult {
     return {
         content: [{ type: 'text', text: `${toolName}: ${output.summary}` }],
+        structuredContent: output as unknown as Record<string, unknown>,
+    };
+}
+
+function buildExtractTextResult(output: ExtractTextResult, toolName: string): CallToolResult {
+    return {
+        content: [
+            {
+                type: 'text',
+                text: `${toolName}: extracted ${output.extractedPageCount}/${output.pageCount} page(s), ${output.fullText.length} char(s)${output.extractable ? '' : ' (some pages had non-empty content streams but no extractable text)'}.`,
+            },
+        ],
         structuredContent: output as unknown as Record<string, unknown>,
     };
 }
@@ -330,6 +376,9 @@ export function createServer(): Server {
             }
             if ('signatureCount' in output && 'allValid' in output) {
                 return buildVerifyResult(output, name);
+            }
+            if ('extractedPageCount' in output) {
+                return buildExtractTextResult(output, name);
             }
             return buildInspectResult(output, name);
         } catch (err) {
