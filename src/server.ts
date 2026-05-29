@@ -202,7 +202,7 @@ Available tools (9):
   • ${EMBED_IMAGE_NAME} — embed a JPEG or PNG image into a PDF document.
   • ${PREPARE_SIGNATURE_PLACEHOLDER_NAME} — create a PDF with a /Sig placeholder ready for sign_pdf (step 1 of two-step signing).
   • ${INSPECT_PDF_NAME} — read-only inspection (version, pages, encryption, PDF/A claim, signature count).
-Output is always returned as base64 unless the host has set the PDFNATIVE_MPC_OUTPUT_DIR env var, in which case outputMode='file' writes to a sandboxed path.`;
+Output is always returned as base64 unless the host has set the PDFNATIVE_MCP_OUTPUT_DIR env var, in which case outputMode='file' writes to a sandboxed path.`;
 
 function buildInspectResult(output: InspectPdfResult, toolName: string): CallToolResult {
     return {

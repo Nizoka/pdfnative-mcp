@@ -87,7 +87,7 @@ export const ADD_TABLE_INPUT_SCHEMA = {
             enum: ['base64', 'file'],
             default: 'base64',
             description:
-                "Either 'base64' (returns the PDF inline) or 'file' (writes to a sandboxed path inside PDFNATIVE_MPC_OUTPUT_DIR).",
+                "Either 'base64' (returns the PDF inline) or 'file' (writes to a sandboxed path inside PDFNATIVE_MCP_OUTPUT_DIR).",
         },
         outputPath: {
             type: 'string',

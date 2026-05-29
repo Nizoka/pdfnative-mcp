@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { emitPdf, resolveSandboxedPath, getOutputSandbox } from '../src/output.js';
 import { SecurityError, ToolError } from '../src/errors.js';
 
-const ENV_KEY = 'PDFNATIVE_MPC_OUTPUT_DIR';
+const ENV_KEY = 'PDFNATIVE_MCP_OUTPUT_DIR';
 
 describe('output sandbox', () => {
     let sandboxDir: string;
@@ -56,5 +56,58 @@ describe('output sandbox', () => {
         delete process.env[ENV_KEY];
         expect(getOutputSandbox()).toBeNull();
         await expect(emitPdf(new Uint8Array([1]), { mode: 'file', outputPath: 'a.pdf' })).rejects.toThrow(SecurityError);
+    });
+});
+
+describe('output sandbox env-var aliasing (v1.0.0)', () => {
+    const DEPRECATED = 'PDFNATIVE_MPC_OUTPUT_DIR';
+    const CANONICAL = 'PDFNATIVE_MCP_OUTPUT_DIR';
+    let warnings: string[];
+    const origWrite = process.stderr.write.bind(process.stderr);
+
+    beforeEach(async () => {
+        delete process.env[CANONICAL];
+        delete process.env[DEPRECATED];
+        warnings = [];
+        (process.stderr.write as unknown) = (chunk: string | Uint8Array): boolean => {
+            warnings.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8'));
+            return true;
+        };
+        // Reset the one-shot latch so each test sees a fresh deprecation warning state.
+        const { __resetDeprecationWarning } = await import('../src/output.js');
+        __resetDeprecationWarning();
+    });
+
+    afterEach(() => {
+        (process.stderr.write as unknown) = origWrite;
+    });
+
+    it('canonical PDFNATIVE_MCP_OUTPUT_DIR is honoured without warnings', async () => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfnative-mcp-canonical-'));
+        process.env[CANONICAL] = dir;
+        expect(getOutputSandbox()).toBe(path.resolve(dir));
+        expect(warnings.join('')).toBe('');
+    });
+
+    it('deprecated PDFNATIVE_MPC_OUTPUT_DIR still resolves but emits one warning', async () => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfnative-mcp-legacy-'));
+        process.env[DEPRECATED] = dir;
+        expect(getOutputSandbox()).toBe(path.resolve(dir));
+        // Repeated lookups must not re-emit the warning.
+        getOutputSandbox();
+        getOutputSandbox();
+        const joined = warnings.join('');
+        expect(joined).toContain('deprecated');
+        expect(joined).toContain('PDFNATIVE_MCP_OUTPUT_DIR');
+        expect(warnings.length).toBe(1);
+    });
+
+    it('canonical takes precedence over the deprecated alias when both are set', async () => {
+        const canonicalDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfnative-mcp-pri-'));
+        const legacyDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfnative-mcp-leg-'));
+        process.env[CANONICAL] = canonicalDir;
+        process.env[DEPRECATED] = legacyDir;
+        expect(getOutputSandbox()).toBe(path.resolve(canonicalDir));
+        expect(warnings.join('')).toBe('');
     });
 });

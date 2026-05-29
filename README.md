@@ -36,7 +36,7 @@ MCP `outputSchema` (per the 2025-06 spec) so clients can validate responses stat
 All tools support two output modes:
 
 - **`base64`** *(default)* — the PDF is returned inline in the MCP response (suitable for pipelines that immediately consume the bytes).
-- **`file`** — the PDF is written to a sandboxed directory, configured via the `PDFNATIVE_MPC_OUTPUT_DIR` environment variable. **File output is disabled unless this variable is set**, and all paths are confined to that directory (path traversal, absolute paths, non-`.pdf` extensions and NUL bytes are rejected).
+- **`file`** — the PDF is written to a sandboxed directory, configured via the `PDFNATIVE_MCP_OUTPUT_DIR` environment variable. **File output is disabled unless this variable is set**, and all paths are confined to that directory (path traversal, absolute paths, non-`.pdf` extensions and NUL bytes are rejected).
 
 ### Why pdfnative?
 
@@ -78,7 +78,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
       "command": "npx",
       "args": ["-y", "pdfnative-mcp"],
       "env": {
-        "PDFNATIVE_MPC_OUTPUT_DIR": "/Users/you/Documents/mcp-pdfs"
+        "PDFNATIVE_MCP_OUTPUT_DIR": "/Users/you/Documents/mcp-pdfs"
       }
     }
   }
@@ -93,7 +93,7 @@ Any MCP-compatible client that supports stdio servers will work. Use the same `c
 
 | Variable                      | Purpose                                                                            |
 | ----------------------------- | ---------------------------------------------------------------------------------- |
-| `PDFNATIVE_MPC_OUTPUT_DIR`    | Absolute path to the sandbox directory. **Required to enable `outputMode: 'file'`.** |
+| `PDFNATIVE_MCP_OUTPUT_DIR`    | Absolute path to the sandbox directory. **Required to enable `outputMode: 'file'`.** |
 | `PDFNATIVE_MCP_PORT`          | When set to a valid port (1–65535), starts an HTTP server on `http://127.0.0.1:<port>/mcp` instead of stdio. |
 
 ---
@@ -275,7 +275,7 @@ Returns:
 
 `pdfnative-mcp` runs **inside the host process** and exposes a stdio MCP server. It does **not** open network sockets and does **not** perform any I/O outside the configured sandbox.
 
-- **File writes** are gated by `PDFNATIVE_MPC_OUTPUT_DIR`. When unset, the `file` output mode is rejected with a `SecurityError`.
+- **File writes** are gated by `PDFNATIVE_MCP_OUTPUT_DIR`. When unset, the `file` output mode is rejected with a `SecurityError`.
 - **Path resolution** rejects absolute paths, traversal sequences (`..`), NUL bytes, and any extension other than `.pdf`.
 - **Output size** is capped at 50 MB per call.
 - **Inputs** are validated against strict JSON Schemas + Zod runtime checks at the boundary of every tool.

@@ -3,10 +3,26 @@ import path from 'node:path';
 import { SecurityError, ToolError } from './errors.js';
 
 /**
- * Environment variable controlling the allow-listed output directory.
- * If unset, file output is disabled entirely (only base64 inline output is allowed).
+ * Canonical environment variable controlling the allow-listed output directory
+ * for outputMode='file'. Introduced in v1.0.0 to correct the historical typo
+ * in {@link DEPRECATED_OUTPUT_DIR_ENV}.
  */
-const OUTPUT_DIR_ENV = 'PDFNATIVE_MPC_OUTPUT_DIR';
+const OUTPUT_DIR_ENV = 'PDFNATIVE_MCP_OUTPUT_DIR';
+
+/**
+ * Deprecated alias preserved for backward compatibility with pdfnative-mcp
+ * v0.1.0–v0.3.0 configurations (Claude Desktop / Cursor / Continue setups).
+ * Still respected when the canonical name is unset, but emits a one-shot
+ * warning to stderr on first use. Will be removed in v2.0.0.
+ */
+const DEPRECATED_OUTPUT_DIR_ENV = 'PDFNATIVE_MPC_OUTPUT_DIR';
+
+let _deprecationWarned = false;
+
+/** Test-only hook to reset the one-shot deprecation warning latch. */
+export function __resetDeprecationWarning(): void {
+    _deprecationWarned = false;
+}
 
 /**
  * Detect Windows absolute and UNC paths even when running on POSIX CI.
@@ -20,13 +36,28 @@ const MAX_OUTPUT_BYTES = 50 * 1024 * 1024;
 
 /**
  * Returns the configured output sandbox directory, or `null` if file output is disabled.
+ *
+ * Resolution order:
+ *   1. `PDFNATIVE_MCP_OUTPUT_DIR` (canonical, v1.0.0+)
+ *   2. `PDFNATIVE_MPC_OUTPUT_DIR` (deprecated typo alias; emits one warning)
  */
 export function getOutputSandbox(): string | null {
-    const raw = process.env[OUTPUT_DIR_ENV];
-    if (raw === undefined || raw.trim() === '') {
-        return null;
+    const canonical = process.env[OUTPUT_DIR_ENV];
+    if (canonical !== undefined && canonical.trim() !== '') {
+        return path.resolve(canonical);
     }
-    return path.resolve(raw);
+    const legacy = process.env[DEPRECATED_OUTPUT_DIR_ENV];
+    if (legacy !== undefined && legacy.trim() !== '') {
+        if (!_deprecationWarned) {
+            _deprecationWarned = true;
+            process.stderr.write(
+                `[pdfnative-mcp] WARN: environment variable '${DEPRECATED_OUTPUT_DIR_ENV}' is deprecated and will be removed in v2.0.0. ` +
+                `Please rename it to '${OUTPUT_DIR_ENV}' in your MCP client configuration (Claude Desktop, Cursor, Continue, Zed, …).\n`,
+            );
+        }
+        return path.resolve(legacy);
+    }
+    return null;
 }
 
 /**

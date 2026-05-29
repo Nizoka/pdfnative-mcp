@@ -98,7 +98,7 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
             type: 'string',
             enum: ['base64', 'file'],
             default: 'base64',
-            description: "Either 'base64' (returns the PDF inline as a base64 string) or 'file' (writes to a path inside the configured PDFNATIVE_MPC_OUTPUT_DIR sandbox).",
+            description: "Either 'base64' (returns the PDF inline as a base64 string) or 'file' (writes to a path inside the configured PDFNATIVE_MCP_OUTPUT_DIR sandbox).",
         },
         outputPath: {
             type: 'string',

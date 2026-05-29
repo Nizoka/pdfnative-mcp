@@ -4,7 +4,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { createServer, ensureCompressionReady, __serverMetadata } from '../src/server.js';
 
-const OUTPUT_ENV = 'PDFNATIVE_MPC_OUTPUT_DIR';
+const OUTPUT_ENV = 'PDFNATIVE_MCP_OUTPUT_DIR';
 
 describe('server', () => {
     beforeAll(async () => {
