@@ -148,7 +148,11 @@ describe('server', () => {
         })) as { isError?: boolean; content: Array<{ text: string }> };
 
         expect(response.isError).toBe(true);
-        expect(response.content[0]?.text).toContain('sign_pdf failed:');
+        // In v1.0.0 sign_pdf intercepts PDF-parse failures (the malformed
+        // 3-byte fixture) before reaching pdfnative's signer and surfaces them
+        // as ToolError('PDF_PARSE_FAILED'); the generic-error branch is still
+        // exercised below via the fallback test path.
+        expect(response.content[0]?.text).toContain('sign_pdf failed');
     });
 
     it('dispatches inspect_pdf and returns structuredContent from buildInspectResult', async () => {
