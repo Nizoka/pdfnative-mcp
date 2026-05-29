@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-01-15
+
+This is the **first stable release** of `pdfnative-mcp`. It consolidates the
+deferred roadmap (v0.4 → v1.0) into a single major release and commits to API
+stability via the new per-tool `_meta.apiVersion` field. Built on top of
+[pdfnative v1.2.0](https://github.com/Nizoka/pdfnative/releases/tag/v1.2.0).
+
+### Added
+
+- **Tool `verify_pdf`** (new): read-only verification of every PAdES Baseline / `adbe.pkcs7.detached` signature in a PDF. For each `/Sig` widget, recomputes the `ByteRange` SHA-256, validates the CMS `messageDigest` (integrity), and verifies the CMS `signatureValue` with the embedded signer certificate. Optional `trustedRootsDerBase64` enables chain trust (otherwise `chainTrust` is `self-signed` or `unverified`). Supports **RSA-SHA256** and **ECDSA-SHA256 (P-256)**.
+- **Tool `add_attachment`** (new): generate a **PDF/A-3 (ISO 19005-3)** document with one or more embedded files. Primary use case is **Factur-X / ZUGFeRD electronic invoices** (XML payload with `relationship: 'Source'`). Each attachment is validated against an 8 MiB per-file cap.
+- **Tool `extract_text`** (new): best-effort plain-text extraction from a non-encrypted PDF. Walks each page's content stream and pulls the operands of `Tj` / `'` / `"` / `TJ` text operators. Reports `extractable: false` when a page has a non-empty content stream but yields no text (typically subset fonts without `/ToUnicode`). Encrypted PDFs are rejected with `EXTRACTION_UNSUPPORTED`.
+- **`add_table`** now exposes six pdfnative v1.2 smart-table fields: `wrap`, `repeatHeader`, `zebra`, `caption`, `minRowHeight`, `cellPadding`.
+- **`sign_pdf`** now accepts `ecPrivateKeyDerBase64` (SEC1 / PKCS#8) in addition to the raw scalar form, and `autoInjectPlaceholder: true` (default) transparently calls `addSignaturePlaceholder()` when the input PDF lacks a `/Sig` widget.
+- **`inspect_pdf`** now reports `hasSignaturePlaceholder: boolean` (true when any `/Sig` widget has an empty `/Contents`, i.e. an unsigned placeholder awaiting `sign_pdf`) and an `attachments[]` summary (name, mimeType, size, relationship, description from `/Names/EmbeddedFiles`). Two new `check` enum values: `placeholder`, `attachments`.
+- **Opt-in content-addressed response cache** (`src/cache.ts`): enabled by `PDFNATIVE_MCP_CACHE_DIR`. SHA-256 key over canonical JSON of `{tool, apiVersion, input}`, 1 h TTL, 256 MiB LRU cap (evict oldest by mtime). Skips `outputMode='file'` calls.
+- **MCP `_meta.apiVersion = '1.0.0'`** on every tool listing (anchored to the new `docs/API_STABILITY.md` policy — server bumps the field when input or output schema changes incompatibly).
+- **Per-tool `_meta.examples`** — every tool ships with 1–2 minimal call shapes for AI-agent discovery (drives Claude/Cursor/ChatGPT context grounding).
+- **Documentation:** new [`docs/guides/PDFA.md`](docs/guides/PDFA.md) (tight, copy-paste-ready PDF/A authoring guide for AI agents).
+- **Examples**: `examples/financial-report.json`, `examples/factur-x-invoice.json`, `examples/multilingual-doc.json`, `examples/sign-and-verify.json`.
+- **Discovery:** `mcpName: "io.github.nizoka/pdfnative-mcp"` in `package.json`, new top-level `server.json` (MCP registry manifest) and `llms.txt` (llmstxt.org ingestion). Keywords expanded from 39 → 70+.
+- **Citation & funding:** new `CITATION.cff` and `.github/FUNDING.yml`. README now shows OpenSSF Scorecard + CodeQL badges.
+
+### Changed
+
+- **Dependency:** `pdfnative` bumped `^1.1.0` → `^1.2.0`. pdfnative v1.2 fixes [#45](https://github.com/Nizoka/pdfnative/issues/45) (X.509 SubjectPublicKeyInfo unwrapping for raw cert slicing) and [#46](https://github.com/Nizoka/pdfnative/issues/46) (signature placeholder helper) used by `sign_pdf` and `prepare_signature_placeholder`.
+- **`prepare_signature_placeholder`** now delegates to pdfnative's `addSignaturePlaceholder()` (the local v0.2 placeholder writer was removed; behaviour is byte-identical and the operation is idempotent against an already-placeholder'd PDF).
+- **`inspect_pdf`**: the `signed` check is now `signatureCount > 0 && !hasSignaturePlaceholder` (a placeholder alone is no longer treated as a signed document — use the new `placeholder` check for that).
+- Per-tool `_meta.apiVersion` introduced as the cache key's stability anchor. Initial value: `1.0.0` for every tool.
+- Tool count: **12** (was 9 in v0.3.0).
+
+### Fixed
+
+- **Env-var typo:** the canonical name is now `PDFNATIVE_MCP_OUTPUT_DIR` (was `PDFNATIVE_MPC_OUTPUT_DIR`). The misspelt name continues to work as a deprecated alias and emits a one-shot stderr warning. Scheduled for removal in v2.0.0.
+
+### Deferred to v1.1
+
+- **`merge_pdfs`**, **`split_pdf`**, **`redact_pdf`** — pdfnative v1.2 does not yet export the page-tree manipulation primitives required for production-grade implementations. Shipping `501` stubs would weaken the v1.0 API surface, so these tools are explicitly held back.
+- **Per-tool HTTP page-by-page streaming** — the MCP `structuredContent` envelope requires full bytes; `StreamableHTTPServerTransport` already chunks the response.
+- **Encrypted-PDF round-trip fixtures** — would require implementing the PDF Standard Security Handler in pdfnative.
+
+### Upgrade guide
+
+1. Bump your dependency to `^1.0.0`.
+2. Replace `PDFNATIVE_MPC_OUTPUT_DIR` with `PDFNATIVE_MCP_OUTPUT_DIR` in your MCP client configuration (the old name still works but logs a one-shot deprecation warning).
+3. If you previously asserted `inspect_pdf` `checks.signed === true` against a PDF that contained only an *unsigned* placeholder, switch to `check: ['placeholder']`.
+4. Want to verify signatures? Add a `verify_pdf` call after `sign_pdf` (see [`examples/sign-and-verify.json`](examples/sign-and-verify.json)).
+5. Want a Factur-X invoice? Use `add_attachment` (it automatically emits PDF/A-3b).
+
 ## [0.3.0] - 2026-04-30
 
 ### Added

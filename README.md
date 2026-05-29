@@ -16,29 +16,39 @@
 
 ## ✨ Features
 
-`pdfnative-mcp` exposes nine production-grade tools to any MCP host:
+`pdfnative-mcp` exposes **12 production-grade tools** to any MCP host:
 
 | Tool                               | Purpose                                                                                          |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `generate_basic_pdf`               | Multi-page A4 documents from structured blocks (headings, paragraphs, lists, page breaks).       |
+| `generate_basic_pdf`               | Multi-page A4 documents from structured blocks (headings, paragraphs, lists, page breaks). Optional `pdfA`. |
 | `add_barcode`                      | QR Code, Code 128, EAN-13, Data Matrix, PDF417 — embedded in a single-page PDF.                 |
-| `add_international_text`           | 18 scripts (now incl. **Latin** & **Emoji**) with BiDi & OpenType shaping; multi-lang per doc. |
-| `sign_pdf`                         | PAdES-style CMS digital signatures (RSA-SHA256 / ECDSA-SHA256 P-256).                           |
-| `add_table`                        | Tabular reports; v0.3.0 adds optional `autoFitColumns` and `clipCells`.                         |
-| `add_form`                         | Interactive AcroForm PDFs with text fields, checkboxes, radio buttons, and dropdowns.            |
-| `embed_image`                      | Embed a JPEG or PNG image (base64-encoded) into a titled PDF document.                          |
-| `prepare_signature_placeholder`    | Create a PDF with a `/Sig` AcroForm placeholder ready to be signed by `sign_pdf`.               |
-| `inspect_pdf` *(new in v0.3.0)*    | Read-only inspection: PDF version, page count, encryption, PDF/A claim, signature count, info dict. |
+| `add_international_text`           | 18 scripts (incl. **Latin** & **Emoji**) with BiDi & OpenType shaping; multi-lang per document. |
+| `add_table`                        | Tabular reports with smart fields (wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding). |
+| `add_form`                         | Interactive AcroForm PDFs with text fields, checkboxes, radio buttons, dropdowns.                |
+| `embed_image`                      | Embed a JPEG or PNG image (base64) into a titled PDF document.                                  |
+| `prepare_signature_placeholder`    | Step 1 of the two-step sign workflow — create a PDF with a `/Sig` AcroForm placeholder.        |
+| `sign_pdf`                         | Apply a PAdES-compatible CMS signature (RSA-SHA256 / ECDSA-SHA256 P-256). Auto-injects a placeholder when needed. |
+| `verify_pdf` *(new in v1.0.0)*     | Verify every PAdES signature in a PDF (integrity + signature value + optional chain trust).      |
+| `add_attachment` *(new in v1.0.0)* | Generate a PDF/A-3 document with embedded files (Factur-X / ZUGFeRD invoices).                  |
+| `extract_text` *(new in v1.0.0)*   | Best-effort plain-text extraction from a non-encrypted PDF.                                     |
+| `inspect_pdf`                      | Read-only inspection: PDF version, page count, encryption, PDF/A claim, signatures, attachments, placeholder state. |
 
-**New in v0.3.0** — every document-producing tool now accepts an optional `pdfA` flag
-(`pdfa1b` | `pdfa2b` | `pdfa2u` | `pdfa3b`) to emit PDF/A-conformant output, powered by
-[pdfnative v1.1](https://github.com/Nizoka/pdfnative). Each tool also publishes an
-MCP `outputSchema` (per the 2025-06 spec) so clients can validate responses statically.
+**New in v1.0.0:**
+
+- 🆕 **Three new tools:** `verify_pdf`, `add_attachment` (Factur-X / ZUGFeRD), `extract_text`.
+- 🆕 **Smart-table fields:** `wrap`, `repeatHeader`, `zebra`, `caption`, `minRowHeight`, `cellPadding`.
+- 🆕 **`inspect_pdf`** now reports `hasSignaturePlaceholder` and per-attachment summary.
+- 🆕 **Signing ergonomics:** `sign_pdf` accepts ECDSA PKCS#8 DER keys and auto-injects a placeholder when missing.
+- 🆕 **Opt-in cache** (`PDFNATIVE_MCP_CACHE_DIR`): SHA-256 keyed, 1 h TTL, 256 MiB LRU.
+- 🆕 **`_meta.apiVersion`** and per-tool **`_meta.examples`** for AI-agent discovery.
+- 🆕 **PDF/A authoring guide:** [`docs/guides/PDFA.md`](docs/guides/PDFA.md).
+- 🛠 **Env-var rename:** `PDFNATIVE_MCP_OUTPUT_DIR` (was `PDFNATIVE_MPC_OUTPUT_DIR`; old name still works with a one-shot deprecation warning).
+- ⏭ **Deferred to v1.1:** `merge_pdfs`, `split_pdf`, `redact_pdf` (require pdfnative page-tree primitives not yet exported).
 
 All tools support two output modes:
 
-- **`base64`** *(default)* — the PDF is returned inline in the MCP response (suitable for pipelines that immediately consume the bytes).
-- **`file`** — the PDF is written to a sandboxed directory, configured via the `PDFNATIVE_MCP_OUTPUT_DIR` environment variable. **File output is disabled unless this variable is set**, and all paths are confined to that directory (path traversal, absolute paths, non-`.pdf` extensions and NUL bytes are rejected).
+- **`base64`** *(default)* — the PDF is returned inline in the MCP response.
+- **`file`** — the PDF is written to a sandboxed directory configured via `PDFNATIVE_MCP_OUTPUT_DIR`. File output is disabled unless this variable is set; absolute paths, path traversal, non-`.pdf` extensions, and NUL bytes are all rejected.
 
 ### Why pdfnative?
 

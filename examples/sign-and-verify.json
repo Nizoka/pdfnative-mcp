@@ -1,0 +1,34 @@
+{
+  "description": "Three-step sign + verify workflow: prepare placeholder \u2192 sign with ECDSA P-256 \u2192 verify the resulting PAdES signature. Replace the certificate/key placeholders with real DER/PEM material.",
+  "steps": [
+    {
+      "tool": "prepare_signature_placeholder",
+      "arguments": {
+        "title": "Contract",
+        "signerName": "Alice Example",
+        "reason": "I approve this document",
+        "location": "Paris",
+        "contactInfo": "alice@example.com",
+        "blocks": [
+          { "type": "heading", "text": "Service contract", "level": 1 },
+          { "type": "paragraph", "text": "Both parties agree to the terms set out herein." }
+        ]
+      }
+    },
+    {
+      "tool": "sign_pdf",
+      "arguments": {
+        "pdfBase64": "<base64 from step 1>",
+        "certificateDerBase64": "<your ECDSA cert in DER, base64>",
+        "ecPrivateKeyDerBase64": "<your EC private key in PKCS#8 DER, base64>"
+      }
+    },
+    {
+      "tool": "verify_pdf",
+      "arguments": {
+        "pdfBase64": "<base64 from step 2>",
+        "trustedRootsDerBase64": ["<optional self-signed root or CA in DER, base64>"]
+      }
+    }
+  ]
+}

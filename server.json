@@ -1,0 +1,46 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.nizoka/pdfnative-mcp",
+  "description": "Production-grade MCP server for PDF generation, PDF/A archival, digital signatures (PAdES sign + verify), Factur-X invoices, and PDF introspection. 12 tools, 18 scripts, zero runtime dependencies beyond pdfnative and the MCP SDK.",
+  "repository": {
+    "url": "https://github.com/Nizoka/pdfnative-mcp",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "websiteUrl": "https://github.com/Nizoka/pdfnative-mcp#readme",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "pdfnative-mcp",
+      "version": "1.0.0",
+      "transport": { "type": "stdio" },
+      "runtimeHint": "npx",
+      "runtimeArguments": [
+        { "type": "positional", "value": "-y", "valueHint": "skip-confirm" },
+        { "type": "positional", "value": "pdfnative-mcp", "valueHint": "package" }
+      ],
+      "environmentVariables": [
+        {
+          "name": "PDFNATIVE_MCP_OUTPUT_DIR",
+          "description": "Absolute path to a sandboxed directory where outputMode='file' may write PDF outputs. When unset, every tool returns base64.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "PDFNATIVE_MCP_CACHE_DIR",
+          "description": "Opt-in content-addressed response cache directory. SHA-256 keyed, 1h TTL, 256 MiB LRU.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "PDFNATIVE_MCP_PORT",
+          "description": "Bind to an HTTP port instead of stdio (Streamable HTTP MCP transport).",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "number"
+        }
+      ]
+    }
+  ]
+}

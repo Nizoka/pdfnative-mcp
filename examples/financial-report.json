@@ -1,0 +1,17 @@
+{
+  "description": "Financial-report sample: PDF/A-2b multi-page document with structured headings, paragraphs and a smart table.",
+  "tool": "generate_basic_pdf",
+  "arguments": {
+    "title": "Q4 2025 Financial Report",
+    "pdfA": "pdfa2b",
+    "blocks": [
+      { "type": "heading", "text": "Q4 2025 Financial Report", "level": 1 },
+      { "type": "paragraph", "text": "Executive summary: revenue grew 14% year-over-year." },
+      { "type": "heading", "text": "Key metrics", "level": 2 },
+      { "type": "list", "items": ["Revenue: $4.2M", "Gross margin: 62%", "Net income: $0.71M"] },
+      { "type": "pageBreak" },
+      { "type": "heading", "text": "Outlook", "level": 2 },
+      { "type": "paragraph", "text": "We project continued growth into Q1 2026." }
+    ]
+  }
+}
