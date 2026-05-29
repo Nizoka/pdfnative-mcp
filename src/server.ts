@@ -13,6 +13,7 @@ import {
 import { initCrypto, initNodeCompression } from 'pdfnative';
 
 import { ToolError } from './errors.js';
+import { getCached, setCached } from './cache.js';
 import { type OutputResult } from './output.js';
 import {
     GENERATE_BASIC_PDF_NAME,
@@ -85,6 +86,36 @@ import {
 // Hardcoded here to keep the build rootDir limited to ./src; tests assert it stays in sync.
 const SERVER_VERSION = '1.0.0';
 const SERVER_NAME = 'pdfnative-mcp';
+
+/**
+ * Per-tool API version used by the opt-in cache key and by `_meta.apiVersion`.
+ * Bump when the input or output schema of any tool changes in a way that would
+ * make a cached response unsafe to serve. Independent from SERVER_VERSION
+ * (which tracks the npm package).
+ */
+const TOOL_API_VERSION = '1.0.0';
+
+/** True when the call's input requests a file-mode output (filesystem side-effect). */
+function isFileOutput(input: unknown): boolean {
+    if (input === null || typeof input !== 'object') return false;
+    const mode = (input as { outputMode?: unknown }).outputMode;
+    return mode === 'file';
+}
+
+function dispatchOutput(output: unknown, name: string): CallToolResult {
+    if (output !== null && typeof output === 'object') {
+        if ('mode' in output) {
+            return buildSuccessResult(output as OutputResult, name);
+        }
+        if ('signatureCount' in output && 'allValid' in output) {
+            return buildVerifyResult(output as VerifyPdfResult, name);
+        }
+        if ('extractedPageCount' in output) {
+            return buildExtractTextResult(output as ExtractTextResult, name);
+        }
+    }
+    return buildInspectResult(output as InspectPdfResult, name);
+}
 
 
 /** Common output schema for tools that return a generated PDF (base64 inline or sandboxed file path). */
@@ -370,17 +401,22 @@ export function createServer(): Server {
             };
         }
         try {
-            const output = await tool.handler(args ?? {});
-            if ('mode' in output) {
-                return buildSuccessResult(output, name);
+            const input = args ?? {};
+            // Content-addressed cache (opt-in via PDFNATIVE_MCP_CACHE_DIR).
+            // We skip caching for outputMode='file' since the filesystem write is itself an effect.
+            const cacheable = !isFileOutput(input);
+            const cacheKey = cacheable ? { tool: name, apiVersion: TOOL_API_VERSION } : null;
+            if (cacheKey !== null) {
+                const hit = getCached<unknown>(cacheKey.tool, cacheKey.apiVersion, input);
+                if (hit !== null) {
+                    return dispatchOutput(hit, name);
+                }
             }
-            if ('signatureCount' in output && 'allValid' in output) {
-                return buildVerifyResult(output, name);
+            const output = await tool.handler(input);
+            if (cacheKey !== null) {
+                setCached(cacheKey.tool, cacheKey.apiVersion, input, output);
             }
-            if ('extractedPageCount' in output) {
-                return buildExtractTextResult(output, name);
-            }
-            return buildInspectResult(output, name);
+            return dispatchOutput(output, name);
         } catch (err) {
             return buildErrorResult(err, name);
         }
