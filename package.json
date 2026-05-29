@@ -1,6 +1,6 @@
 {
     "name": "pdfnative-mcp",
-    "version": "0.3.0",
+    "version": "1.0.0",
     "description": "Model Context Protocol (MCP) server bridging the zero-dependency pdfnative v1.1 library — generate PDFs (PDF/A-1b/2b/2u/3b), embed barcodes & QR codes, sign documents (RSA / ECDSA P-256 PAdES CMS), render 18 scripts including emoji, build forms and tables (auto-fit / per-cell clipping), embed images, prepare signature placeholders, and inspect existing PDFs — from any MCP-compatible AI client (Claude, Cursor, ChatGPT, Continue, Zed, etc.).",
     "keywords": [
         "mcp",
@@ -91,7 +91,7 @@
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",
-        "pdfnative": "^1.1.0",
+        "pdfnative": "^1.2.0",
         "zod": "^3.23.8"
     },
     "devDependencies": {

@@ -64,7 +64,7 @@ import {
 
 // JSON import attribute (Node 22+, TS 5.3+) keeps version in lock-step with package.json.
 // Hardcoded here to keep the build rootDir limited to ./src; tests assert it stays in sync.
-const SERVER_VERSION = '0.3.0';
+const SERVER_VERSION = '1.0.0';
 const SERVER_NAME = 'pdfnative-mcp';
 
 

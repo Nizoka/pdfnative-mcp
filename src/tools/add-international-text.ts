@@ -23,6 +23,7 @@ import {
 import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { PDF_A_ENUM, PdfASchema } from '../pdfa.js';
 
 export const ADD_INTERNATIONAL_TEXT_NAME = 'add_international_text';
 
@@ -115,8 +116,8 @@ export const ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA = {
         },
         pdfA: {
             type: 'string',
-            enum: ['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b'],
-            description: "Optional PDF/A conformance level. When set, Tagged PDF + sRGB OutputIntent + XMP metadata are emitted; the 'latin' Noto Sans fallback is auto-registered for non-WinAnsi Latin (ISO 19005-1 \u00a76.3.4).",
+            enum: [...PDF_A_ENUM],
+            description: "Optional PDF/A conformance level. When set, Tagged PDF + sRGB OutputIntent + XMP metadata are emitted; the 'latin' Noto Sans fallback is auto-registered for non-WinAnsi Latin (ISO 19005-1 \u00a76.3.4). See docs/guides/PDFA.md for the full authoring guide.",
         },
         outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
         outputPath: { type: 'string' },
@@ -134,7 +135,7 @@ const InputSchema = z.object({
     title: z.string().min(1).max(200),
     lang: LangInput,
     paragraphs: z.array(z.string().min(1).max(50000)).min(1).max(1000),
-    pdfA: z.enum(['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b']).optional(),
+    pdfA: PdfASchema.optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });

@@ -9,6 +9,7 @@ import { buildDocumentPDFBytes, type DocumentBlock } from 'pdfnative';
 import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
 
 export const ADD_FORM_NAME = 'add_form';
 
@@ -101,8 +102,8 @@ export const ADD_FORM_INPUT_SCHEMA = {
         },
         pdfA: {
             type: 'string',
-            enum: ['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b'],
-            description: 'Optional PDF/A conformance level (pdfnative v1.1). Mutually exclusive with PDF encryption.',
+            enum: [...PDF_A_ENUM],
+            description: PDF_A_FIELD_DESCRIPTION,
         },
         outputMode: {
             type: 'string',
@@ -138,7 +139,7 @@ const InputSchema = z.object({
     title: z.string().min(1).max(200),
     fields: z.array(FieldSchema).min(1).max(200),
     footerText: z.string().max(200).optional(),
-    pdfA: z.enum(['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b']).optional(),
+    pdfA: PdfASchema.optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });

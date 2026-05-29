@@ -8,6 +8,7 @@ vi.mock('pdfnative', () => ({
     registerFont: registerFontMock,
     loadFontData: loadFontDataMock,
     buildDocumentPDFBytes: buildDocumentPDFBytesMock,
+    PDF_A_CONFORMANCE_TARGETS: ['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b'] as const,
 }));
 
 describe('add_international_text tool', () => {

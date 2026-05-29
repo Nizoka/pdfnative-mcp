@@ -3,16 +3,28 @@
  *
  * Creates a PDF document with an embedded /Sig placeholder (AcroForm + Widget annotation)
  * that is ready to be signed with the `sign_pdf` tool. The produced PDF conforms to the
- * PAdES structure expected by pdfnative's signPdfBytes function.
+ * PAdES structure expected by pdfnative's `signPdfBytes`.
  *
  * Workflow:
  *   1. Call prepare_signature_placeholder → outputs a .pdf with /Contents and /ByteRange placeholders
  *   2. Pass that PDF to sign_pdf together with a certificate and private key → signed PDF
+ *
+ * v1.0.0 — collapsed onto pdfnative v1.2.0's `addSignaturePlaceholder()` API
+ * (closes upstream issue https://github.com/Nizoka/pdfnative/issues/45).
+ * The previous local incremental-update implementation has been removed:
+ * the upstream primitive is byte-stable, idempotent on already-signed PDFs,
+ * and centralises a class of fragile xref / /ByteRange bookkeeping.
  */
-import { buildDocumentPDFBytes, openPdf, findStartxref, isRef, isName, isArray, isDict, isStream, type PdfValue, type PdfRef, type DocumentBlock } from 'pdfnative';
+import {
+    addSignaturePlaceholder,
+    buildDocumentPDFBytes,
+    type AddSignaturePlaceholderOptions,
+    type DocumentBlock,
+} from 'pdfnative';
 import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
 
 export const PREPARE_SIGNATURE_PLACEHOLDER_NAME = 'prepare_signature_placeholder';
 
@@ -46,10 +58,26 @@ export const PREPARE_SIGNATURE_PLACEHOLDER_INPUT_SCHEMA = {
             maxLength: 200,
             description: 'Contact information for the signer.',
         },
+        fieldName: {
+            type: 'string',
+            maxLength: 100,
+            description: "Optional AcroForm field name for the signature widget (default 'Signature1').",
+        },
+        placeholderBytes: {
+            type: 'integer',
+            minimum: 2048,
+            maximum: 65536,
+            description: 'Reserved bytes for the future CMS /Contents blob (default 16384). Increase only for >4096-bit RSA or PAdES-B-LT.',
+        },
+        pageIndex: {
+            type: 'integer',
+            minimum: 0,
+            description: 'Zero-based page index the (invisible) widget attaches to (default 0).',
+        },
         pdfA: {
             type: 'string',
-            enum: ['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b'],
-            description: 'Optional PDF/A conformance level (pdfnative v1.1) for the underlying document. Note: PDF/A + signatures requires PAdES-A; verify with inspect_pdf.',
+            enum: [...PDF_A_ENUM],
+            description: PDF_A_FIELD_DESCRIPTION + ' Note: PDF/A + signatures requires PAdES-A; verify with inspect_pdf.',
         },
         blocks: {
             type: 'array',
@@ -101,7 +129,7 @@ export const PREPARE_SIGNATURE_PLACEHOLDER_INPUT_SCHEMA = {
             enum: ['base64', 'file'],
             default: 'base64',
             description:
-                "Either 'base64' (returns the PDF inline) or 'file' (writes to a sandboxed path inside PDFNATIVE_MPC_OUTPUT_DIR).",
+                "Either 'base64' (returns the PDF inline) or 'file' (writes to a sandboxed path inside PDFNATIVE_MCP_OUTPUT_DIR).",
         },
         outputPath: {
             type: 'string',
@@ -124,104 +152,30 @@ const InputSchema = z.object({
     reason: z.string().max(500).optional(),
     location: z.string().max(200).optional(),
     contactInfo: z.string().max(200).optional(),
-    pdfA: z.enum(['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b']).optional(),
+    fieldName: z.string().max(100).optional(),
+    placeholderBytes: z.number().int().min(2048).max(65536).optional(),
+    pageIndex: z.number().int().min(0).optional(),
+    pdfA: PdfASchema.optional(),
     blocks: z.array(BlockSchema).max(2000).optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
 
-/** Escape a PDF string literal (parenthesis form). */
-function escapePdfLiteral(s: string): string {
-    return s.replace(/[\\()]/g, (c) => '\\' + c);
-}
-
-/** Format a date in PDF date string format D:YYYYMMDDHHmmssZ. */
-function pdfDateString(d: Date): string {
-    const p = (n: number): string => String(n).padStart(2, '0');
-    return `D:${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
-}
-
-/** Build a raw /Sig dictionary string with a zeroed /Contents placeholder and /ByteRange placeholder. */
-function buildSigDictRaw(opts: {
-    name?: string;
-    reason?: string;
-    location?: string;
-    contactInfo?: string;
-}): string {
-    const DEFAULT_CONTENTS_SIZE = 16384;
-    const BYTERANGE_PLACEHOLDER = '/ByteRange [0 0000000000 0000000000 0000000000]';
-    const hexLen = DEFAULT_CONTENTS_SIZE * 2;
-    const parts: string[] = [
-        '<< /Type /Sig',
-        '/Filter /Adobe.PPKLite',
-        '/SubFilter /adbe.pkcs7.detached',
-        `/Contents <${'0'.repeat(hexLen)}>`,
-        BYTERANGE_PLACEHOLDER,
-    ];
-    if (opts.name) parts.push(`/Name (${escapePdfLiteral(opts.name)})`);
-    if (opts.reason) parts.push(`/Reason (${escapePdfLiteral(opts.reason)})`);
-    if (opts.location) parts.push(`/Location (${escapePdfLiteral(opts.location)})`);
-    if (opts.contactInfo) parts.push(`/ContactInfo (${escapePdfLiteral(opts.contactInfo)})`);
-    parts.push(`/M (${pdfDateString(new Date())})`);
-    parts.push('>>');
-    return parts.join('\n');
-}
-
 /**
- * Minimal PDF value serializer for reconstructing modified catalog/page objects.
- * Handles all PdfValue variants that appear in standard document structures.
+ * Build the (unsigned) base document and inject a `/Sig` placeholder via
+ * pdfnative's `addSignaturePlaceholder()`. Exported for re-use by `sign_pdf`'s
+ * `autoInjectPlaceholder` code path.
  */
-function serializePdfValue(val: PdfValue): string {
-    if (val === null) return 'null';
-    if (typeof val === 'boolean') return val ? 'true' : 'false';
-    if (typeof val === 'number') {
-        return Number.isInteger(val) ? String(val) : val.toFixed(4).replace(/\.?0+$/, '');
+export function injectPlaceholderIntoBase(
+    baseBytes: Uint8Array,
+    opts: AddSignaturePlaceholderOptions,
+): Uint8Array {
+    try {
+        return addSignaturePlaceholder(baseBytes, opts);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new ToolError('PLACEHOLDER_FAILED', `Failed to inject signature placeholder: ${message}`);
     }
-    if (typeof val === 'string') {
-        return `(${val.replace(/[\\()]/g, (c) => '\\' + c)})`;
-    }
-    if (isName(val)) return `/${val.value}`;
-    if (isRef(val)) return `${val.num} ${val.gen} R`;
-    if (isArray(val)) return `[${val.map(serializePdfValue).join(' ')}]`;
-    if (isDict(val)) {
-        let s = '<<';
-        for (const [k, v] of val) s += ` /${k} ${serializePdfValue(v)}`;
-        return s + ' >>';
-    }
-    /* v8 ignore start - streams and unknown values are never passed in normal traversal; defensive only. */
-    if (isStream(val)) {
-        let s = '<<';
-        for (const [k, v] of val.dict) s += ` /${k} ${serializePdfValue(v)}`;
-        return s + ' >>';
-    }
-    return 'null';
-    /* v8 ignore stop */
-}
-
-/**
- * Build an incremental xref section string.
- */
-function buildXref(entries: Map<number, number>): string {
-    const sorted = [...entries.keys()].sort((a, b) => a - b);
-    if (sorted.length === 0) return 'xref\n0 0\n';
-    let result = 'xref\n';
-    let i = 0;
-    while (i < sorted.length) {
-        const start = sorted[i];
-        let end = start;
-        while (i + 1 < sorted.length && sorted[i + 1] === end + 1) {
-            i++;
-            end = sorted[i];
-        }
-        const count = end - start + 1;
-        result += `${start} ${count}\n`;
-        for (let num = start; num <= end; num++) {
-            const off = entries.get(num) ?? 0;
-            result += `${String(off).padStart(10, '0')} 00000 n \n`;
-        }
-        i++;
-    }
-    return result;
 }
 
 export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<OutputResult> {
@@ -229,9 +183,21 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, signerName, reason, location, contactInfo, blocks, pdfA, outputMode, outputPath } = parsed.data;
+    const {
+        title,
+        signerName,
+        reason,
+        location,
+        contactInfo,
+        fieldName,
+        placeholderBytes,
+        pageIndex,
+        pdfA,
+        blocks,
+        outputMode,
+        outputPath,
+    } = parsed.data;
 
-    // --- Build base document ---
     const contentBlocks: DocumentBlock[] = (blocks ?? []).map((b): DocumentBlock => {
         switch (b.type) {
             case 'heading': return { type: 'heading', text: b.text, level: b.level };
@@ -241,7 +207,6 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
         }
     });
 
-    // Always have at least one content block
     if (contentBlocks.length === 0) {
         contentBlocks.push({ type: 'paragraph', text: 'This document contains a digital signature field.' });
     }
@@ -251,116 +216,20 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
         pdfA !== undefined ? { tagged: pdfA } : {},
     );
 
-    // --- Parse structure ---
-    const reader = openPdf(baseBytes);
-    const trailer = reader.trailer;
-
-    const rootRef = trailer.get('Root') as PdfRef;
-    const catalogObjNum = rootRef.num;
-
-    // Navigate to first page object number
-    const catalog = reader.getCatalog();
-    const pagesTreeVal = reader.resolveValue(catalog.get('Pages') as PdfValue);
-    // pdfnative always emits a proper /Pages tree for its own documents; these guards are safety nets.
-    /* v8 ignore next 3 */
-    if (!isDict(pagesTreeVal)) {
-        throw new ToolError('INTERNAL_ERROR', 'Cannot locate /Pages tree in generated PDF.');
-    }
-    const kidsRaw = pagesTreeVal.get('Kids');
-    const kidsVal = kidsRaw !== undefined ? kidsRaw : null;
-    /* v8 ignore next 3 */
-    if (!isArray(kidsVal) || kidsVal.length === 0) {
-        throw new ToolError('INTERNAL_ERROR', 'Cannot locate page objects in generated PDF.');
-    }
-    const page0Ref = kidsVal[0] as PdfRef;
-    const pageObjNum = page0Ref.num;
-
-    const prevXrefOffset = findStartxref(baseBytes);
-    const trailerSize = trailer.get('Size') as number; // next available object number
-
-    // Allocate new object numbers
-    const sigObjNum = trailerSize;       // e.g. 8
-    const widgetObjNum = trailerSize + 1; // e.g. 9
-    const newTrailerSize = trailerSize + 2;
-
-    // --- Sig dict (raw PDF text) ---
-    const sigDictStr = buildSigDictRaw({
+    const placeholderOptions: AddSignaturePlaceholderOptions = {
+        ...(fieldName !== undefined ? { fieldName } : {}),
+        ...(placeholderBytes !== undefined ? { placeholderBytes } : {}),
+        ...(pageIndex !== undefined ? { pageIndex } : {}),
         ...(signerName !== undefined ? { name: signerName } : {}),
         ...(reason !== undefined ? { reason } : {}),
         ...(location !== undefined ? { location } : {}),
         ...(contactInfo !== undefined ? { contactInfo } : {}),
+    };
+
+    const withPlaceholder = injectPlaceholderIntoBase(baseBytes, placeholderOptions);
+
+    return emitPdf(withPlaceholder, {
+        mode: outputMode,
+        ...(outputPath !== undefined ? { outputPath } : {}),
     });
-
-    // --- Incremental update assembly ---
-    // Offsets are measured in bytes from the start of the file.
-    // All content here is ASCII/Latin-1 so string.length === byte length.
-    let baseOffset = baseBytes.length;
-    const xrefEntries = new Map<number, number>();
-    const parts: string[] = [];
-
-    // Separator newline between base PDF and incremental update
-    parts.push('\n');
-    baseOffset += 1;
-
-    // Object sigObjNum: the sig dict (raw embedded as indirect object)
-    const sigObjParts = [`${sigObjNum} 0 obj\n`, sigDictStr, '\nendobj\n\n'];
-    const sigObjStr = sigObjParts.join('');
-    xrefEntries.set(sigObjNum, baseOffset);
-    parts.push(sigObjStr);
-    baseOffset += sigObjStr.length;
-
-    // Object widgetObjNum: form widget annotation (invisible, type /Sig)
-    // F=132: Print(4) + Hidden(2) = 6, but for sig annotations use F=132 (Print=4, ReadOnly=64, Hidden bit off)
-    // Actually F=4 = Print only, invisible on screen is achieved via Rect [0 0 0 0]
-    const widgetStr = `${widgetObjNum} 0 obj\n<< /Type /Annot /Subtype /Widget /FT /Sig /Rect [0 0 0 0] /P ${pageObjNum} 0 R /T (Signature1) /V ${sigObjNum} 0 R /F 4 >>\nendobj\n\n`;
-    xrefEntries.set(widgetObjNum, baseOffset);
-    parts.push(widgetStr);
-    baseOffset += widgetStr.length;
-
-    // Updated catalog: add /AcroForm
-    const updatedCatalog = new Map(catalog);
-    const acroFormDict = new Map<string, PdfValue>();
-    acroFormDict.set('Fields', [{ type: 'ref' as const, num: widgetObjNum, gen: 0 }]);
-    acroFormDict.set('SigFlags', 3);
-    updatedCatalog.set('AcroForm', acroFormDict);
-    const catalogObjStr = `${catalogObjNum} 0 obj\n${serializePdfValue(updatedCatalog)}\nendobj\n\n`;
-    xrefEntries.set(catalogObjNum, baseOffset);
-    parts.push(catalogObjStr);
-    baseOffset += catalogObjStr.length;
-
-    // Updated page 0: add /Annots
-    const page0 = reader.getPage(0);
-    const updatedPage = new Map(page0);
-    updatedPage.set('Annots', [{ type: 'ref' as const, num: widgetObjNum, gen: 0 }]);
-    const pageObjStr = `${pageObjNum} 0 obj\n${serializePdfValue(updatedPage)}\nendobj\n\n`;
-    xrefEntries.set(pageObjNum, baseOffset);
-    parts.push(pageObjStr);
-    baseOffset += pageObjStr.length;
-
-    // Xref table
-    const xrefStr = buildXref(xrefEntries);
-    const xrefOffset = baseOffset;
-    parts.push(xrefStr);
-    baseOffset += xrefStr.length;
-
-    // Trailer
-    const trailerParts: string[] = [`trailer\n<< /Size ${newTrailerSize} /Root ${catalogObjNum} 0 R`];
-    const infoRef = trailer.get('Info');
-    if (infoRef !== undefined) trailerParts.push(` /Info ${serializePdfValue(infoRef as PdfValue)}`);
-    const idVal = trailer.get('ID');
-    if (idVal !== undefined) trailerParts.push(` /ID ${serializePdfValue(idVal as PdfValue)}`);
-    trailerParts.push(` /Prev ${prevXrefOffset} >>\n`);
-    const trailerStr = trailerParts.join('');
-    parts.push(trailerStr);
-
-    parts.push(`startxref\n${xrefOffset}\n%%EOF\n`);
-
-    // Combine base PDF bytes + incremental update
-    const updateStr = parts.join('');
-    const updateBytes = Buffer.from(updateStr, 'latin1');
-    const combined = new Uint8Array(baseBytes.length + updateBytes.length);
-    combined.set(baseBytes, 0);
-    combined.set(updateBytes, baseBytes.length);
-
-    return emitPdf(combined, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
 }

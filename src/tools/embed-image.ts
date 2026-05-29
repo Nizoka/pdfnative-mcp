@@ -9,6 +9,7 @@ import { buildDocumentPDFBytes } from 'pdfnative';
 import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
 
 export const EMBED_IMAGE_NAME = 'embed_image';
 
@@ -51,8 +52,8 @@ export const EMBED_IMAGE_INPUT_SCHEMA = {
         },
         pdfA: {
             type: 'string',
-            enum: ['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b'],
-            description: 'Optional PDF/A conformance level (pdfnative v1.1). Mutually exclusive with PDF encryption.',
+            enum: [...PDF_A_ENUM],
+            description: PDF_A_FIELD_DESCRIPTION,
         },
         outputMode: {
             type: 'string',
@@ -76,7 +77,7 @@ const InputSchema = z.object({
     caption: z.string().max(500).optional(),
     width: z.number().min(10).max(800).optional(),
     height: z.number().min(10).max(1000).optional(),
-    pdfA: z.enum(['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b']).optional(),
+    pdfA: PdfASchema.optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });

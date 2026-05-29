@@ -14,7 +14,7 @@ describe('server', () => {
 
     it('exposes stable metadata', () => {
         expect(__serverMetadata.name).toBe('pdfnative-mcp');
-        expect(__serverMetadata.version).toBe('0.3.0');
+        expect(__serverMetadata.version).toBe('1.0.0');
     });
 
     it('lists all tools', async () => {
