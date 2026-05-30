@@ -5,6 +5,9 @@
 - Repository: https://github.com/Nizoka/pdfnative-mcp
 - npm: https://www.npmjs.com/package/pdfnative-mcp
 - Documentation: https://github.com/Nizoka/pdfnative-mcp#readme
+- AI agent guide (decision tree + pitfalls): https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/AI_GUIDE.md
+- API stability charter: https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/API_STABILITY.md
+- Knowledge base (full reference): https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/KNOWLEDGE_BASE.md
 - PDF/A authoring guide: https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/guides/PDFA.md
 
 ## What this server is for
@@ -48,13 +51,14 @@ Every tool exposes `_meta.apiVersion` (currently `1.0.0`) and `_meta.examples` f
 - Always verify with a follow-up `inspect_pdf` call: `{ "check": ["pdfa"] }`.
 - Never combine `pdfA` with encryption.
 
-## Two-step sign + verify
+## Sign + verify (single call)
 
 ```jsonc
-// 1) prepare_signature_placeholder → 2) sign_pdf → 3) verify_pdf
+// 1) sign_pdf (auto-injects a /Sig placeholder if the input PDF has none)
+// 2) verify_pdf
 ```
 
-The middle step accepts RSA (PEM/PKCS#8) or ECDSA (PKCS#8 DER, or raw 32-byte scalar). The verify step recomputes ByteRange SHA-256, validates the CMS messageDigest, and verifies the signatureValue against the embedded signer certificate.
+`sign_pdf` accepts RSA (PKCS#1 RSAPrivateKey DER, base64 — field `rsaKeyPkcs1DerBase64`) or ECDSA P-256 (SEC1/PKCS#8 DER as `ecPrivateKeyDerBase64`, or raw 32-byte scalar as 64 hex chars in `ecPrivateScalarHex`). The verify step recomputes ByteRange SHA-256, validates the CMS messageDigest, and verifies the signatureValue against the embedded signer certificate. Use `prepare_signature_placeholder` only when you need to customize the placeholder (e.g. larger `placeholderBytes` for >4096-bit RSA keys).
 
 ## License
 

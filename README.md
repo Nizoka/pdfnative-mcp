@@ -37,10 +37,11 @@
 
 - 🆕 **Three new tools:** `verify_pdf`, `add_attachment` (Factur-X / ZUGFeRD), `extract_text`.
 - 🆕 **Smart-table fields:** `wrap`, `repeatHeader`, `zebra`, `caption`, `minRowHeight`, `cellPadding`.
-- 🆕 **`inspect_pdf`** now reports `hasSignaturePlaceholder` and per-attachment summary.
-- 🆕 **Signing ergonomics:** `sign_pdf` accepts ECDSA PKCS#8 DER keys and auto-injects a placeholder when missing.
-- 🆕 **Opt-in cache** (`PDFNATIVE_MCP_CACHE_DIR`): SHA-256 keyed, 1 h TTL, 256 MiB LRU.
-- 🆕 **`_meta.apiVersion`** and per-tool **`_meta.examples`** for AI-agent discovery.
+- 🆕 **`inspect_pdf`** now reports `hasSignaturePlaceholder` and per-attachment summary; new `check` values `'placeholder'` and `'attachments'`.
+- 🆕 **Signing ergonomics:** `sign_pdf` accepts ECDSA SEC1 / PKCS#8 DER keys and auto-injects a `/Sig` placeholder when missing (one-call signing of any PDF).
+- 🆕 **Opt-in cache** (`PDFNATIVE_MCP_CACHE_DIR`): SHA-256 keyed, 1 h TTL, 256 MiB LRU.
+- 🆕 **`_meta.apiVersion`** and per-tool **`_meta.examples`** for AI-agent discovery — see [`docs/API_STABILITY.md`](docs/API_STABILITY.md).
+- 🆕 **AI agent guide:** [`docs/AI_GUIDE.md`](docs/AI_GUIDE.md) — decision tree + common pitfalls.
 - 🆕 **PDF/A authoring guide:** [`docs/guides/PDFA.md`](docs/guides/PDFA.md).
 - 🛠 **Env-var rename:** `PDFNATIVE_MCP_OUTPUT_DIR` (was `PDFNATIVE_MPC_OUTPUT_DIR`; old name still works with a one-shot deprecation warning).
 - ⏭ **Deferred to v1.1:** `merge_pdfs`, `split_pdf`, `redact_pdf` (require pdfnative page-tree primitives not yet exported).
@@ -97,15 +98,30 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
 }
 ```
 
-### Cursor / Continue / Zed
+### Cursor / Continue / Zed / Windsurf / Cline / Roo Code
 
-Any MCP-compatible client that supports stdio servers will work. Use the same `command` + `args` + `env` triple.
+Any MCP-compatible client that supports stdio servers will work. Use the same `command` + `args` + `env` triple. Example for **Cursor** (`~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "pdfnative": {
+      "command": "npx",
+      "args": ["-y", "pdfnative-mcp"],
+      "env": { "PDFNATIVE_MCP_OUTPUT_DIR": "/Users/you/Documents/mcp-pdfs" }
+    }
+  }
+}
+```
+
+**Windsurf / Cline / Roo Code** use the same shape inside their respective MCP config files.
 
 ### Environment variables
 
 | Variable                      | Purpose                                                                            |
 | ----------------------------- | ---------------------------------------------------------------------------------- |
 | `PDFNATIVE_MCP_OUTPUT_DIR`    | Absolute path to the sandbox directory. **Required to enable `outputMode: 'file'`.** |
+| `PDFNATIVE_MCP_CACHE_DIR`     | Absolute path to enable the persistent SHA-256-keyed result cache (1 h TTL, 256 MiB LRU). When unset, the cache is disabled. |
 | `PDFNATIVE_MCP_PORT`          | When set to a valid port (1–65535), starts an HTTP server on `http://127.0.0.1:<port>/mcp` instead of stdio. |
 
 ---
@@ -157,7 +173,7 @@ Supported formats: `qr`, `code128`, `ean13`, `datamatrix`, `pdf417`.
 }
 ```
 
-Supported `lang` codes: `ar`, `he`, `th`, `ja`, `zh`, `ko`, `el`, `hi`, `bn`, `ta`, `ru`, `ka`, `hy`, `tr`, `vi`, `pl`, **`latin`** *(new in v0.3.0)*, **`emoji`** *(new in v0.3.0)*.
+Supported `lang` codes: `ar`, `he`, `th`, `ja`, `zh`, `ko`, `el`, `hi`, `bn`, `ta`, `ru`, `ka`, `hy`, `tr`, `vi`, `pl`, `latin`, `emoji`.
 
 Multi-script documents — pass an array or comma-separated list:
 
@@ -172,9 +188,11 @@ Multi-script documents — pass an array or comma-separated list:
 
 ### `sign_pdf`
 
+As of v1.0.0, `sign_pdf` auto-injects a `/Sig` placeholder when missing — you can sign **any** PDF in one call:
+
 ```jsonc
 {
-  "pdfBase64": "<base64 PDF that already contains a /Sig placeholder>",
+  "pdfBase64": "<any base64 PDF>",
   "algorithm": "rsa-sha256",
   "certDerBase64": "<base64 X.509 cert in DER>",
   "rsaKeyPkcs1DerBase64": "<base64 PKCS#1 RSAPrivateKey DER>",
@@ -185,9 +203,17 @@ Multi-script documents — pass an array or comma-separated list:
 }
 ```
 
-For ECDSA P-256: omit `rsaKeyPkcs1DerBase64`, use `algorithm: "ecdsa-sha256"`, and supply `ecPrivateScalarHex` (64 hex chars).
+For ECDSA P-256: use `algorithm: "ecdsa-sha256"` and supply either `ecPrivateKeyDerBase64` (SEC1 or PKCS#8 DER) or `ecPrivateScalarHex` (64 hex chars).
 
-> **Note on placeholder PDFs.** `sign_pdf` is a faithful wrapper around `pdfnative.signPdfBytes`. Use `prepare_signature_placeholder` to produce a ready-to-sign PDF in one step, then pass the result to `sign_pdf`.
+PEM → DER conversion:
+
+```bash
+openssl x509 -in cert.pem -outform DER | base64 -w0                 # cert
+openssl rsa  -in key.pem  -outform DER -traditional | base64 -w0    # RSA PKCS#1
+openssl pkey -in key.pem  -outform DER | base64 -w0                 # ECDSA
+```
+
+> Use `prepare_signature_placeholder` only when you need to customize the placeholder (e.g. larger `placeholderBytes` for >4096-bit RSA keys). Otherwise call `sign_pdf` directly.
 
 ---
 
@@ -253,7 +279,7 @@ For ECDSA P-256: omit `rsaKeyPkcs1DerBase64`, use `algorithm: "ecdsa-sha256"`, a
 
 Pass the returned PDF bytes to `sign_pdf` to complete the signing workflow.
 
-### `inspect_pdf` *(new in v0.3.0)*
+### `inspect_pdf`
 
 Read-only structural and security inspection — useful for downstream verification, CI assertions, and AI agents that need to reason about a PDF before acting on it.
 
@@ -261,7 +287,7 @@ Read-only structural and security inspection — useful for downstream verificat
 {
   "pdfBase64": "<base64 PDF>",
   "pages": true,
-  "check": ["pdfa", "signed"]
+  "check": ["pdfa", "signed", "attachments"]
 }
 ```
 
@@ -272,14 +298,22 @@ Returns:
   "version": "1.7",
   "pageCount": 3,
   "encryption": "none",          // 'none' | 'aes-128' | 'aes-256' | 'rc4' | 'unknown'
-  "pdfA": "2B",                  // null when no PDF/A claim is present
+  "pdfA": "3B",                  // null when no PDF/A claim is present
   "signatureCount": 1,
-  "info": { "Producer": "pdfnative", "Title": "Service Agreement" },
+  "hasSignaturePlaceholder": false,
+  "attachments": [{ "filename": "factur-x.xml", "mimeType": "application/xml", "sizeBytes": 1234, "relationship": "Source" }],
+  "info": { "Producer": "pdfnative", "Title": "Invoice INV-2025-001" },
   "perPage": [{ "index": 0, "width": 595, "height": 842 }],
-  "checks": { "pdfa": true, "signed": true },
+  "checks": { "pdfa": true, "signed": true, "attachments": true },
   "checksPassed": true
 }
 ```
+
+`check[]` accepts any of `'pdfa'`, `'signed'`, `'encrypted'`, `'placeholder'`, `'attachments'`. `checksPassed` is the AND of all requested checks.
+
+### `verify_pdf`, `add_attachment`, `extract_text`
+
+See the dedicated sections in [`docs/AI_GUIDE.md`](docs/AI_GUIDE.md) and the reference in [`docs/KNOWLEDGE_BASE.md`](docs/KNOWLEDGE_BASE.md). Ready-to-run examples live under [`examples/`](examples/).
 
 ---
 
