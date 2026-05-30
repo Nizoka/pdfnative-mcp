@@ -26,7 +26,7 @@ export const ADD_BARCODE_INPUT_SCHEMA = {
             type: 'string',
             minLength: 1,
             maxLength: 4296,
-            description: 'Payload to encode. Length and character constraints depend on format (e.g. EAN-13 must be 12 or 13 digits).',
+            description: 'Raw payload to encode — do NOT URL-encode. For QR/URL pass e.g. "https://example.com" verbatim. EAN-13 must be 12 or 13 digits (13th is auto-computed). Code 128 accepts ASCII alphanumerics.',
         },
         caption: {
             type: 'string',
@@ -57,7 +57,7 @@ export const ADD_BARCODE_INPUT_SCHEMA = {
             type: 'string',
             enum: ['L', 'M', 'Q', 'H'],
             default: 'M',
-            description: 'QR error correction level (L=7%, M=15%, Q=25%, H=30%). Ignored for non-QR formats.',
+            description: 'QR ONLY. Error correction level (L=7%, M=15%, Q=25%, H=30%). Ignored for code128/ean13/datamatrix/pdf417. Use H for printed media that may get smudged or partially covered (e.g. logo overlay).',
         },
         pdfA: {
             type: 'string',

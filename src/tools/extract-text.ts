@@ -62,6 +62,7 @@ export const EXTRACT_TEXT_OUTPUT_SCHEMA = {
         pageCount: { type: 'integer', minimum: 0 },
         extractedPageCount: { type: 'integer', minimum: 0 },
         extractable: { type: 'boolean', description: 'False when one or more requested pages had a non-empty content stream but yielded no extractable text (likely subset fonts without /ToUnicode).' },
+        extractableReason: { type: 'string', description: 'Human-readable explanation when extractable=false. Absent when extractable=true.' },
         pages: {
             type: 'array',
             items: {
@@ -92,6 +93,7 @@ export interface ExtractTextResult {
     readonly pageCount: number;
     readonly extractedPageCount: number;
     readonly extractable: boolean;
+    readonly extractableReason?: string;
     readonly pages: readonly ExtractedPage[];
     readonly fullText: string;
 }
@@ -325,6 +327,7 @@ export async function extractText(rawInput: unknown): Promise<ExtractTextResult>
         pageCount: totalPages,
         extractedPageCount: pagesOut.length,
         extractable,
+        ...(extractable ? {} : { extractableReason: 'One or more pages have non-empty content streams but yielded no extractable text. This typically means the PDF uses subset fonts without /ToUnicode CMaps (common for PDFs produced by some converters). The PDF is not corrupt; re-render the source document with a producer that emits /ToUnicode mappings, or wait for pdfnative-mcp v1.1 which adds tagged-mode structure-tree extraction.' }),
         pages: pagesOut,
         fullText,
     };

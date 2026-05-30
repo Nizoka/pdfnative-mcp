@@ -48,21 +48,21 @@ export const SIGN_PDF_INPUT_SCHEMA = {
         },
         certDerBase64: {
             type: 'string',
-            description: 'Base64 of the signer X.509 certificate in DER form.',
+            description: 'Base64 of the signer X.509 certificate in DER form. Convert from PEM with: openssl x509 -in cert.pem -outform DER | base64 -w0',
             minLength: 4,
         },
         rsaKeyPkcs1DerBase64: {
             type: 'string',
-            description: 'Base64 of the RSA private key in PKCS#1 RSAPrivateKey DER. Required when algorithm=rsa-sha256.',
+            description: 'Base64 of the RSA private key in PKCS#1 RSAPrivateKey DER (NOT PKCS#8, NOT PEM). Required when algorithm=rsa-sha256. Convert from PEM with: openssl rsa -in key.pem -outform DER -traditional | base64 -w0  (the -traditional flag forces PKCS#1).',
         },
         ecPrivateScalarHex: {
             type: 'string',
-            description: 'Hex-encoded P-256 private scalar `d` (64 hex chars). Mutually exclusive with ecPrivateKeyDerBase64; either is accepted for ECDSA.',
+            description: 'Hex-encoded P-256 private scalar `d` (exactly 64 lowercase or uppercase hex chars, no 0x prefix). Mutually exclusive with ecPrivateKeyDerBase64; either is accepted for ECDSA.',
             pattern: '^[0-9a-fA-F]{64}$',
         },
         ecPrivateKeyDerBase64: {
             type: 'string',
-            description: 'Base64 of an ECDSA P-256 private key in SEC1 (RFC 5915) or PKCS#8 (RFC 5208) DER form. Mutually exclusive with ecPrivateScalarHex.',
+            description: 'Base64 of an ECDSA P-256 private key in SEC1 (RFC 5915) or PKCS#8 (RFC 5208) DER form. Convert from PEM with: openssl pkey -in key.pem -outform DER | base64 -w0  Mutually exclusive with ecPrivateScalarHex.',
             minLength: 4,
         },
         autoInjectPlaceholder: {
