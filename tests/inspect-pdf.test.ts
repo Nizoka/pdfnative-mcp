@@ -6,7 +6,7 @@ import { ensureCompressionReady } from '../src/server.js';
 import { ToolError } from '../src/errors.js';
 
 beforeAll(async () => {
-    delete process.env['PDFNATIVE_MPC_OUTPUT_DIR'];
+    delete process.env['PDFNATIVE_MCP_OUTPUT_DIR'];
     await ensureCompressionReady();
 });
 
@@ -82,9 +82,11 @@ describe('inspect_pdf', () => {
     it('reports checksPassed=true when assertions match', async () => {
         const placeholder = await prepareSignaturePlaceholder({ title: 'Sig', signerName: 'Bob' });
         if (placeholder.mode !== 'base64' || placeholder.base64 === undefined) throw new Error('expected base64');
-        const out = await inspectPdf({ pdfBase64: placeholder.base64, check: ['signed'] });
-        expect(out.checks?.signed).toBe(true);
+        const out = await inspectPdf({ pdfBase64: placeholder.base64, check: ['placeholder'] });
+        expect(out.checks?.placeholder).toBe(true);
         expect(out.checksPassed).toBe(true);
+        expect(out.hasSignaturePlaceholder).toBe(true);
+        expect(out.signatureCount).toBe(1);
     });
 
     it('extracts version from PDF header', async () => {
@@ -118,5 +120,67 @@ describe('inspect_pdf', () => {
         expect(out.checks?.signed).toBe(false);
         expect(out.checks?.encrypted).toBe(false);
         expect(out.checksPassed).toBe(false);
+    });
+
+    it('reports attachments and hasSignaturePlaceholder=false on a PDF/A-3 with attachments', async () => {
+        const { addAttachment } = await import('../src/tools/add-attachment.js');
+        const r = await addAttachment({
+            title: 'Factur-X',
+            attachments: [
+                {
+                    filename: 'invoice.xml',
+                    mimeType: 'application/xml',
+                    dataBase64: Buffer.from('<?xml version="1.0"?><Invoice/>').toString('base64'),
+                    relationship: 'Source',
+                    description: 'Factur-X XML',
+                },
+            ],
+        });
+        const out = await inspectPdf({ pdfBase64: r.base64!, check: ['attachments', 'placeholder'] });
+        expect(out.attachments.length).toBe(1);
+        expect(out.attachments[0]!.name).toBe('invoice.xml');
+        expect(out.attachments[0]!.relationship).toBe('Source');
+        expect(out.attachments[0]!.description).toBe('Factur-X XML');
+        expect(out.attachments[0]!.sizeBytes).toBeGreaterThan(0);
+        expect(out.hasSignaturePlaceholder).toBe(false);
+        expect(out.checks?.attachments).toBe(true);
+        expect(out.checks?.placeholder).toBe(false);
+    });
+
+    it('reports zero attachments on a plain PDF', async () => {
+        const pdfBase64 = await buildSamplePdf();
+        const out = await inspectPdf({ pdfBase64 });
+        expect(out.attachments.length).toBe(0);
+        expect(out.hasSignaturePlaceholder).toBe(false);
+    });
+});
+
+describe('inspect_pdf classifyEncryption', () => {
+    it('classifies /V=1 and /V=2 as RC4', async () => {
+        const { classifyEncryption } = await import('../src/tools/inspect-pdf.js');
+        expect(classifyEncryption(1, 40)).toBe('rc4');
+        expect(classifyEncryption(2, 128)).toBe('rc4');
+    });
+
+    it('classifies /V=4 with default length as aes-128', async () => {
+        const { classifyEncryption } = await import('../src/tools/inspect-pdf.js');
+        expect(classifyEncryption(4, undefined)).toBe('aes-128');
+        expect(classifyEncryption(4, 128)).toBe('aes-128');
+    });
+
+    it('classifies /V=4 with length>=256 as aes-256', async () => {
+        const { classifyEncryption } = await import('../src/tools/inspect-pdf.js');
+        expect(classifyEncryption(4, 256)).toBe('aes-256');
+    });
+
+    it('classifies /V=5 as aes-256', async () => {
+        const { classifyEncryption } = await import('../src/tools/inspect-pdf.js');
+        expect(classifyEncryption(5, 256)).toBe('aes-256');
+    });
+
+    it('falls back to unknown for unrecognised /V values', async () => {
+        const { classifyEncryption } = await import('../src/tools/inspect-pdf.js');
+        expect(classifyEncryption(99, 0)).toBe('unknown');
+        expect(classifyEncryption('not-a-number', 0)).toBe('unknown');
     });
 });

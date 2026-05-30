@@ -1,15 +1,24 @@
 /**
  * Tool: sign_pdf
  *
- * Applies a PAdES-style digital signature to a PDF that already contains a
- * `/Sig` placeholder (built by pdfnative's `buildSigDict` or an equivalent
- * tool). Supports RSA-SHA256 and ECDSA-SHA256 (P-256).
+ * Applies a PAdES-style digital signature to a PDF. Supports RSA-SHA256 and
+ * ECDSA-SHA256 (P-256).
  *
- * For convenience this tool is a faithful wrapper around `pdfnative.signPdfBytes`
- * — preparing the cert and private key bytes in DER form is the caller's
- * responsibility (typically done once and stored as base64 secrets).
+ * v1.0.0 ergonomics:
+ *   - `autoInjectPlaceholder` (default `true`) — when the input PDF has no
+ *     `/FT /Sig` widget, the tool transparently calls pdfnative's
+ *     `addSignaturePlaceholder()` first so the caller can sign any PDF in a
+ *     single call. Closes the v0.4 roadmap "sign any PDF in one call" item.
+ *   - `ecPrivateKeyDerBase64` — accept SEC1 or PKCS#8 ECDSA P-256 private
+ *     keys in addition to the raw 32-byte scalar (`ecPrivateScalarHex`).
+ *     Closes the v0.4 deferral.
+ *   - Signer metadata (`signerName`, `reason`, `location`, `contactInfo`,
+ *     `signingTime`) is written into the `/Sig` dictionary at signing time
+ *     (this matches PAdES Baseline behaviour and pdfnative v1.2 semantics).
  */
 import {
+    addSignaturePlaceholder,
+    openPdf,
     parseCertificate,
     parseRsaPrivateKey,
     signPdfBytes,
@@ -18,6 +27,8 @@ import {
 import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { parseEcPrivateKeyDer } from '../ec-key.js';
+import { hasSignaturePlaceholder } from '../pdf-introspection.js';
 
 export const SIGN_PDF_NAME = 'sign_pdf';
 
@@ -27,27 +38,37 @@ export const SIGN_PDF_INPUT_SCHEMA = {
     properties: {
         pdfBase64: {
             type: 'string',
-            description: 'Base64-encoded PDF bytes that already contain a /Sig placeholder reserving room for the CMS contents.',
+            description: 'Base64-encoded PDF bytes. When the PDF already contains a /Sig placeholder it is signed in place; otherwise the placeholder is auto-injected (set autoInjectPlaceholder=false to opt out).',
             minLength: 4,
         },
         algorithm: {
             type: 'string',
             enum: ['rsa-sha256', 'ecdsa-sha256'],
-            description: 'Signature algorithm. For ECDSA only P-256 is supported in v0.1.0.',
+            description: 'Signature algorithm. ECDSA only supports P-256 in v1.0.0.',
         },
         certDerBase64: {
             type: 'string',
-            description: 'Base64 of the signer X.509 certificate in DER form.',
+            description: 'Base64 of the signer X.509 certificate in DER form. Convert from PEM with: openssl x509 -in cert.pem -outform DER | base64 -w0',
             minLength: 4,
         },
         rsaKeyPkcs1DerBase64: {
             type: 'string',
-            description: 'Base64 of the RSA private key in PKCS#1 RSAPrivateKey DER. Required when algorithm=rsa-sha256.',
+            description: 'Base64 of the RSA private key in PKCS#1 RSAPrivateKey DER (NOT PKCS#8, NOT PEM). Required when algorithm=rsa-sha256. Convert from PEM with: openssl rsa -in key.pem -outform DER -traditional | base64 -w0  (the -traditional flag forces PKCS#1).',
         },
         ecPrivateScalarHex: {
             type: 'string',
-            description: 'Hex-encoded P-256 private scalar `d` (64 hex chars). Required when algorithm=ecdsa-sha256.',
+            description: 'Hex-encoded P-256 private scalar `d` (exactly 64 lowercase or uppercase hex chars, no 0x prefix). Mutually exclusive with ecPrivateKeyDerBase64; either is accepted for ECDSA.',
             pattern: '^[0-9a-fA-F]{64}$',
+        },
+        ecPrivateKeyDerBase64: {
+            type: 'string',
+            description: 'Base64 of an ECDSA P-256 private key in SEC1 (RFC 5915) or PKCS#8 (RFC 5208) DER form. Convert from PEM with: openssl pkey -in key.pem -outform DER | base64 -w0  Mutually exclusive with ecPrivateScalarHex.',
+            minLength: 4,
+        },
+        autoInjectPlaceholder: {
+            type: 'boolean',
+            default: true,
+            description: 'When true (default) and the input PDF has no /Sig widget, pdfnative.addSignaturePlaceholder is called before signing — enabling single-call signing of any PDF.',
         },
         signerName: { type: 'string', maxLength: 200 },
         reason: { type: 'string', maxLength: 500 },
@@ -71,6 +92,8 @@ const InputSchema = z
         certDerBase64: z.string().min(4),
         rsaKeyPkcs1DerBase64: z.string().optional(),
         ecPrivateScalarHex: z.string().regex(/^[0-9a-fA-F]{64}$/).optional(),
+        ecPrivateKeyDerBase64: z.string().min(4).optional(),
+        autoInjectPlaceholder: z.boolean().default(true),
         signerName: z.string().max(200).optional(),
         reason: z.string().max(500).optional(),
         location: z.string().max(200).optional(),
@@ -86,16 +109,25 @@ const InputSchema = z
                 message: 'rsaKeyPkcs1DerBase64 is required when algorithm=rsa-sha256.',
             });
         }
-        if (val.algorithm === 'ecdsa-sha256' && val.ecPrivateScalarHex === undefined) {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: 'ecPrivateScalarHex is required when algorithm=ecdsa-sha256.',
-            });
+        if (val.algorithm === 'ecdsa-sha256') {
+            const haveScalar = val.ecPrivateScalarHex !== undefined;
+            const haveDer = val.ecPrivateKeyDerBase64 !== undefined;
+            if (!haveScalar && !haveDer) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'ecPrivateScalarHex or ecPrivateKeyDerBase64 is required when algorithm=ecdsa-sha256.',
+                });
+            }
+            if (haveScalar && haveDer) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'ecPrivateScalarHex and ecPrivateKeyDerBase64 are mutually exclusive.',
+                });
+            }
         }
     });
 
 function decodeBase64(value: string, field: string): Uint8Array {
-    // Buffer.from(..., 'base64') never throws in Node.js — this catch is a safety net only.
     /* v8 ignore next 3 */
     try {
         return new Uint8Array(Buffer.from(value, 'base64'));
@@ -108,6 +140,30 @@ function hexToBigInt(hex: string): bigint {
     return BigInt(`0x${hex}`);
 }
 
+function ensurePlaceholder(pdfBytes: Uint8Array, autoInject: boolean): Uint8Array {
+    let already: boolean;
+    try {
+        const reader = openPdf(pdfBytes);
+        already = hasSignaturePlaceholder(reader);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new ToolError('PDF_PARSE_FAILED', `Failed to inspect PDF for existing placeholder: ${message}`);
+    }
+    if (already) return pdfBytes;
+    if (!autoInject) {
+        throw new ToolError(
+            'MISSING_PLACEHOLDER',
+            "Input PDF has no /Sig placeholder and autoInjectPlaceholder=false. Either set autoInjectPlaceholder=true or call prepare_signature_placeholder first.",
+        );
+    }
+    try {
+        return addSignaturePlaceholder(pdfBytes);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new ToolError('PLACEHOLDER_FAILED', `Failed to auto-inject signature placeholder: ${message}`);
+    }
+}
+
 export async function signPdf(rawInput: unknown): Promise<OutputResult> {
     const parsed = InputSchema.safeParse(rawInput);
     if (!parsed.success) {
@@ -115,8 +171,9 @@ export async function signPdf(rawInput: unknown): Promise<OutputResult> {
     }
     const input = parsed.data;
 
-    const pdfBytes = decodeBase64(input.pdfBase64, 'pdfBase64');
+    const rawPdfBytes = decodeBase64(input.pdfBase64, 'pdfBase64');
     const certDer = decodeBase64(input.certDerBase64, 'certDerBase64');
+    const pdfBytes = ensurePlaceholder(rawPdfBytes, input.autoInjectPlaceholder);
 
     const signerCert = parseCertificate(certDer);
 
@@ -136,7 +193,13 @@ export async function signPdf(rawInput: unknown): Promise<OutputResult> {
         const rsaKey = parseRsaPrivateKey(rsaDer);
         options = { ...baseOptions, rsaKey };
     } else {
-        const d = hexToBigInt(input.ecPrivateScalarHex as string);
+        let d: bigint;
+        if (input.ecPrivateScalarHex !== undefined) {
+            d = hexToBigInt(input.ecPrivateScalarHex);
+        } else {
+            const ecDer = decodeBase64(input.ecPrivateKeyDerBase64 as string, 'ecPrivateKeyDerBase64');
+            d = parseEcPrivateKeyDer(ecDer);
+        }
         options = { ...baseOptions, ecKey: { d } };
     }
 

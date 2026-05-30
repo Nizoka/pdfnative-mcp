@@ -1,0 +1,22 @@
+{
+  "description": "Factur-X / ZUGFeRD electronic invoice: PDF/A-3b document with embedded XML payload (Source).",
+  "tool": "add_attachment",
+  "arguments": {
+    "title": "Invoice INV-2025-001",
+    "blocks": [
+      { "type": "heading", "text": "Invoice INV-2025-001", "level": 1 },
+      { "type": "paragraph", "text": "Issue date: 2025-11-15" },
+      { "type": "paragraph", "text": "Total due: 1\u00a0234,56 EUR" },
+      { "type": "paragraph", "text": "Payment terms: net 30 days" }
+    ],
+    "attachments": [
+      {
+        "filename": "factur-x.xml",
+        "mimeType": "application/xml",
+        "dataBase64": "PD94bWwgdmVyc2lvbj0iMS4wIj8+PEludm9pY2UvPg==",
+        "relationship": "Source",
+        "description": "Factur-X / ZUGFeRD structured invoice (CII)"
+      }
+    ]
+  }
+}

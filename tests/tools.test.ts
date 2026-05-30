@@ -5,7 +5,7 @@ import { ensureCompressionReady } from '../src/server.js';
 import { ToolError } from '../src/errors.js';
 
 beforeAll(async () => {
-    delete process.env['PDFNATIVE_MPC_OUTPUT_DIR'];
+    delete process.env['PDFNATIVE_MCP_OUTPUT_DIR'];
     await ensureCompressionReady();
 });
 

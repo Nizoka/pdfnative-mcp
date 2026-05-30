@@ -4,7 +4,7 @@ import { ensureCompressionReady } from '../src/server.js';
 import { ToolError } from '../src/errors.js';
 
 beforeAll(async () => {
-    delete process.env['PDFNATIVE_MPC_OUTPUT_DIR'];
+    delete process.env['PDFNATIVE_MCP_OUTPUT_DIR'];
     await ensureCompressionReady();
 });
 
@@ -104,5 +104,36 @@ describe('add_table', () => {
         });
         expect(result.mode).toBe('base64');
         expect(decode(result.base64!)).toBe(PDF_HEADER);
+    });
+
+    it('accepts smart-table v1.2 fields (wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding)', async () => {
+        const result = await addTable({
+            title: 'Smart',
+            headers: ['Col1', 'Col2'],
+            rows: [
+                ['a', 'b'],
+                ['c', 'd'],
+            ],
+            wrap: 'auto',
+            repeatHeader: true,
+            zebra: true,
+            caption: 'Quarterly report',
+            minRowHeight: 18,
+            cellPadding: 4,
+        });
+        expect(result.mode).toBe('base64');
+        expect(decode(result.base64!)).toBe(PDF_HEADER);
+        expect(result.sizeBytes).toBeGreaterThan(100);
+    });
+
+    it('rejects invalid wrap value', async () => {
+        await expect(
+            addTable({
+                title: 'Bad',
+                headers: ['A'],
+                rows: [['1']],
+                wrap: 'sometimes',
+            }),
+        ).rejects.toThrow(ToolError);
     });
 });

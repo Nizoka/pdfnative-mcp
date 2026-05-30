@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+title: pdfnative-mcp
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - name: Nizoka
+    website: "https://github.com/Nizoka"
+repository-code: "https://github.com/Nizoka/pdfnative-mcp"
+url: "https://github.com/Nizoka/pdfnative-mcp"
+abstract: >-
+  Model Context Protocol (MCP) server bridging the zero-dependency pdfnative
+  library to AI clients. Provides 12 production-grade tools for PDF generation,
+  PDF/A archival, embedded barcodes, digital signatures (PAdES with RSA/ECDSA),
+  multi-script text, smart tables, interactive forms, embedded files (Factur-X),
+  signature verification, and PDF introspection.
+license: MIT
+version: 1.0.0
+date-released: "2025-01-01"
+keywords:
+  - mcp
+  - model-context-protocol
+  - pdf
+  - pdf-a
+  - pades
+  - digital-signature
+  - factur-x
+  - ai-tools

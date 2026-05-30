@@ -1,0 +1,35 @@
+{
+  "description": "Sign + verify workflow. sign_pdf auto-injects a /Sig placeholder when missing, so the prepare_signature_placeholder step is OPTIONAL (keep it only to customize the placeholder, e.g. larger placeholderBytes for >4096-bit RSA keys). PEM -> DER: `openssl x509 -in cert.pem -outform DER | base64 -w0` (cert) and `openssl pkey -in key.pem -outform DER | base64 -w0` (ECDSA key).",
+  "steps": [
+    {
+      "tool": "prepare_signature_placeholder",
+      "arguments": {
+        "title": "Contract",
+        "signerName": "Alice Example",
+        "reason": "I approve this document",
+        "location": "Paris",
+        "contactInfo": "alice@example.com",
+        "blocks": [
+          { "type": "heading", "text": "Service contract", "level": 1 },
+          { "type": "paragraph", "text": "Both parties agree to the terms set out herein." }
+        ]
+      }
+    },
+    {
+      "tool": "sign_pdf",
+      "arguments": {
+        "pdfBase64": "<base64 from step 1>",
+        "algorithm": "ecdsa-sha256",
+        "certDerBase64": "<your ECDSA cert in DER, base64>",
+        "ecPrivateKeyDerBase64": "<your EC private key in PKCS#8 DER, base64>"
+      }
+    },
+    {
+      "tool": "verify_pdf",
+      "arguments": {
+        "pdfBase64": "<base64 from step 2>",
+        "trustedRootsDerBase64": ["<optional self-signed root or CA in DER, base64>"]
+      }
+    }
+  ]
+}

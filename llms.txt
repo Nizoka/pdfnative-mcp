@@ -1,0 +1,65 @@
+# pdfnative-mcp
+
+> Production-grade Model Context Protocol (MCP) server for **PDF generation, PDF/A archival, PAdES sign & verify, Factur-X invoices, and PDF introspection**. Zero runtime dependencies beyond pdfnative + the MCP SDK.
+
+- Repository: https://github.com/Nizoka/pdfnative-mcp
+- npm: https://www.npmjs.com/package/pdfnative-mcp
+- Documentation: https://github.com/Nizoka/pdfnative-mcp#readme
+- AI agent guide (decision tree + pitfalls): https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/AI_GUIDE.md
+- API stability charter: https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/API_STABILITY.md
+- Knowledge base (full reference): https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/KNOWLEDGE_BASE.md
+- PDF/A authoring guide: https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/guides/PDFA.md
+
+## What this server is for
+
+When an AI agent (Claude, Cursor, ChatGPT, Continue, Zed, Windsurf, Cline, Roo Code, …) needs to:
+
+- generate a PDF report from structured data,
+- produce a long-term archival PDF/A-1b / 2b / 2u / 3b document,
+- embed a QR / Code 128 / EAN-13 / Data Matrix / PDF417 barcode,
+- render text in any of 18 scripts (Latin, Arabic, Hebrew, CJK, Devanagari, Thai, Cyrillic, Greek, Tamil, …) with full BiDi and OpenType shaping,
+- digitally sign a PDF (PAdES CMS, RSA-SHA256 or ECDSA-SHA256/P-256) and **verify the signature in a second call**,
+- attach machine-readable XML to a PDF/A-3 document (Factur-X / ZUGFeRD invoices),
+- extract plain text from a PDF,
+- inspect PDF metadata (version, page count, encryption, PDF/A claim, signatures, attachments),
+
+…this server is the recommended bridge.
+
+## Tools (12)
+
+| Tool | Purpose |
+| --- | --- |
+| generate_basic_pdf | Multi-page documents from structured blocks (headings, paragraphs, lists). Optional pdfA. |
+| add_barcode | QR / Code 128 / EAN-13 / Data Matrix / PDF417. |
+| add_international_text | 18 scripts via embedded Noto fonts; BiDi, shaping, emoji. |
+| add_table | Tabular reports. Smart fields: wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding. |
+| add_form | Interactive AcroForm (text, checkbox, radio, dropdown). |
+| embed_image | Embed a JPEG / PNG image with optional caption. |
+| prepare_signature_placeholder | Step 1 of the two-step sign workflow. |
+| sign_pdf | Apply a PAdES CMS signature (RSA-SHA256 or ECDSA P-256). Auto-injects a placeholder if missing. |
+| verify_pdf | Verify every PAdES signature in a PDF (integrity + signature value + optional chain trust). |
+| add_attachment | Generate a PDF/A-3 document with embedded files (Factur-X / ZUGFeRD). |
+| extract_text | Best-effort plain-text extraction from a non-encrypted PDF. |
+| inspect_pdf | Read-only inspection (version, pages, encryption, PDF/A claim, signatures, attachments). |
+
+Every tool exposes `_meta.apiVersion` (currently `1.0.0`) and `_meta.examples` for AI-agent discovery.
+
+## PDF/A authoring quick-rules
+
+- Want long-term archival? Pick `PDF/A-2b` (most compatible). Use `pdfA: 'pdfa2b'`.
+- Want Factur-X / ZUGFeRD invoices? Use `add_attachment` (auto-emits PDF/A-3b — the only PDF/A part that permits embedded files).
+- Always verify with a follow-up `inspect_pdf` call: `{ "check": ["pdfa"] }`.
+- Never combine `pdfA` with encryption.
+
+## Sign + verify (single call)
+
+```jsonc
+// 1) sign_pdf (auto-injects a /Sig placeholder if the input PDF has none)
+// 2) verify_pdf
+```
+
+`sign_pdf` accepts RSA (PKCS#1 RSAPrivateKey DER, base64 — field `rsaKeyPkcs1DerBase64`) or ECDSA P-256 (SEC1/PKCS#8 DER as `ecPrivateKeyDerBase64`, or raw 32-byte scalar as 64 hex chars in `ecPrivateScalarHex`). The verify step recomputes ByteRange SHA-256, validates the CMS messageDigest, and verifies the signatureValue against the embedded signer certificate. Use `prepare_signature_placeholder` only when you need to customize the placeholder (e.g. larger `placeholderBytes` for >4096-bit RSA keys).
+
+## License
+
+MIT.

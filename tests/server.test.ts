@@ -2,9 +2,9 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { createServer, ensureCompressionReady, __serverMetadata } from '../src/server.js';
+import { createServer, ensureCompressionReady, __serverMetadata, __serverInstructions } from '../src/server.js';
 
-const OUTPUT_ENV = 'PDFNATIVE_MPC_OUTPUT_DIR';
+const OUTPUT_ENV = 'PDFNATIVE_MCP_OUTPUT_DIR';
 
 describe('server', () => {
     beforeAll(async () => {
@@ -14,7 +14,21 @@ describe('server', () => {
 
     it('exposes stable metadata', () => {
         expect(__serverMetadata.name).toBe('pdfnative-mcp');
-        expect(__serverMetadata.version).toBe('0.3.0');
+        expect(__serverMetadata.version).toBe('1.0.0');
+    });
+
+    it('SERVER_INSTRUCTIONS advertises decision tree and pitfalls for AI clients', () => {
+        expect(__serverInstructions).toMatch(/pdfnative.*v1\.2/);
+        expect(__serverInstructions).toContain('DECISION TREE');
+        expect(__serverInstructions).toContain('COMMON PITFALLS');
+        // Cite each tool by name in the decision tree.
+        for (const t of [
+            'generate_basic_pdf', 'add_barcode', 'add_international_text', 'add_table',
+            'add_form', 'embed_image', 'prepare_signature_placeholder', 'sign_pdf',
+            'verify_pdf', 'inspect_pdf', 'add_attachment', 'extract_text',
+        ]) {
+            expect(__serverInstructions).toContain(t);
+        }
     });
 
     it('lists all tools', async () => {
@@ -23,21 +37,31 @@ describe('server', () => {
         expect(listHandler).toBeDefined();
 
         const response = (await listHandler!({ method: 'tools/list', params: {} })) as {
-            tools: Array<{ name: string }>;
+            tools: Array<{ name: string; _meta?: { apiVersion?: string; examples?: unknown[] } }>;
         };
 
         const names = response.tools.map((t) => t.name).sort();
         expect(names).toEqual([
+            'add_attachment',
             'add_barcode',
             'add_form',
             'add_international_text',
             'add_table',
             'embed_image',
+            'extract_text',
             'generate_basic_pdf',
             'inspect_pdf',
             'prepare_signature_placeholder',
             'sign_pdf',
+            'verify_pdf',
         ]);
+
+        // Every tool advertises _meta.apiVersion and at least one example.
+        for (const t of response.tools) {
+            expect(t._meta?.apiVersion).toBe('1.0.0');
+            expect(Array.isArray(t._meta?.examples)).toBe(true);
+            expect((t._meta?.examples ?? []).length).toBeGreaterThan(0);
+        }
     });
 
     it('returns an MCP tool error for unknown tools', async () => {
@@ -148,7 +172,11 @@ describe('server', () => {
         })) as { isError?: boolean; content: Array<{ text: string }> };
 
         expect(response.isError).toBe(true);
-        expect(response.content[0]?.text).toContain('sign_pdf failed:');
+        // In v1.0.0 sign_pdf intercepts PDF-parse failures (the malformed
+        // 3-byte fixture) before reaching pdfnative's signer and surfaces them
+        // as ToolError('PDF_PARSE_FAILED'); the generic-error branch is still
+        // exercised below via the fallback test path.
+        expect(response.content[0]?.text).toContain('sign_pdf failed');
     });
 
     it('dispatches inspect_pdf and returns structuredContent from buildInspectResult', async () => {

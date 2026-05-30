@@ -39,44 +39,37 @@ Priorities may shift based on community feedback and sponsorship.
 - [x] **`initCrypto()` boot** — first signing/inspection no longer pays an init penalty.
 - [x] **npm metadata** — 39 keywords, refreshed description, ⭐ star call-out.
 
+### v1.0.0 — First stable release
+
+- [x] **Tool `verify_pdf`** — PAdES signature verification end-to-end (CMS messageDigest + signatureValue, RSA-SHA256 + ECDSA P-256, optional chain trust).
+- [x] **Tool `add_attachment`** — PDF/A-3 generator with embedded files (Factur-X / ZUGFeRD).
+- [x] **Tool `extract_text`** — best-effort content-stream extraction; rejects encrypted PDFs.
+- [x] **`add_table` smart fields** — `wrap`, `repeatHeader`, `zebra`, `caption`, `minRowHeight`, `cellPadding`.
+- [x] **`sign_pdf` ergonomics** — `autoInjectPlaceholder` + `ecPrivateKeyDerBase64` (PKCS#8).
+- [x] **`inspect_pdf` parity** — `hasSignaturePlaceholder`, `attachments[]`, new `check` values `placeholder` + `attachments`.
+- [x] **Opt-in cache** — `PDFNATIVE_MCP_CACHE_DIR`; SHA-256 keyed; 1 h TTL; 256 MiB LRU.
+- [x] **MCP `_meta.apiVersion`** + per-tool **`_meta.examples`**.
+- [x] **Env-var typo fix** — `PDFNATIVE_MCP_OUTPUT_DIR` (old `_MPC_` kept as deprecated alias).
+- [x] **PDF/A guide** — [`docs/guides/PDFA.md`](docs/guides/PDFA.md).
+- [x] **Registry discovery** — `mcpName`, `server.json`, `llms.txt`, 70+ keywords, OpenSSF + CodeQL badges.
+
 ---
 
 ## In Progress
 
-_All v0.3.0 items have been merged into the [v0.3.0 release](release-notes/v0.3.0.md). Next iteration is v0.4.0 — see Planned below._
+_v1.0.0 is the active release. The v1.1 milestone re-opens the three explicitly deferred page-tree tools._
 
 ---
 
 ## Planned
 
-### v0.4.0 — Verification & signing ergonomics
+### v1.1.0 — Page-tree manipulation
 
-- [ ] **Tool `verify_pdf`** — verify CMS digital signatures end-to-end: certificate-chain validation, ByteRange hash check, tampering detection. Blocked on a high-level CMS verify primitive in pdfnative; manual implementation tracked.
-- [ ] **`sign_pdf` placeholder auto-injection** — auto-detect PDFs without an AcroForm `/Sig` field and inject a placeholder via incremental update so clients can sign any PDF in a single call.
-- [ ] **ECDSA DER private-key input** — accept SEC1 / PKCS#8 DER (base64) in addition to the raw 32-byte scalar (`ecPrivateScalarHex`).
-- [ ] **Encrypted-PDF fixtures** — round-trip an AES-128 / AES-256 / RC4 fixture so `inspect_pdf`'s encryption-detection branches are exercised by the unit suite.
-- [ ] **Signature appearance streams** — optional visible signature widget (signer name + date drawn into the page).
-
-### v0.5.0 — Document inspection & redaction
-
-- [ ] **Tool `extract_text`** — text extraction with per-page text and reading order, leveraging pdfnative's parser.
-- [ ] **Tool `redact_pdf`** — true content-stream redaction (not annotation overlays) for sensitive content.
-- [ ] **Tool `merge_pdfs` / `split_pdf`** — page-range merge & split via incremental updates, preserving signatures where possible.
-- [ ] **Tool `add_attachment`** — embed file attachments (PDF/A-3 conformant) for invoices, ZUGFeRD / Factur-X.
-
-### v0.6.0 — Performance & scale
-
-- [ ] **Streaming HTTP responses** — chunked PDF emission via `buildDocumentPDFStream()` so large documents don't materialise fully in memory.
-- [ ] **Web Worker offload** — opt-in worker pool for parallel generation when multiple tool calls arrive concurrently.
-- [ ] **Optional response caching** — content-addressed cache (SHA-256 of canonicalised input) with TTL + size cap, opt-in via env var.
-
-### v1.0.0 — Production-ready milestone
-
-- [ ] **API stability commitment** — semver guarantees on every tool's input / output schema.
-- [ ] **Tool versioning** — per-tool `apiVersion` so deprecations land non-breaking.
-- [ ] **Conformance test suite** — published JSON-RPC fixture set for downstream MCP clients and AI-eval harnesses.
-- [ ] **OpenSSF Best Practices** — passing badge.
-- [ ] **CodeQL + Scorecards** — workflows green on `main`.
+- [ ] **Tool `merge_pdfs`** — concatenate 2–50 PDFs, optionally drop signatures; blocked on pdfnative page-tree export.
+- [ ] **Tool `split_pdf`** — extract page ranges into individual PDFs.
+- [ ] **Tool `redact_pdf`** — overlay-mode (annotation rectangles + replacement text) in v1.1; content-stream redaction tracked for v1.2 once pdfnative exposes content-stream rewriting.
+- [ ] **Encrypted-PDF round-trip fixtures** — once pdfnative exposes a Standard Security Handler writer.
+- [ ] **Per-tool HTTP page-by-page streaming** — once MCP allows partial structuredContent envelopes.
 
 ### Long-Term
 

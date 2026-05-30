@@ -15,6 +15,7 @@ import { buildDocumentPDFBytes, buildPDFBytes, type DocumentBlock, type TableBlo
 import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
 
 export const ADD_TABLE_NAME = 'add_table';
 
@@ -76,17 +77,47 @@ export const ADD_TABLE_INPUT_SCHEMA = {
             description:
                 'When true, cell contents are clipped to column bounds via PDF clip-path operators (pdfnative v1.1). Recommended for PDF/A and visual safety. Switches the backend to buildDocumentPDFBytes.',
         },
+        wrap: {
+            type: 'string',
+            enum: ['auto', 'always', 'never'],
+            description: "Cell wrap policy (pdfnative v1.2). 'auto' (default) wraps only when a cell overflows; 'always' wraps every cell; 'never' uses v1.1 character truncation.",
+        },
+        repeatHeader: {
+            type: 'boolean',
+            description: 'Repeat the header row on every continuation page (pdfnative v1.2). Default true.',
+        },
+        zebra: {
+            type: 'boolean',
+            description: 'Enable zebra striping (alternate-row light tint, PDF/A-1b safe). pdfnative v1.2.',
+        },
+        caption: {
+            type: 'string',
+            maxLength: 200,
+            description: 'Caption rendered above the table (and emitted as /Caption structure element in tagged/PDF/A mode). pdfnative v1.2.',
+        },
+        minRowHeight: {
+            type: 'number',
+            minimum: 1,
+            maximum: 200,
+            description: 'Minimum row height in points (default 12). pdfnative v1.2.',
+        },
+        cellPadding: {
+            type: 'number',
+            minimum: 0,
+            maximum: 50,
+            description: 'Horizontal cell padding in points applied to both insets (default 3). pdfnative v1.2.',
+        },
         pdfA: {
             type: 'string',
-            enum: ['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b'],
-            description: 'Optional PDF/A conformance level. Mutually exclusive with PDF encryption.',
+            enum: [...PDF_A_ENUM],
+            description: PDF_A_FIELD_DESCRIPTION,
         },
         outputMode: {
             type: 'string',
             enum: ['base64', 'file'],
             default: 'base64',
             description:
-                "Either 'base64' (returns the PDF inline) or 'file' (writes to a sandboxed path inside PDFNATIVE_MPC_OUTPUT_DIR).",
+                "Either 'base64' (returns the PDF inline) or 'file' (writes to a sandboxed path inside PDFNATIVE_MCP_OUTPUT_DIR).",
         },
         outputPath: {
             type: 'string',
@@ -112,7 +143,13 @@ const InputSchema = z.object({
     footerText: z.string().max(200).optional(),
     autoFitColumns: z.boolean().optional(),
     clipCells: z.boolean().optional(),
-    pdfA: z.enum(['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b']).optional(),
+    wrap: z.enum(['auto', 'always', 'never']).optional(),
+    repeatHeader: z.boolean().optional(),
+    zebra: z.boolean().optional(),
+    caption: z.string().max(200).optional(),
+    minRowHeight: z.number().min(1).max(200).optional(),
+    cellPadding: z.number().min(0).max(50).optional(),
+    pdfA: PdfASchema.optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -122,7 +159,7 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, headers, rows, infoItems, footerText, autoFitColumns, clipCells, pdfA, outputMode, outputPath } = parsed.data;
+    const { title, headers, rows, infoItems, footerText, autoFitColumns, clipCells, wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, pdfA, outputMode, outputPath } = parsed.data;
 
     // Validate column count consistency: every row must have the same length as headers
     for (let i = 0; i < rows.length; i++) {
@@ -134,7 +171,8 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
         }
     }
 
-    const useDocumentBackend = autoFitColumns !== undefined || clipCells !== undefined || pdfA !== undefined;
+    const smartTableField = wrap !== undefined || repeatHeader !== undefined || zebra !== undefined || caption !== undefined || minRowHeight !== undefined || cellPadding !== undefined;
+    const useDocumentBackend = autoFitColumns !== undefined || clipCells !== undefined || pdfA !== undefined || smartTableField;
 
     let bytes: Uint8Array;
     if (useDocumentBackend) {
@@ -144,6 +182,12 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
             rows: rows.map((cells) => ({ cells, type: '', pointed: false })),
             ...(autoFitColumns !== undefined ? { autoFitColumns } : {}),
             ...(clipCells !== undefined ? { clipCells } : {}),
+            ...(wrap !== undefined ? { wrap } : {}),
+            ...(repeatHeader !== undefined ? { repeatHeader } : {}),
+            ...(zebra !== undefined ? { zebra } : {}),
+            ...(caption !== undefined ? { caption } : {}),
+            ...(minRowHeight !== undefined ? { minRowHeight } : {}),
+            ...(cellPadding !== undefined ? { cellPadding } : {}),
         };
         const blocks: DocumentBlock[] = [];
         if (infoItems !== undefined && infoItems.length > 0) {
