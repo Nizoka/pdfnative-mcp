@@ -1,33 +1,37 @@
 # pdfnative-mcp — Knowledge Base
 
-> This document is structured for AI assistants (GitHub Copilot, Claude, Cursor, Continue, Zed).  
-> It provides the full context needed to understand, extend, and debug pdfnative-mcp without reading all source files.
+> Reference for AI assistants (GitHub Copilot, Claude, Cursor, Continue, Zed, Windsurf, Cline, Roo Code)
+> and human contributors. Captures the full context needed to understand, extend, and debug
+> pdfnative-mcp **v1.0.0** without reading every source file.
+
+> If you are an AI agent calling pdfnative-mcp from a chat session, also read
+> [`AI_GUIDE.md`](AI_GUIDE.md) — the short, action-oriented decision tree.
 
 ---
 
 ## 1. Context
 
 **What is pdfnative-mcp?**
-An MCP (Model Context Protocol) server that bridges the zero-dependency [`pdfnative`](https://github.com/Nizoka/pdfnative) library to AI clients (Claude Desktop, Cursor, ChatGPT, Continue, Zed, etc.).  
-It exposes 8 PDF tools over a stdio (or HTTP) transport so AI agents can generate, sign, and analyse PDF files.
+An MCP (Model Context Protocol) server that bridges the zero-dependency
+[`pdfnative`](https://github.com/Nizoka/pdfnative) library (v1.2.x) to AI clients
+(Claude Desktop, ChatGPT, Cursor, Continue, Zed, Windsurf, Cline, Roo Code, …).
+It exposes **12** PDF tools over a stdio transport so AI agents can generate, sign,
+verify, attach, inspect and extract PDF files.
 
 **Philosophy:**
 - `pdfnative` is the only runtime dependency — all PDF logic lives there.
 - The MCP server is a thin, secure dispatch layer: validate inputs with Zod → call pdfnative → emit PDF as base64 or to a sandboxed file.
-- Every tool is fully self-contained (its own file in `src/tools/`).
-- Security at every boundary: Zod validation on all inputs, path traversal prevention on file output.
+- Every tool is fully self-contained (its own file in [src/tools/](../src/tools)).
+- Security at every boundary: Zod validation on all inputs, path traversal prevention on file output, no key-material echo in logs or errors.
+- Every tool ships `_meta.apiVersion = '1.0.0'` and worked-example `_meta.examples` so AI clients can introspect supported behavior — see [`API_STABILITY.md`](API_STABILITY.md).
 
-**Runtime:** Node.js ≥ 20 (ESM, strict TypeScript)
+**Runtime:** Node.js ≥ 22 (ESM, strict TypeScript). Transport: stdio.
 
-**Transports:**
-- `stdio` (default) — for local AI client integrations (Claude Desktop, Cursor, etc.)
-- HTTP (Streamable HTTP) — when `PDFNATIVE_MCP_PORT` is set, exposes a POST `/mcp` endpoint
-
-**Repositories:**  
-- MCP server: https://github.com/Nizoka/pdfnative-mcp  
-- Core library: https://github.com/Nizoka/pdfnative  
-- CLI companion: https://github.com/Nizoka/pdfnative-cli  
-- npm: https://www.npmjs.com/package/pdfnative-mcp
+**Repositories**
+- MCP server: <https://github.com/Nizoka/pdfnative-mcp>
+- Core library: <https://github.com/Nizoka/pdfnative>
+- CLI companion: <https://github.com/Nizoka/pdfnative-cli>
+- npm: <https://www.npmjs.com/package/pdfnative-mcp>
 
 ---
 
@@ -35,41 +39,46 @@ It exposes 8 PDF tools over a stdio (or HTTP) transport so AI agents can generat
 
 ```
 src/
-├── cli.ts            # Entry point: transport selection (stdio or HTTP), signal handling
+├── cli.ts            # Entry point: stdio transport, signal handling, lazy init
 ├── server.ts         # createServer(): MCP tool registry + request handlers
 ├── output.ts         # outputMode logic: base64 inline vs sandboxed file write
+├── cache.ts          # In-process LRU cache for idempotent tool results
 ├── errors.ts         # ToolError + SecurityError
 └── tools/
     ├── generate-basic-pdf.ts          # generate_basic_pdf
     ├── add-barcode.ts                 # add_barcode
-    ├── sign-pdf.ts                    # sign_pdf
     ├── add-international-text.ts      # add_international_text
     ├── add-table.ts                   # add_table
     ├── add-form.ts                    # add_form
     ├── embed-image.ts                 # embed_image
-    ├── inspect-pdf.ts                 # inspect_pdf  (new in v0.3.0)
-    └── prepare-signature-placeholder.ts  # prepare_signature_placeholder
+    ├── prepare-signature-placeholder.ts  # prepare_signature_placeholder
+    ├── sign-pdf.ts                    # sign_pdf
+    ├── verify-pdf.ts                  # verify_pdf
+    ├── inspect-pdf.ts                 # inspect_pdf
+    ├── add-attachment.ts              # add_attachment (PDF/A-3 / Factur-X)
+    └── extract-text.ts                # extract_text
 ```
 
 ### Request Dispatch Flow
 
 ```
-AI client (Claude / Cursor / etc.)
-    │  MCP JSON-RPC over stdio or HTTP POST /mcp
+AI client (Claude / Cursor / Copilot / etc.)
+    │  MCP JSON-RPC over stdio
     ▼
 src/cli.ts
-  ensureCompressionReady()          ← init pdfnative compression codec
-  createServer()                    ← builds the MCP Server instance
-  connect(StdioServerTransport | StreamableHTTPServerTransport)
+  initCrypto() + initNodeCompression() ← awaited lazily, once
+  createServer()                       ← builds the MCP Server instance
+  connect(StdioServerTransport)
     │
     ▼
 src/server.ts  (createServer)
-  ListToolsRequest  → TOOLS registry → list of JSON schemas
+  ListToolsRequest  → TOOLS registry → JSON schemas + _meta (apiVersion + examples)
   CallToolRequest   → TOOL_INDEX.get(name) → handler(args)
     │
     ▼
 src/tools/<tool>.ts
-  Zod.parse(args)                   ← throws ToolError on invalid input
+  Zod.parse(args)                   ← throws ToolError('VALIDATION_ERROR') on bad input
+  (cache lookup via src/cache.ts for read-only / idempotent tools)
   call pdfnative API
   emitPdf(bytes, { mode, outputPath })  ← src/output.ts
     │
@@ -79,7 +88,7 @@ src/tools/<tool>.ts
 
 ---
 
-## 3. Tool Registry (`src/server.ts`)
+## 3. Tool Registry ([src/server.ts](../src/server.ts))
 
 Each tool is registered in the `TOOLS: readonly ToolDefinition[]` array with:
 
@@ -88,25 +97,32 @@ interface ToolDefinition {
     name: string;
     title: string;
     description: string;
-    inputSchema: unknown;             // JSON Schema for MCP ListTools response
-    outputSchema?: unknown;           // JSON Schema for the tool result (MCP 2025-06-18, added in v0.3.0)
+    inputSchema: unknown;             // JSON Schema for ListTools response
+    outputSchema?: unknown;           // JSON Schema for the tool result
     annotations?: {
         readOnlyHint?: boolean;
         destructiveHint?: boolean;
         idempotentHint?: boolean;
         openWorldHint?: boolean;
     };
-    handler: (args: unknown) => Promise<OutputResult | InspectPdfResult>;
+    examples?: ReadonlyArray<{ title: string; input: Record<string, unknown> }>;
+    handler: (args: unknown) => Promise<OutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult>;
 }
 ```
 
 A `TOOL_INDEX: ReadonlyMap<string, ToolDefinition>` is derived from the array for O(1) lookup on `CallToolRequest`.
 
+**`_meta` per tool** — emitted in the `ListTools` response so AI clients can introspect:
+- `_meta.apiVersion` = `'1.0.0'` (see [`API_STABILITY.md`](API_STABILITY.md) for the bump policy)
+- `_meta.examples`   = at least one worked example per tool
+
 **Server metadata:**
 - `SERVER_NAME = 'pdfnative-mcp'`
-- `SERVER_VERSION = '0.3.0'` (hardcoded to avoid `rootDir` expansion beyond `./src`)
+- `SERVER_VERSION = '1.0.0'`
+- `serverInfo._meta.mcpName = 'pdfnative-mcp'` (machine ID used by the MCP registry)
+- `SERVER_INSTRUCTIONS` — high-level decision tree + common-pitfall guide returned to the client in `serverInfo.instructions`
 
-**v0.3.0 boot:** `ensureCompressionReady()` now also awaits `initCrypto()` (pdfnative v1.1) so the first signing or `inspect_pdf` call no longer pays an init penalty.
+**Boot:** `initCrypto()` and `initNodeCompression()` are awaited lazily on the first request so the cold start is not paid up-front.
 
 ---
 
@@ -114,21 +130,7 @@ A `TOOL_INDEX: ReadonlyMap<string, ToolDefinition>` is derived from the array fo
 
 ### `generate_basic_pdf`
 
-**Purpose:** Multi-page document from structured content blocks. The most general-purpose tool.
-
-**When to use:** Reports, letters, articles, invoices, manuals — any standard document layout.
-
-**Key inputs:**
-
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `title` | string 1–200 | Yes | Rendered at top and used as PDF metadata |
-| `blocks` | array 1–5000 | Yes | Ordered content blocks (see block types below) |
-| `footerText` | string | No | Footer on every page |
-| `metadata` | object | No | `{ author, subject, creator, keywords }` |
-| `layout` | object | No | `{ pageSize, margins: { t, r, b, l } }` |
-| `outputMode` | `'base64'`\|`'file'` | No | Default `'base64'` |
-| `outputPath` | string | No | Required when `outputMode='file'` |
+**Purpose:** Multi-page A4 document from structured content blocks. Default tool for plain documents.
 
 **Block types (`blocks[]`):**
 
@@ -144,237 +146,119 @@ A `TOOL_INDEX: ReadonlyMap<string, ToolDefinition>` is derived from the array fo
                          "name": "field1", "label": "...", "options": ["..."] }
 ```
 
+Optional `pdfA: 'pdfa1b' | 'pdfa2b' | 'pdfa2u' | 'pdfa3b'` produces an archival document.
+For Factur-X / ZUGFeRD invoices use [`add_attachment`](#add_attachment) instead — `generate_basic_pdf` cannot embed files.
+
 ---
 
 ### `add_barcode`
 
-**Purpose:** Single-page PDF with an embedded barcode or QR code.
-
-**When to use:** Tickets, labels, vouchers, inventory tags, package tracking.
-
-**Key inputs:**
+**Purpose:** Single-page PDF with a barcode / QR.
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
 | `format` | enum | Yes | `'qr'`, `'code128'`, `'ean13'`, `'datamatrix'`, `'pdf417'` |
-| `data` | string 1–4296 | Yes | EAN-13 must be 12 or 13 digits |
-| `caption` | string | No | Rendered above barcode |
-| `title` | string | No | Page heading + PDF metadata title (default `'Barcode'`) |
+| `data` | string 1–4296 | Yes | RAW payload — do NOT URL-encode. EAN-13 must be 12 or 13 digits |
+| `caption` / `title` | string | No | — |
 | `width` / `height` | number 30–500 | No | Points; height ignored for square symbologies |
-| `ecLevel` | `'L'`\|`'M'`\|`'Q'`\|`'H'` | No | QR error correction (default `'M'`) |
-
----
-
-### `sign_pdf`
-
-**Purpose:** Apply a PAdES-compatible CMS digital signature to a PDF that already has a `/Sig` placeholder.
-
-**When to use:** Step 2 of the two-step signing workflow (after `prepare_signature_placeholder`).
-
-**Key inputs:**
-
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `pdfBase64` | string | Yes | Base64-encoded PDF with `/Sig` placeholder |
-| `algorithm` | enum | Yes | `'rsa-sha256'` or `'ecdsa-sha256'` (P-256 only) |
-| `certDerBase64` | string | Yes | Base64 of signer X.509 certificate (DER) |
-| `rsaKeyPkcs1DerBase64` | string | Cond. | RSA PKCS#1 private key in DER, base64; required for RSA |
-| `ecPrivateScalarHex` | string | Cond. | 64-char hex P-256 private scalar `d`; required for ECDSA |
-| `signerName` / `reason` / `location` / `contactInfo` | string | No | Embedded in the signature dictionary |
-| `signingTime` | ISO-8601 string | No | Defaults to now |
-
-> **Security note:** Never log key material. The tool does not echo private keys in responses or errors.
-
-**Two-step signing workflow:**
-```
-prepare_signature_placeholder → (base64 PDF with /Sig) → sign_pdf → (signed PDF)
-```
-
----
+| `ecLevel` | `'L'`\|`'M'`\|`'Q'`\|`'H'` | No | **QR only** (default `'M'`). Use `'H'` for printed media. |
+| `pdfA` | enum | No | `pdfa1b` / `pdfa2b` / `pdfa2u` / `pdfa3b` |
 
 ### `add_international_text`
 
-**Purpose:** PDF with non-Latin script text. BiDi reordering, Arabic shaping, CJK, and OpenType shaping are handled automatically.
-
-**Supported languages (`lang` codes):**
-
-| Code | Script |
-|------|--------|
-| `ar` | Arabic |
-| `he` | Hebrew |
-| `th` | Thai |
-| `ja` | Japanese (CJK) |
-| `zh` | Chinese Simplified (CJK) |
-| `ko` | Korean (CJK) |
-| `hi` | Devanagari |
-| `bn` | Bengali |
-| `ta` | Tamil |
-| `ru` | Cyrillic |
-| `el` | Greek |
-| `ka` | Georgian |
-| `hy` | Armenian |
-| `tr` | Turkish |
-| `pl` | Polish |
-| `vi` | Vietnamese |
-
-**Key inputs:**
-
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `lang` | enum (codes above) | Yes | Selects the embedded Noto font |
-| `title` | string | Yes | Page heading + PDF metadata |
-| `blocks` | array | Yes | Same block types as `generate_basic_pdf` |
-
-**Fonts:** Noto font data is loaded from `pdfnative/fonts/<lang>-data.js` modules at runtime. No external network call is made.
-
----
+18 scripts via embedded Noto fonts (Arabic, Hebrew, Thai, Japanese/Chinese/Korean, Devanagari, Bengali, Tamil, Cyrillic, Greek, Georgian, Armenian, Turkish, Polish, Vietnamese, …). BiDi isolates + Arabic harakat + emoji handled automatically.
 
 ### `add_table`
 
-**Purpose:** Tabular PDF report from column headers and data rows.
-
-**When to use:** Data exports, financial summaries, schedules, leaderboards — structured grid content.
-
-**Key inputs:**
-
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `title` | string 1–200 | Yes | Report heading + PDF metadata |
-| `headers` | string[] 1–50 | Yes | Column header labels |
-| `rows` | string[][] 1–5000 | Yes | Each row must match `headers` length |
-| `infoItems` | `{ label, value }[]` | No | Key-value metadata block under the title (max 20) |
-| `footerText` | string | No | Footer on every page |
-
----
+Tabular reports with v1.2 smart-table fields: `wrap` (`auto`/`always`/`never`), `repeatHeader`, `zebra`, `caption`, `minRowHeight`, `cellPadding`. Every row must have the same length as `headers`. Optional `infoItems` for a metadata block under the title. Optional `pdfA` for archival output.
 
 ### `add_form`
 
-**Purpose:** Interactive AcroForm PDF with fillable fields.
-
-**When to use:** Data-capture forms, surveys, fillable templates, HR documents.
-
-**Field types (`fieldType`):** `'text'`, `'textarea'`, `'checkbox'`, `'radio'`, `'dropdown'`
-
-**Key inputs:**
-
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `title` | string 1–200 | Yes | Page heading + PDF metadata |
-| `fields` | FormField[] 1–200 | Yes | Each field: `fieldType`, `name`, optional `label`/`value`/`options` |
-| `blocks` | block[] | No | Content blocks rendered before the form fields |
-
----
+Interactive AcroForm with `text`, `textarea`, `checkbox`, `radio`, `dropdown` fields. Optional `blocks[]` rendered before the field group.
 
 ### `embed_image`
 
-**Purpose:** PDF document with an embedded JPEG or PNG image.
-
-**When to use:** Certificates with logos, photo reports, product sheets with visual assets.
-
-**Key inputs:**
-
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `imageBase64` | string | Yes | Base64-encoded JPEG or PNG |
-| `mimeType` | `'image/jpeg'`\|`'image/png'` | Yes | Must match actual encoding |
-| `title` | string | No | Page heading + PDF metadata |
-| `caption` | string | No | Rendered below image |
-| `width` / `height` | number 10–800/1000 | No | Points; aspect ratio preserved if only one set |
-
----
+Single-image PDF (JPEG or PNG). Optional caption / title / explicit width-height (aspect ratio preserved when only one dimension is provided).
 
 ### `prepare_signature_placeholder`
 
-**Purpose:** Create a PDF with a `/Sig` AcroForm placeholder, ready to be signed by `sign_pdf`.
+Creates a PDF with an unsigned `/Sig` placeholder. **Optional since v1.0.0** — `sign_pdf` auto-injects a placeholder when missing. Use only when you need to customize the placeholder (e.g. larger `placeholderBytes` for >4096-bit RSA keys, or anchor the widget to a specific `pageIndex`).
 
-**When to use:** Step 1 of the two-step signing workflow.
+### `sign_pdf`
 
-**Key inputs:**
-
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `title` | string | Yes | Page heading + metadata |
-| `signerName` / `reason` / `location` / `contactInfo` | string | No | Pre-fills `/Sig` dictionary fields |
-| `blocks` | block[] | No | Document body rendered before the signature widget |
-
-**Output:** Base64-encoded PDF (or file) containing the `/Contents` and `/ByteRange` reservation structures that `sign_pdf` will populate.
-
----
-
-### `inspect_pdf`  *(added in v0.3.0)*
-
-**Purpose:** Read-only structural and security inspection of an existing PDF. Useful for downstream verification, CI assertions, and AI agents that need to reason about a PDF before acting on it.
-
-**Implementation:** All parsing flows through pdfnative v1.1's hardened `openPdf()` reader (CWE-674 / CWE-400 mitigations baked in). No filesystem reads \u2014 the caller supplies the PDF as base64.
-
-**Key inputs:**
+PAdES-compatible CMS signature. Algorithm: `'rsa-sha256'` or `'ecdsa-sha256'` (P-256).
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `pdfBase64` | string | Yes | Base64-encoded PDF bytes to inspect |
-| `pages` | boolean | No | When `true`, includes per-page `{ index, width, height }` |
-| `check` | array | No | CI-style assertions: any of `'pdfa'`, `'signed'`, `'encrypted'`. AND-evaluated into `checksPassed`. |
+| `pdfBase64` | string | Yes | Any PDF — placeholder auto-injected when missing |
+| `algorithm` | enum | Yes | — |
+| `certDerBase64` | string | Yes | X.509 cert in DER, base64. PEM → DER: `openssl x509 -in cert.pem -outform DER \| base64 -w0` |
+| `rsaKeyPkcs1DerBase64` | string | Cond. | Required for RSA. PKCS#1 DER (NOT PKCS#8). `openssl rsa -in key.pem -outform DER -traditional \| base64 -w0` |
+| `ecPrivateScalarHex` | string | Cond. | OR. 64 hex chars (raw P-256 scalar `d`). |
+| `ecPrivateKeyDerBase64` | string | Cond. | OR. SEC1 or PKCS#8 DER. `openssl pkey -in key.pem -outform DER \| base64 -w0`. |
+| `autoInjectPlaceholder` | bool | No | Default `true` |
+| `signerName` / `reason` / `location` / `contactInfo` | string | No | Embedded in `/Sig` |
+| `signingTime` | ISO-8601 | No | Defaults to now |
 
-**Output (`InspectPdfResult`):**
+Never logs key material.
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `version` | string | PDF header version (e.g. `"1.7"`) |
-| `pageCount` | number | Total pages |
-| `encryption` | enum | `'none' \| 'aes-128' \| 'aes-256' \| 'rc4' \| 'unknown'` |
-| `pdfA` | string \| null | Detected PDF/A claim from XMP (`'1B'`, `'2B'`, `'2U'`, `'3B'`) or `null` |
-| `signatureCount` | number | Number of `/FT /Sig` widget annotations in AcroForm |
-| `info` | object | `/Info` dictionary entries decoded as strings |
-| `perPage` | array? | When `pages=true` |
-| `checks` / `checksPassed` | object / boolean | Present when `check` was supplied |
+### `verify_pdf`
 
-**Annotations:** `readOnlyHint: true`, `idempotentHint: true`.
+Read-only verification of every PAdES Baseline / `adbe.pkcs7.detached` signature. For each `/Sig`: recomputes ByteRange SHA-256, validates CMS `messageDigest` (integrity) and `signatureValue`. Optional `trustedRootsDerBase64[]` enables chain trust (otherwise per-signature `chainTrust` is `'self-signed'` or `'unverified'`).
+
+Response shape:
+```jsonc
+{
+  "allValid": true,
+  "signatureCount": 1,
+  "summary": "1 signature, all valid",
+  "signatures": [{
+    "valid": true, "integrity": true, "signatureValue": true,
+    "signerSubject": "CN=Alice…", "signingTime": "2025-01-…",
+    "reason": "…", "location": "…",
+    "chainTrust": "self-signed",
+    "errors": []
+  }]
+}
+```
+
+### `inspect_pdf`
+
+Structural / security inspection.
+- `version`, `pageCount`, `encryption` (`none|aes-128|aes-256|rc4|unknown`), `pdfA` (`1B|2B|2U|3B|null`)
+- `signatureCount`, `hasSignaturePlaceholder`, `attachments[]`
+- `/Info` dictionary + optional `perPage` sizes
+- Optional `check[]` for CI-style assertions: `'pdfa' | 'signed' | 'encrypted' | 'placeholder' | 'attachments'`. `checksPassed` is the AND of all requested checks.
+
+### `add_attachment`
+
+PDF/A-3 (ISO 19005-3) with one or more embedded files. **Primary use case: Factur-X / ZUGFeRD invoices** (single XML payload, `relationship: 'Source'`). Each attachment is capped at 8 MiB. Optional `blocks[]` for the visible body.
+
+### `extract_text`
+
+Best-effort plain-text extraction (Tj / ' / " / TJ). Returns `{ pageCount, extractedPageCount, extractable, extractableReason?, pages: [{ index, text }], fullText }`. `extractable: false` is **not an error** — it means the PDF uses subset fonts without `/ToUnicode` CMaps; `extractableReason` explains the situation. Encrypted PDFs are rejected with `EXTRACTION_UNSUPPORTED`.
 
 ---
 
-### PDF/A flag (added in v0.3.0)
-
-Every document-producing tool now accepts an optional `pdfA` field:
-
-| Tool | Field | Values | Notes |
-|------|-------|--------|-------|
-| `generate_basic_pdf`, `add_form`, `add_table`, `embed_image`, `add_barcode`, `prepare_signature_placeholder`, `add_international_text` | `pdfA` | `'pdfa1b' \| 'pdfa2b' \| 'pdfa2u' \| 'pdfa3b'` | Maps to pdfnative v1.1's `tagged` layout option. Mutually exclusive with PDF encryption. |
-
-When `pdfA` is omitted, the byte output is identical to v0.2.0.
-
----
-
-## 5. Output System (`src/output.ts`)
-
-### Output Modes
+## 5. Output System ([src/output.ts](../src/output.ts))
 
 | Mode | Description | Env var required |
 |------|-------------|-----------------|
-| `'base64'` | Returns the PDF inline as a base64-encoded `resource` in the MCP response | No |
-| `'file'` | Writes the PDF to a sandboxed directory; returns `filePath + sizeBytes` | Yes — `PDFNATIVE_MPC_OUTPUT_DIR` |
+| `'base64'` | PDF inline as base64 `resource` in MCP response | No |
+| `'file'`   | Writes to sandboxed dir; returns `filePath + sizeBytes` | Yes — `PDFNATIVE_MCP_OUTPUT_DIR` |
 
 ### Sandboxed File Output
 
-When `outputMode='file'`, the caller must supply `outputPath` (a relative path) and the host must have set `PDFNATIVE_MPC_OUTPUT_DIR` to an absolute directory.
+When `outputMode='file'`, the caller must supply `outputPath` (relative) and the host must have set `PDFNATIVE_MCP_OUTPUT_DIR` to an absolute directory.
 
 Security enforcement in `resolveSandboxedPath()`:
-1. **Absolute paths rejected** — only relative paths accepted.
-2. **NUL byte rejected** — `\0` in path causes `SecurityError`.
-3. **Path traversal rejected** — resolved path must stay within the sandbox (`path.relative` check).
-4. **Extension enforced** — `outputPath` must end with `.pdf`.
-5. **Size cap** — generated PDF over 50 MB throws `ToolError('OUTPUT_TOO_LARGE')`.
+1. Absolute paths rejected (relative only).
+2. NUL byte rejected.
+3. Path traversal rejected (`path.relative` check stays within the sandbox).
+4. Extension enforced (`.pdf`).
+5. Size cap — generated PDF over 50 MB throws `ToolError('OUTPUT_TOO_LARGE')`.
 
-```typescript
-// env var name
-const OUTPUT_DIR_ENV = 'PDFNATIVE_MPC_OUTPUT_DIR';  // note: typo preserved from v0.1.0
-
-// helpers
-export function getOutputSandbox(): string | null
-export function resolveSandboxedPath(userPath: string): string   // throws SecurityError
-export async function emitPdf(bytes: Uint8Array, options: { mode, outputPath? }): Promise<OutputResult>
-```
-
-### OutputResult type
+### `OutputResult` type
 
 ```typescript
 interface OutputResult {
@@ -387,192 +271,80 @@ interface OutputResult {
 
 ---
 
-## 6. Error Types (`src/errors.ts`)
+## 6. Caching ([src/cache.ts](../src/cache.ts))
+
+A small in-process LRU caches the result of idempotent / read-only tool invocations (key = SHA-256 of `toolName + JSON.stringify(input)`). Disabled by default; set `PDFNATIVE_MCP_CACHE_DIR` to enable a persistent on-disk cache. Cached responses preserve the exact same shape as fresh ones.
+
+---
+
+## 7. Error Types ([src/errors.ts](../src/errors.ts))
 
 ```typescript
 class ToolError extends Error {
-    name = 'ToolError';
-    code: string;   // e.g. 'INVALID_PATH', 'OUTPUT_TOO_LARGE', 'INVALID_INPUT'
-    constructor(code: string, message: string)
+    code: string;  // e.g. 'VALIDATION_ERROR', 'PDF_PARSE_FAILED', 'MISSING_PLACEHOLDER',
+                   //      'EXTRACTION_UNSUPPORTED', 'OUTPUT_TOO_LARGE'
 }
-
 class SecurityError extends ToolError {
-    name = 'SecurityError';
     code = 'SECURITY_VIOLATION';
-    constructor(message: string)
 }
 ```
 
-**How errors surface to clients:**  
-`ToolError` → MCP `CallToolResult` with `isError: true`, error message in `content[0].text`.  
-Unhandled errors → logged to stderr, `isError: true` with generic message.
+`ToolError` → MCP `CallToolResult` with `isError: true`, message in `content[0].text`.
+Unhandled errors → logged to stderr, generic message returned.
 
 ---
 
-## 7. Transport Configuration (`src/cli.ts`)
+## 8. Transport & Environment
 
-### stdio (default)
-
-No extra configuration needed. Connect via MCP client config pointing to `npx pdfnative-mcp`.
-
-```json
-{
-  "mcpServers": {
-    "pdfnative": {
-      "command": "npx",
-      "args": ["-y", "pdfnative-mcp"],
-      "env": { "PDFNATIVE_MPC_OUTPUT_DIR": "/path/to/output-dir" }
-    }
-  }
-}
-```
-
-### HTTP (Streamable HTTP)
-
-Set `PDFNATIVE_MCP_PORT` to any valid port (1–65535). The server listens on that port and accepts `POST /mcp`.
-
-```bash
-PDFNATIVE_MCP_PORT=3000 npx pdfnative-mcp
-# Connect: http://localhost:3000/mcp
-```
-
-Handles `SIGINT` / `SIGTERM` for graceful shutdown.
-
----
-
-## 8. Environment Variables
+Two transports are supported. Default = stdio. Set `PDFNATIVE_MCP_PORT` to expose a Streamable HTTP endpoint on `http://127.0.0.1:<port>/mcp` instead.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `PDFNATIVE_MPC_OUTPUT_DIR` | No | Absolute path of the allowed output sandbox. File output disabled if unset. Note: legacy typo (`MPC` not `MCP`) — kept for backward compat. |
-| `PDFNATIVE_MCP_PORT` | No | Port for HTTP transport. Unset = stdio mode. |
+| `PDFNATIVE_MCP_OUTPUT_DIR` | No | Absolute path of the allowed output sandbox. File output disabled if unset. |
+| `PDFNATIVE_MCP_CACHE_DIR`  | No | Absolute path for the persistent cache. Cache disabled if unset. |
+| `PDFNATIVE_MCP_PORT`       | No | When set to a valid port (1–65535), switches the transport to Streamable HTTP. Unset = stdio. |
+
+> Historical note: pre-v1.0.0 used a misspelled env var (`PDFNATIVE_MPC_OUTPUT_DIR`). v1.0.0 standardized on `PDFNATIVE_MCP_OUTPUT_DIR`. Update any old config.
 
 ---
 
 ## 9. Adding a New Tool
 
-Checklist for adding a tool (e.g. `my_tool`):
-
-1. **Create `src/tools/my-tool.ts`** with:
-   - `MY_TOOL_NAME`: string constant
-   - `MY_TOOL_INPUT_SCHEMA`: JSON Schema object (used in `ListTools` response)
-   - Zod `InputSchema` that mirrors the JSON Schema
-   - `myTool(args: unknown): Promise<OutputResult>` handler
-
-2. **Register in `src/server.ts`**:
-   - Import `MY_TOOL_NAME`, `MY_TOOL_INPUT_SCHEMA`, `myTool`
-   - Add entry to `TOOLS` array
-   - Add description bullet to `SERVER_INSTRUCTIONS`
-
-3. **Add tests in `tests/`** covering:
-   - Happy path (base64 output)
-   - File output (if supported)
-   - Validation errors (invalid inputs → `ToolError`)
-   - Security errors (path traversal, etc., if applicable)
-
-4. **Update `docs/KNOWLEDGE_BASE.md`** (this file) with the new tool's section.
+1. Create `src/tools/my-tool.ts` exporting:
+   - `MY_TOOL_NAME`, `MY_TOOL_INPUT_SCHEMA`, optional `MY_TOOL_OUTPUT_SCHEMA`
+   - Zod `InputSchema` mirroring the JSON Schema
+   - `myTool(args: unknown): Promise<OutputResult | …>` handler
+2. Register in [src/server.ts](../src/server.ts) (`TOOLS` array, `SERVER_INSTRUCTIONS` decision tree, `_meta.examples`).
+3. Add tests in `tests/`: happy path (base64), file output, validation errors, security errors when applicable.
+4. Update this document and [`AI_GUIDE.md`](AI_GUIDE.md).
+5. Decide whether the change bumps `_meta.apiVersion` — see [`API_STABILITY.md`](API_STABILITY.md).
 
 ---
 
 ## 10. Development Quick Reference
 
 ```bash
-# Install dependencies
 npm install
-
-# Full quality gate (required before every PR)
-npm run typecheck:all   # tsc --noEmit on src + tests
-npm run lint            # ESLint
-npm run test            # vitest run
-npm run test:coverage   # vitest run --coverage
-npm run build           # tsup → dist/
-
-# Single test file
-npx vitest run tests/tools/generate-basic-pdf.test.ts
+npm run typecheck:all
+npm run lint
+npm run test
+npm run test:coverage
+npm run build
 ```
 
-**Build output structure:**
-```
-dist/
-├── cli.js       # ESM entry
-├── cli.cjs      # CJS entry
-└── *.d.ts       # Type declarations
-```
+Vitest coverage thresholds: `statements 88` / `branches 75` / `functions 85` / `lines 90`.
 
 ---
 
-## 11. Integration Examples
+## 11. Security Design Notes
 
-### Claude Desktop (stdio)
-
-```json
-{
-  "mcpServers": {
-    "pdfnative": {
-      "command": "npx",
-      "args": ["-y", "pdfnative-mcp"],
-      "env": { "PDFNATIVE_MPC_OUTPUT_DIR": "/Users/me/Documents/mcp-pdfs" }
-    }
-  }
-}
-```
-
-### Cursor (stdio)
-
-```json
-{
-  "mcp": {
-    "servers": {
-      "pdfnative": {
-        "command": "npx",
-        "args": ["-y", "pdfnative-mcp"]
-      }
-    }
-  }
-}
-```
-
-### Two-step digital signing
-
-```
-1. AI calls prepare_signature_placeholder
-   Input: { title: "Contract", signerName: "Alice", reason: "Approved" }
-   Output: base64 PDF with /Sig placeholder
-
-2. AI calls sign_pdf
-   Input: {
-     pdfBase64: "<output from step 1>",
-     algorithm: "rsa-sha256",
-     certDerBase64: "<base64 DER cert>",
-     rsaKeyPkcs1DerBase64: "<base64 DER private key>"
-   }
-   Output: base64 signed PDF
-```
-
-### Generating a bilingual Arabic/English document
-
-```jsonc
-// Call add_international_text with lang="ar"
-{
-  "lang": "ar",
-  "title": "تقرير",
-  "blocks": [
-    { "type": "heading", "text": "مرحباً بالعالم", "level": 1 },
-    { "type": "paragraph", "text": "هذا مستند تجريبي." }
-  ]
-}
-// Returns base64 PDF with proper BiDi reordering + Noto Arabic font
-```
-
----
-
-## 12. Security Design Notes
-
-- **No file read** — tools never read files from the filesystem; only write (when sandbox configured).
+- **No file read** — tools never read files from disk; only write (when sandbox configured).
 - **Input validation** — every tool validates with Zod before calling `pdfnative`. Invalid inputs → `ToolError`, not unhandled exceptions.
 - **Key material** — `sign_pdf` never echoes key or cert bytes in logs or error messages.
 - **Path traversal** — `resolveSandboxedPath` uses `path.relative` to verify the resolved path stays within the sandbox.
-- **NUL bytes** — explicitly rejected in output paths to prevent OS-level bypasses.
-- **Absolute paths** — rejected entirely; relative paths only, anchored to sandbox.
-- **Size cap** — 50 MB limit on output PDF prevents memory exhaustion on disk writes.
+- **NUL bytes** — explicitly rejected in output paths.
+- **Absolute paths** — rejected (relative only).
+- **Size cap** — 50 MB limit on output PDF prevents memory exhaustion.
 - **Strict TypeScript** — `noImplicitAny`, `strict: true`; `unknown` + narrowing throughout; `Zod` at all external boundaries.
+
+See [`guides/PDFA.md`](guides/PDFA.md) and [`AI_GUIDE.md`](AI_GUIDE.md) for usage-oriented notes.
