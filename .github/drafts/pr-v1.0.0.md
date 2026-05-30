@@ -2,11 +2,11 @@
 
 ## Summary
 
-Consolidates the deferred v0.4 → v1.0 roadmap into a single major release. Adds three new tools (`verify_pdf`, `add_attachment`, `extract_text`), six smart-table fields on `add_table`, ECDSA PKCS#8 DER signing support, `inspect_pdf` parity (placeholder + attachments), an opt-in content-addressed cache, and MCP `_meta.apiVersion` + per-tool examples. Built on [pdfnative v1.2.0](https://github.com/Nizoka/pdfnative/releases/tag/v1.2.0).
+Consolidates the deferred v0.4 → v1.0 roadmap into a single major release. Adds three new tools (`verify_pdf`, `add_attachment`, `extract_text`), six smart-table fields on `add_table`, ECDSA PKCS#8 DER signing support, `inspect_pdf` parity (placeholder + attachments), an opt-in content-addressed cache, MCP `_meta.apiVersion` + per-tool examples, an AI ergonomics pass, and full v1.0.0 documentation. Built on [pdfnative v1.2.0](https://github.com/Nizoka/pdfnative/releases/tag/v1.2.0).
 
 Full notes: [`release-notes/v1.0.0.md`](../../release-notes/v1.0.0.md).
 
-## Scope (10 atomic commits)
+## Scope (14 commits)
 
 | Commit | Phase | Subject |
 | --- | --- | --- |
@@ -14,12 +14,16 @@ Full notes: [`release-notes/v1.0.0.md`](../../release-notes/v1.0.0.md).
 | d4a3ec8 | 2 | Env-var typo fix `PDFNATIVE_MCP_OUTPUT_DIR` + deprecation alias |
 | b7ca341 | 3 | Signing ergonomics — autoInjectPlaceholder + ECDSA PKCS#8 DER |
 | 6b4748d | 4 | `verify_pdf` tool — CMS + RSA + ECDSA (self-contained, no external openssl) |
-| (commit 5) | 5 | Smart tables + `add_attachment` + `extract_text` |
+| 7de0bfd | 5 | Smart tables + `add_attachment` + `extract_text` |
 | 769fb8e | 6 | `inspect_pdf` parity — `hasSignaturePlaceholder` + `attachments[]` |
-| (commit 7) | 7 | Opt-in content-addressed cache |
+| cfee15b | 7 | Opt-in content-addressed cache |
 | dffbb92 | 8 | MCP `_meta.apiVersion` + per-tool examples + PDF/A guide |
-| (commit 9) | 9 | Security & supply-chain hardening (CITATION, FUNDING, badges) |
-| (commit 10) | 10 | Indexing, samples, docs, release artefacts |
+| 97d4307 | 9 | Security & supply-chain hardening (CITATION, FUNDING, badges) |
+| 05564b7 | 10 | Indexing, samples, docs, release artefacts |
+| e38ac30 | 11 | AI ergonomics pass — schemas, examples, SERVER_INSTRUCTIONS decision tree |
+| 5a9cfa0 | 12 | Docs: rewrite KNOWLEDGE_BASE + add AI_GUIDE + API_STABILITY |
+| 36f042a | 13 | Docs: README + llms.txt + instructions refresh |
+| 4368832 | 14 | Security: npm audit fix (ip-address XSS, qs DoS, express-rate-limit) |
 
 ## Closes
 
@@ -31,9 +35,10 @@ Full notes: [`release-notes/v1.0.0.md`](../../release-notes/v1.0.0.md).
 
 - ✅ `npm run typecheck:all` — 0 errors
 - ✅ `npm run lint` — 0 errors
-- ✅ `npm run test` — 148/148 passing across 17 files
-- ✅ `npm run test:coverage` — 89.09 / 76.13 / 98.29 / 92.06 (stmts / branches / funcs / lines), all ≥ vitest thresholds
+- ✅ `npm run test` — 149/149 passing across 17 files
+- ✅ `npm run test:coverage` — 88.95 / 76.02 / 97.70 / 91.77 (stmts / branches / funcs / lines), all ≥ vitest thresholds
 - ✅ `npm run build` — clean dist
+- ✅ `npm audit` — 0 vulnerabilities
 
 ## Deferred (with rationale)
 
@@ -47,9 +52,11 @@ Full notes: [`release-notes/v1.0.0.md`](../../release-notes/v1.0.0.md).
 - [ ] `package.json` version === SERVER_VERSION === `1.0.0`
 - [ ] Tool count assertion in `tests/server.test.ts` equals 12
 - [ ] Every tool exposes `_meta.apiVersion === '1.0.0'` and a non-empty `_meta.examples` array
+- [ ] `SERVER_INSTRUCTIONS` contains DECISION TREE and COMMON PITFALLS sections
 - [ ] `server.json` validates against the MCP registry schema
 - [ ] `llms.txt` is present at repo root and listed in `package.json.files`
 - [ ] Examples in `examples/*.json` parse as JSON and reference valid tool names
 - [ ] Upgrade guide in `release-notes/v1.0.0.md` covers the env-var rename
 - [ ] No new `any` types in `src/`
 - [ ] No CodeQL alerts
+- [ ] `npm audit` exits 0
