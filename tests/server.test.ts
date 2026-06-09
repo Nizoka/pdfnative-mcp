@@ -14,18 +14,18 @@ describe('server', () => {
 
     it('exposes stable metadata', () => {
         expect(__serverMetadata.name).toBe('pdfnative-mcp');
-        expect(__serverMetadata.version).toBe('1.0.0');
+        expect(__serverMetadata.version).toBe('1.1.0');
     });
 
     it('SERVER_INSTRUCTIONS advertises decision tree and pitfalls for AI clients', () => {
-        expect(__serverInstructions).toMatch(/pdfnative.*v1\.2/);
+        expect(__serverInstructions).toMatch(/pdfnative.*v1\.3/);
         expect(__serverInstructions).toContain('DECISION TREE');
         expect(__serverInstructions).toContain('COMMON PITFALLS');
         // Cite each tool by name in the decision tree.
         for (const t of [
             'generate_basic_pdf', 'add_barcode', 'add_international_text', 'add_table',
             'add_form', 'embed_image', 'prepare_signature_placeholder', 'sign_pdf',
-            'verify_pdf', 'inspect_pdf', 'add_attachment', 'extract_text',
+            'verify_pdf', 'validate_pdf', 'inspect_pdf', 'add_attachment', 'extract_text',
         ]) {
             expect(__serverInstructions).toContain(t);
         }
@@ -53,12 +53,13 @@ describe('server', () => {
             'inspect_pdf',
             'prepare_signature_placeholder',
             'sign_pdf',
+            'validate_pdf',
             'verify_pdf',
         ]);
 
         // Every tool advertises _meta.apiVersion and at least one example.
         for (const t of response.tools) {
-            expect(t._meta?.apiVersion).toBe('1.0.0');
+            expect(t._meta?.apiVersion).toBe('1.1.0');
             expect(Array.isArray(t._meta?.examples)).toBe(true);
             expect((t._meta?.examples ?? []).length).toBeGreaterThan(0);
         }

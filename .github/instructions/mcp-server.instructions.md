@@ -15,7 +15,7 @@ applyTo: "src/server.ts,src/tools/**,src/cli.ts"
   - `handler(args: unknown)`
 - Keep JSON schema and Zod validation aligned.
 - Return tool-level errors as `isError` responses with actionable messages — never throw across the MCP boundary.
-- Every tool registered in `src/server.ts` must ship `_meta.apiVersion = '1.0.0'` and at least one worked `_meta.examples` entry.
+- Every tool registered in `src/server.ts` must ship `_meta.apiVersion` (current `TOOL_API_VERSION`, see `docs/API_STABILITY.md`) and at least one worked `_meta.examples` entry.
 - Update `SERVER_INSTRUCTIONS` (decision tree + pitfalls) whenever you add a tool or change its behaviour.
 
 ## Safety

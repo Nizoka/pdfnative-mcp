@@ -53,21 +53,40 @@ Priorities may shift based on community feedback and sponsorship.
 - [x] **PDF/A guide** — [`docs/guides/PDFA.md`](docs/guides/PDFA.md).
 - [x] **Registry discovery** — `mcpName`, `server.json`, `llms.txt`, 70+ keywords, OpenSSF + CodeQL badges.
 
+### v1.1.0 — pdfnative 1.3 alignment + AI-friendliness
+
+- [x] **pdfnative v1.3.0** — dependency bump `^1.2.0` → `^1.3.0` (additive, no breaking changes).
+- [x] **Tool `validate_pdf`** — read-only PDF/UA (ISO 14289-1) structural conformance check wrapping pdfnative's `validatePdfUA()`. 13th tool.
+- [x] **Six new scripts** — `add_international_text` reaches **24 scripts**: Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic.
+- [x] **COLRv1 colour emoji** — native colour emoji via the `emoji` lang code, with monochrome fallback.
+- [x] **Newline sanitizer (Safe PDF/A)** — embedded `\n` in a paragraph auto-splits into separate paragraphs; eliminates `.notdef` tofu from LLM-style multi-line text.
+- [x] **Automatic NFC normalisation** — `add_international_text` normalises input to NFC for maximal glyph coverage.
+- [x] **Engine fixes surfaced** — Euro/CP-1252 symbols extract correctly ([pdfnative #48](https://github.com/Nizoka/pdfnative/issues/48)); wrapped table cells get unique per-line MCIDs (PDF/UA-safe).
+- [x] **Survival directives** — refreshed `SERVER_INSTRUCTIONS`, `llms.txt`, and docs for AI agents.
+
 ---
 
 ## In Progress
 
-_v1.0.0 is the active release. The v1.1 milestone re-opens the three explicitly deferred page-tree tools._
+_v1.1.0 is the active release. Page-tree manipulation tools remain blocked on an upstream pdfnative page-tree export API (see Blocked below)._
 
 ---
 
 ## Planned
 
-### v1.1.0 — Page-tree manipulation
+### Blocked upstream — Page-tree manipulation
+
+These tools were originally scoped for v1.1.0 but remain **blocked**: pdfnative
+v1.3.0 still exposes only incremental object-update primitives (`openPdf`,
+`createModifier`), not the page-tree export/merge/extract API required to build
+them safely. Implementing them on raw primitives would mean production-unsafe
+page-tree surgery (relocating `/Kids`, rewriting `/Parent` chains, merging
+resource pools), which contradicts this project's faithful, thin-wrapper
+philosophy. They will ship once pdfnative exports a page-tree manipulation API.
 
 - [ ] **Tool `merge_pdfs`** — concatenate 2–50 PDFs, optionally drop signatures; blocked on pdfnative page-tree export.
-- [ ] **Tool `split_pdf`** — extract page ranges into individual PDFs.
-- [ ] **Tool `redact_pdf`** — overlay-mode (annotation rectangles + replacement text) in v1.1; content-stream redaction tracked for v1.2 once pdfnative exposes content-stream rewriting.
+- [ ] **Tool `split_pdf`** — extract page ranges into individual PDFs; blocked on pdfnative page-tree export.
+- [ ] **Tool `redact_pdf`** — overlay-mode (annotation rectangles + replacement text); blocked on pdfnative annotation read/write API. Content-stream redaction tracked separately.
 - [ ] **Encrypted-PDF round-trip fixtures** — once pdfnative exposes a Standard Security Handler writer.
 - [ ] **Per-tool HTTP page-by-page streaming** — once MCP allows partial structuredContent envelopes.
 

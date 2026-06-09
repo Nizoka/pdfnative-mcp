@@ -1,7 +1,7 @@
 # AI Agent Guide — pdfnative-mcp
 
 > **Read this first if you are an AI agent (Copilot, Claude, Cursor, Continue, Zed, Windsurf, Cline, Roo Code, …) about to call pdfnative-mcp.**
-> It tells you which of the 12 tools to pick and how to avoid the common retry loops.
+> It tells you which of the 13 tools to pick and how to avoid the common retry loops.
 
 The server also returns the same decision tree in `serverInfo.instructions`. The full reference lives in [`KNOWLEDGE_BASE.md`](KNOWLEDGE_BASE.md); the stability charter in [`API_STABILITY.md`](API_STABILITY.md). Worked invocations are in [`../examples/`](../examples).
 
@@ -22,6 +22,7 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 | **Factur-X / ZUGFeRD invoice** or any PDF with attachments | `add_attachment` *(NOT `generate_basic_pdf`)* |
 | Inspect / assert metadata | `inspect_pdf` |
 | Verify all PAdES signatures | `verify_pdf` |
+| Validate PDF/UA accessibility structure | `validate_pdf` |
 | Extract plain text | `extract_text` |
 
 ---
@@ -51,7 +52,15 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 ### PDF/A
 - Pass `pdfA: 'pdfa2b'` for the widest reader compatibility.
 - Use `pdfa3b` when (and only when) you have attachments.
+- Write text **naturally** — embedded `\n` in a paragraph is auto-split into separate paragraphs; never emit a literal newline expecting a soft line break.
+- The Euro sign `€` and other CP-1252 symbols render and extract correctly (pdfnative 1.3). Do **not** substitute `EUR` for `€`.
+- Wrapped table cells get unique per-line MCIDs automatically — tagged tables are PDF/UA-safe.
+- After generating a tagged/PDF-A document, call `validate_pdf` to assert PDF/UA structural conformance.
 - See [`guides/PDFA.md`](guides/PDFA.md) for the per-tool capability matrix.
+
+### International text
+- `add_international_text` covers **24 scripts** (incl. Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic) and COLRv1 colour emoji. Pass `lang` as a single code, a comma-separated string, or an array (e.g. `["ar", "emoji"]`) for multi-script runs.
+- Input is NFC-normalised automatically; you do not need to pre-compose decomposed sequences.
 
 ### Text extraction
 - `extract_text` returning `extractable: false` is **not an error**. The PDF uses subset fonts without `/ToUnicode` CMaps; the `extractableReason` field explains. The file is not corrupt.

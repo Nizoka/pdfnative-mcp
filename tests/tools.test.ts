@@ -50,6 +50,23 @@ describe('generate_basic_pdf', () => {
         expect(result.mode).toBe('base64');
         expect(decode(result.base64!)).toBe(PDF_HEADER);
     });
+
+    it('auto-splits paragraphs containing embedded newlines (Safe PDF/A)', async () => {
+        const result = await generateBasicPdf({
+            title: 'Address',
+            blocks: [{ type: 'paragraph', text: 'Acme Corp\n123 Main St\nSpringfield' }],
+            pdfA: 'pdfa2b',
+        });
+        expect(result.mode).toBe('base64');
+        expect(decode(result.base64!)).toBe(PDF_HEADER);
+        expect(result.sizeBytes).toBeGreaterThan(100);
+    });
+
+    it('rejects input that sanitises to zero renderable blocks', async () => {
+        await expect(
+            generateBasicPdf({ title: 'Empty', blocks: [{ type: 'paragraph', text: '\n\n' }] }),
+        ).rejects.toThrow(ToolError);
+    });
 });
 
 describe('add_barcode', () => {

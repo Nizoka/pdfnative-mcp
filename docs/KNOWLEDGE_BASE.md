@@ -2,7 +2,7 @@
 
 > Reference for AI assistants (GitHub Copilot, Claude, Cursor, Continue, Zed, Windsurf, Cline, Roo Code)
 > and human contributors. Captures the full context needed to understand, extend, and debug
-> pdfnative-mcp **v1.0.0** without reading every source file.
+> pdfnative-mcp **v1.1.0** without reading every source file.
 
 > If you are an AI agent calling pdfnative-mcp from a chat session, also read
 > [`AI_GUIDE.md`](AI_GUIDE.md) — the short, action-oriented decision tree.
@@ -13,17 +13,17 @@
 
 **What is pdfnative-mcp?**
 An MCP (Model Context Protocol) server that bridges the zero-dependency
-[`pdfnative`](https://github.com/Nizoka/pdfnative) library (v1.2.x) to AI clients
+[`pdfnative`](https://github.com/Nizoka/pdfnative) library (v1.3.x) to AI clients
 (Claude Desktop, ChatGPT, Cursor, Continue, Zed, Windsurf, Cline, Roo Code, …).
-It exposes **12** PDF tools over a stdio transport so AI agents can generate, sign,
-verify, attach, inspect and extract PDF files.
+It exposes **13** PDF tools over a stdio transport so AI agents can generate, sign,
+verify, validate, attach, inspect and extract PDF files.
 
 **Philosophy:**
 - `pdfnative` is the only runtime dependency — all PDF logic lives there.
 - The MCP server is a thin, secure dispatch layer: validate inputs with Zod → call pdfnative → emit PDF as base64 or to a sandboxed file.
 - Every tool is fully self-contained (its own file in [src/tools/](../src/tools)).
 - Security at every boundary: Zod validation on all inputs, path traversal prevention on file output, no key-material echo in logs or errors.
-- Every tool ships `_meta.apiVersion = '1.0.0'` and worked-example `_meta.examples` so AI clients can introspect supported behavior — see [`API_STABILITY.md`](API_STABILITY.md).
+- Every tool ships `_meta.apiVersion = '1.1.0'` and worked-example `_meta.examples` so AI clients can introspect supported behavior — see [`API_STABILITY.md`](API_STABILITY.md).
 
 **Runtime:** Node.js ≥ 22 (ESM, strict TypeScript). Transport: stdio.
 
@@ -43,6 +43,7 @@ src/
 ├── server.ts         # createServer(): MCP tool registry + request handlers
 ├── output.ts         # outputMode logic: base64 inline vs sandboxed file write
 ├── cache.ts          # In-process LRU cache for idempotent tool results
+├── text.ts           # newline sanitizer (Safe PDF/A)
 ├── errors.ts         # ToolError + SecurityError
 └── tools/
     ├── generate-basic-pdf.ts          # generate_basic_pdf
@@ -54,6 +55,7 @@ src/
     ├── prepare-signature-placeholder.ts  # prepare_signature_placeholder
     ├── sign-pdf.ts                    # sign_pdf
     ├── verify-pdf.ts                  # verify_pdf
+    ├── validate-pdf.ts                # validate_pdf (PDF/UA)
     ├── inspect-pdf.ts                 # inspect_pdf
     ├── add-attachment.ts              # add_attachment (PDF/A-3 / Factur-X)
     └── extract-text.ts                # extract_text
@@ -106,19 +108,19 @@ interface ToolDefinition {
         openWorldHint?: boolean;
     };
     examples?: ReadonlyArray<{ title: string; input: Record<string, unknown> }>;
-    handler: (args: unknown) => Promise<OutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult>;
+    handler: (args: unknown) => Promise<OutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult | ValidatePdfResult>;
 }
 ```
 
 A `TOOL_INDEX: ReadonlyMap<string, ToolDefinition>` is derived from the array for O(1) lookup on `CallToolRequest`.
 
 **`_meta` per tool** — emitted in the `ListTools` response so AI clients can introspect:
-- `_meta.apiVersion` = `'1.0.0'` (see [`API_STABILITY.md`](API_STABILITY.md) for the bump policy)
+- `_meta.apiVersion` = `'1.1.0'` (see [`API_STABILITY.md`](API_STABILITY.md) for the bump policy)
 - `_meta.examples`   = at least one worked example per tool
 
 **Server metadata:**
 - `SERVER_NAME = 'pdfnative-mcp'`
-- `SERVER_VERSION = '1.0.0'`
+- `SERVER_VERSION = '1.1.0'`
 - `serverInfo._meta.mcpName = 'pdfnative-mcp'` (machine ID used by the MCP registry)
 - `SERVER_INSTRUCTIONS` — high-level decision tree + common-pitfall guide returned to the client in `serverInfo.instructions`
 
@@ -149,6 +151,8 @@ A `TOOL_INDEX: ReadonlyMap<string, ToolDefinition>` is derived from the array fo
 Optional `pdfA: 'pdfa1b' | 'pdfa2b' | 'pdfa2u' | 'pdfa3b'` produces an archival document.
 For Factur-X / ZUGFeRD invoices use [`add_attachment`](#add_attachment) instead — `generate_basic_pdf` cannot embed files.
 
+> **Newline sanitizer (Safe PDF/A):** a `paragraph` whose `text` contains `\n` / `\r\n` / `\r` is automatically split into separate paragraph blocks (`src/text.ts`). Write multi-line text naturally — never emit a literal newline expecting a soft line break; doing so previously produced `.notdef` tofu in PDF/A. Whitespace-only paragraphs are rejected with `VALIDATION_ERROR`.
+
 ---
 
 ### `add_barcode`
@@ -166,11 +170,11 @@ For Factur-X / ZUGFeRD invoices use [`add_attachment`](#add_attachment) instead 
 
 ### `add_international_text`
 
-18 scripts via embedded Noto fonts (Arabic, Hebrew, Thai, Japanese/Chinese/Korean, Devanagari, Bengali, Tamil, Cyrillic, Greek, Georgian, Armenian, Turkish, Polish, Vietnamese, …). BiDi isolates + Arabic harakat + emoji handled automatically.
+24 scripts via embedded Noto fonts (Arabic, Hebrew, Thai, Japanese/Chinese/Korean, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Turkish, Polish, Vietnamese, Latin, …). BiDi isolates + Arabic harakat + complex-script shaping + COLRv1 colour emoji handled automatically. Input is NFC-normalised (`normalize: 'NFC'`) for maximal glyph coverage, and embedded newlines auto-split into paragraphs. Lang codes added in v1.1.0: `te` (Telugu), `si` (Sinhala), `bo` (Tibetan), `km` (Khmer), `my` (Myanmar), `am` (Ethiopic); the `emoji` code now maps to `noto-color-emoji-data.js` (COLRv1, monochrome fallback).
 
 ### `add_table`
 
-Tabular reports with v1.2 smart-table fields: `wrap` (`auto`/`always`/`never`), `repeatHeader`, `zebra`, `caption`, `minRowHeight`, `cellPadding`. Every row must have the same length as `headers`. Optional `infoItems` for a metadata block under the title. Optional `pdfA` for archival output.
+Tabular reports with v1.2 smart-table fields: `wrap` (`auto`/`always`/`never`), `repeatHeader`, `zebra`, `caption`, `minRowHeight`, `cellPadding`. Every row must have the same length as `headers`. Optional `infoItems` for a metadata block under the title. Optional `pdfA` for archival output. Since pdfnative v1.3, wrapped cells receive a unique MCID per line, so tagged/PDF-A tables are PDF/UA-safe.
 
 ### `add_form`
 
@@ -233,6 +237,10 @@ Structural / security inspection.
 ### `add_attachment`
 
 PDF/A-3 (ISO 19005-3) with one or more embedded files. **Primary use case: Factur-X / ZUGFeRD invoices** (single XML payload, `relationship: 'Source'`). Each attachment is capped at 8 MiB. Optional `blocks[]` for the visible body.
+
+### `validate_pdf`
+
+Read-only **PDF/UA (ISO 14289-1)** structural conformance check wrapping pdfnative's `validatePdfUA()`. Verifies catalog `/MarkInfo /Marked true`, `/StructTreeRoot` (+ `/ParentTree`), `/Metadata` (XMP), `/Lang`, and per-page MCID uniqueness. Returns `{ standard: 'pdf-ua-1', valid, errors[], warnings[], summary }`. A fast developer-time gate — **not** a substitute for a full reference validator (veraPDF), which additionally checks fonts, colour and rendering. Typical flow: generate a document with `pdfA` (e.g. `pdfa2u`), then `validate_pdf` the result.
 
 ### `extract_text`
 

@@ -16,22 +16,32 @@
 
 ## ✨ Features
 
-`pdfnative-mcp` exposes **12 production-grade tools** to any MCP host:
+`pdfnative-mcp` exposes **13 production-grade tools** to any MCP host:
 
 | Tool                               | Purpose                                                                                          |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `generate_basic_pdf`               | Multi-page A4 documents from structured blocks (headings, paragraphs, lists, page breaks). Optional `pdfA`. |
+| `generate_basic_pdf`               | Multi-page A4 documents from structured blocks (headings, paragraphs, lists, page breaks). Embedded newlines auto-split into paragraphs. Optional `pdfA`. |
 | `add_barcode`                      | QR Code, Code 128, EAN-13, Data Matrix, PDF417 — embedded in a single-page PDF.                 |
-| `add_international_text`           | 18 scripts (incl. **Latin** & **Emoji**) with BiDi & OpenType shaping; multi-lang per document. |
+| `add_international_text`           | 24 scripts (incl. **Latin** & COLRv1 **colour emoji**) with BiDi & OpenType shaping; multi-lang per document. |
 | `add_table`                        | Tabular reports with smart fields (wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding). |
 | `add_form`                         | Interactive AcroForm PDFs with text fields, checkboxes, radio buttons, dropdowns.                |
 | `embed_image`                      | Embed a JPEG or PNG image (base64) into a titled PDF document.                                  |
 | `prepare_signature_placeholder`    | Step 1 of the two-step sign workflow — create a PDF with a `/Sig` AcroForm placeholder.        |
 | `sign_pdf`                         | Apply a PAdES-compatible CMS signature (RSA-SHA256 / ECDSA-SHA256 P-256). Auto-injects a placeholder when needed. |
-| `verify_pdf` *(new in v1.0.0)*     | Verify every PAdES signature in a PDF (integrity + signature value + optional chain trust).      |
-| `add_attachment` *(new in v1.0.0)* | Generate a PDF/A-3 document with embedded files (Factur-X / ZUGFeRD invoices).                  |
-| `extract_text` *(new in v1.0.0)*   | Best-effort plain-text extraction from a non-encrypted PDF.                                     |
+| `verify_pdf`                       | Verify every PAdES signature in a PDF (integrity + signature value + optional chain trust).      |
+| `validate_pdf` *(new in v1.1.0)*   | Validate a Tagged PDF for PDF/UA (ISO 14289-1) structural conformance (read-only).              |
+| `add_attachment`                   | Generate a PDF/A-3 document with embedded files (Factur-X / ZUGFeRD invoices).                  |
+| `extract_text`                     | Best-effort plain-text extraction from a non-encrypted PDF.                                     |
 | `inspect_pdf`                      | Read-only inspection: PDF version, page count, encryption, PDF/A claim, signatures, attachments, placeholder state. |
+
+**New in v1.1.0:**
+
+- 🆕 **Tool `validate_pdf`** — read-only PDF/UA (ISO 14289-1) structural conformance check.
+- 🆕 **Six new scripts** — Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic (**24 scripts** total).
+- 🆕 **COLRv1 colour emoji** — native colour emoji with monochrome fallback.
+- 🆕 **Newline sanitizer** — embedded `\n` in paragraphs auto-splits into separate paragraphs (Safe PDF/A).
+- 🆕 **Automatic NFC normalisation** for `add_international_text`.
+- 🛠 **Engine upgrade** — [pdfnative v1.3.0](https://github.com/Nizoka/pdfnative): the Euro sign / CP-1252 symbols now extract correctly, and wrapped table cells get unique per-line MCIDs (PDF/UA-safe).
 
 **New in v1.0.0:**
 
@@ -311,6 +321,28 @@ Returns:
 
 `check[]` accepts any of `'pdfa'`, `'signed'`, `'encrypted'`, `'placeholder'`, `'attachments'`. `checksPassed` is the AND of all requested checks.
 
+### `validate_pdf`
+
+Read-only **PDF/UA (ISO 14289-1)** structural conformance check for a Tagged PDF. Generate an accessible document with any tool using `pdfA` (e.g. `pdfA: 'pdfa2u'`), then validate the result:
+
+```jsonc
+{ "pdfBase64": "<tagged-pdf-base64>" }
+```
+
+Returns:
+
+```jsonc
+{
+  "standard": "pdf-ua-1",
+  "valid": true,
+  "errors": [],          // blocking structural violations (empty when valid)
+  "warnings": [],        // non-blocking best-practice recommendations
+  "summary": "PDF/UA structural prerequisites hold."
+}
+```
+
+It verifies catalog `/MarkInfo /Marked true`, `/StructTreeRoot` (+ `/ParentTree`), `/Metadata` (XMP), `/Lang`, and per-page MCID uniqueness. This is a fast developer-time gate — **not** a substitute for a full reference validator (veraPDF), which additionally checks fonts, colour, and rendering.
+
 ### `verify_pdf`, `add_attachment`, `extract_text`
 
 See the dedicated sections in [`docs/AI_GUIDE.md`](docs/AI_GUIDE.md) and the reference in [`docs/KNOWLEDGE_BASE.md`](docs/KNOWLEDGE_BASE.md). Ready-to-run examples live under [`examples/`](examples/).
@@ -370,6 +402,7 @@ src/
 ├── index.ts                    # public library exports
 ├── server.ts                   # McpServer factory + tool registry
 ├── output.ts                   # sandboxed file writer / base64 emitter
+├── text.ts                     # newline sanitizer (Safe PDF/A)
 ├── errors.ts                   # ToolError, SecurityError
 └── tools/
     ├── generate-basic-pdf.ts
@@ -380,6 +413,10 @@ src/
     ├── add-form.ts
     ├── embed-image.ts
     ├── inspect-pdf.ts
+    ├── verify-pdf.ts
+    ├── validate-pdf.ts
+    ├── add-attachment.ts
+    ├── extract-text.ts
     └── prepare-signature-placeholder.ts
 tests/                          # vitest suites
 ```
@@ -388,14 +425,11 @@ tests/                          # vitest suites
 
 ## 🗺 Roadmap
 
-v0.3.0 is shipped. The full plan — released milestones, in-progress work, planned releases (v0.4.0 → v1.0.0) and long-term direction — lives in [ROADMAP.md](ROADMAP.md).
+v1.1.0 is shipped. The full plan — released milestones, in-progress work, and long-term direction — lives in [ROADMAP.md](ROADMAP.md).
 
-**Up next in v0.4.0:**
+**Blocked upstream (page-tree manipulation):**
 
-- `verify_pdf` — verify CMS digital signatures end-to-end (cert-chain validation, ByteRange hash check, tampering detection).
-- `sign_pdf` placeholder auto-injection — sign any PDF in a single call.
-- ECDSA DER-encoded private-key input (today only the raw 32-byte scalar is accepted).
-- Encrypted-PDF fixtures so `inspect_pdf` AES detection branches are unit-tested.
+- `merge_pdfs`, `split_pdf`, `redact_pdf` — pdfnative does not yet export the page-tree manipulation primitives required to build these safely. They remain on the roadmap, blocked on an upstream API.
 
 Have a feature idea? Open an issue or PR.
 
