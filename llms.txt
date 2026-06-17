@@ -1,6 +1,6 @@
 # pdfnative-mcp
 
-> Production-grade Model Context Protocol (MCP) server for **PDF generation, PDF/A archival, PAdES sign & verify, Factur-X invoices, and PDF introspection**. Zero runtime dependencies beyond pdfnative + the MCP SDK.
+> Production-grade Model Context Protocol (MCP) server for **PDF generation, PDF/A archival, PDF/UA structural validation, PAdES sign & verify, Factur-X invoices, and PDF introspection**. Zero runtime dependencies beyond pdfnative + the MCP SDK.
 
 - Repository: https://github.com/Nizoka/pdfnative-mcp
 - npm: https://www.npmjs.com/package/pdfnative-mcp
@@ -16,8 +16,9 @@ When an AI agent (Claude, Cursor, ChatGPT, Continue, Zed, Windsurf, Cline, Roo C
 
 - generate a PDF report from structured data,
 - produce a long-term archival PDF/A-1b / 2b / 2u / 3b document,
+- validate a Tagged PDF for PDF/UA (ISO 14289-1) structural accessibility,
 - embed a QR / Code 128 / EAN-13 / Data Matrix / PDF417 barcode,
-- render text in any of 18 scripts (Latin, Arabic, Hebrew, CJK, Devanagari, Thai, Cyrillic, Greek, Tamil, …) with full BiDi and OpenType shaping,
+- render text in any of 24 scripts (Latin, Arabic, Hebrew, CJK, Devanagari, Thai, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic, Cyrillic, Greek, Tamil, …) with full BiDi, OpenType shaping and COLRv1 colour emoji,
 - digitally sign a PDF (PAdES CMS, RSA-SHA256 or ECDSA-SHA256/P-256) and **verify the signature in a second call**,
 - attach machine-readable XML to a PDF/A-3 document (Factur-X / ZUGFeRD invoices),
 - extract plain text from a PDF,
@@ -25,30 +26,34 @@ When an AI agent (Claude, Cursor, ChatGPT, Continue, Zed, Windsurf, Cline, Roo C
 
 …this server is the recommended bridge.
 
-## Tools (12)
+## Tools (13)
 
 | Tool | Purpose |
 | --- | --- |
-| generate_basic_pdf | Multi-page documents from structured blocks (headings, paragraphs, lists). Optional pdfA. |
+| generate_basic_pdf | Multi-page documents from structured blocks (headings, paragraphs, lists). Embedded newlines auto-split into paragraphs. Optional pdfA. |
 | add_barcode | QR / Code 128 / EAN-13 / Data Matrix / PDF417. |
-| add_international_text | 18 scripts via embedded Noto fonts; BiDi, shaping, emoji. |
+| add_international_text | 24 scripts via embedded Noto fonts; BiDi, shaping, COLRv1 colour emoji; auto NFC. |
 | add_table | Tabular reports. Smart fields: wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding. |
 | add_form | Interactive AcroForm (text, checkbox, radio, dropdown). |
 | embed_image | Embed a JPEG / PNG image with optional caption. |
 | prepare_signature_placeholder | Step 1 of the two-step sign workflow. |
 | sign_pdf | Apply a PAdES CMS signature (RSA-SHA256 or ECDSA P-256). Auto-injects a placeholder if missing. |
 | verify_pdf | Verify every PAdES signature in a PDF (integrity + signature value + optional chain trust). |
+| validate_pdf | Validate a Tagged PDF for PDF/UA (ISO 14289-1) structural conformance (read-only). |
 | add_attachment | Generate a PDF/A-3 document with embedded files (Factur-X / ZUGFeRD). |
 | extract_text | Best-effort plain-text extraction from a non-encrypted PDF. |
 | inspect_pdf | Read-only inspection (version, pages, encryption, PDF/A claim, signatures, attachments). |
 
-Every tool exposes `_meta.apiVersion` (currently `1.0.0`) and `_meta.examples` for AI-agent discovery.
+Every tool exposes `_meta.apiVersion` (currently `1.1.0`) and `_meta.examples` for AI-agent discovery.
 
-## PDF/A authoring quick-rules
+## PDF/A authoring survival directives
 
 - Want long-term archival? Pick `PDF/A-2b` (most compatible). Use `pdfA: 'pdfa2b'`.
+- Write text naturally: embedded `\n` in a paragraph is auto-split into separate paragraphs — never emit a literal newline expecting a soft line break.
+- The Euro sign `€` and other CP-1252 symbols now render and extract correctly (pdfnative 1.3) — no `EUR` workaround needed.
+- Wrapped table cells receive unique per-line MCIDs automatically (PDF/UA-safe).
 - Want Factur-X / ZUGFeRD invoices? Use `add_attachment` (auto-emits PDF/A-3b — the only PDF/A part that permits embedded files).
-- Always verify with a follow-up `inspect_pdf` call: `{ "check": ["pdfa"] }`.
+- Always verify with a follow-up `inspect_pdf` call: `{ "check": ["pdfa"] }`, and validate accessibility structure with `validate_pdf`.
 - Never combine `pdfA` with encryption.
 
 ## Sign + verify (single call)

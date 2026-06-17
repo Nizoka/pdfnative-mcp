@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const registerFontMock = vi.fn();
 const loadFontDataMock = vi.fn();
-const buildDocumentPDFBytesMock = vi.fn(() => new Uint8Array([0x25, 0x50, 0x44, 0x46]));
+const buildDocumentPDFBytesMock = vi.fn((_params?: unknown, _layout?: unknown) => new Uint8Array([0x25, 0x50, 0x44, 0x46]));
 
 vi.mock('pdfnative', () => ({
     registerFont: registerFontMock,
@@ -127,5 +127,51 @@ describe('add_international_text tool', () => {
         await addInternationalText({ title: 'NoDouble', lang: ['ar', 'latin'], pdfA: 'pdfa2b', paragraphs: ['x'] });
         // ar + latin, no extra latin push
         expect(loadFontDataMock).toHaveBeenCalledTimes(2);
+    });
+
+    it.each(['te', 'si', 'bo', 'km', 'my', 'am'])(
+        'supports the pdfnative 1.3.0 script %s',
+        async (code) => {
+            const { addInternationalText } = await import('../src/tools/add-international-text.js');
+            const result = await addInternationalText({ title: `Script ${code}`, lang: code, paragraphs: ['x'] });
+            expect(result.mode).toBe('base64');
+            expect(registerFontMock).toHaveBeenCalledTimes(1);
+            expect(loadFontDataMock).toHaveBeenCalledWith(code);
+        },
+    );
+
+    it('supports COLRv1 colour emoji via the emoji lang code', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        await addInternationalText({ title: 'Emoji', lang: ['latin', 'emoji'], paragraphs: ['hi 😀'] });
+        expect(loadFontDataMock).toHaveBeenCalledWith('emoji');
+    });
+
+    it('NFC-normalises input by passing normalize:"NFC" to the builder', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        await addInternationalText({ title: 'NFC', lang: 'ar', paragraphs: ['x'] });
+        const layout = buildDocumentPDFBytesMock.mock.calls[0]?.[1] as { normalize?: string } | undefined;
+        expect(layout?.normalize).toBe('NFC');
+    });
+
+    it('combines NFC normalisation with the PDF/A tagged option', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        await addInternationalText({ title: 'NFC+A', lang: 'ar', pdfA: 'pdfa2u', paragraphs: ['x'] });
+        const layout = buildDocumentPDFBytesMock.mock.calls[0]?.[1] as { normalize?: string; tagged?: string } | undefined;
+        expect(layout?.normalize).toBe('NFC');
+        expect(layout?.tagged).toBe('pdfa2u');
+    });
+
+    it('auto-splits paragraphs on embedded newlines before building', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        await addInternationalText({ title: 'Lines', lang: 'latin', paragraphs: ['a\nb\nc'] });
+        const params = buildDocumentPDFBytesMock.mock.calls[0]?.[0] as { blocks: unknown[] };
+        expect(params.blocks).toHaveLength(3);
+    });
+
+    it('rejects paragraphs that sanitise to zero blocks', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        await expect(
+            addInternationalText({ title: 'Empty', lang: 'latin', paragraphs: ['\n\n'] }),
+        ).rejects.toThrow("paragraphs must contain at least one non-empty line");
     });
 });

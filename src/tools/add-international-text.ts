@@ -2,13 +2,16 @@
  * Tool: add_international_text
  *
  * Generates a PDF that contains text in non-Latin scripts (Arabic, Hebrew, Thai,
- * CJK, Devanagari, Bengali, Tamil, Cyrillic, Greek, Georgian, Armenian, Vietnamese,
- * Turkish, Polish). Uses the pre-built Noto font data modules shipped with
- * `pdfnative` via `pdfnative/fonts/*.js` and registers them on demand.
+ * CJK, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar,
+ * Ethiopic, Cyrillic, Greek, Georgian, Armenian, Vietnamese, Turkish, Polish).
+ * Uses the pre-built Noto font data modules shipped with `pdfnative` via
+ * `pdfnative/fonts/*.js` and registers them on demand.
  *
- * BiDi reordering, Arabic positional shaping, Thai/Devanagari/Bengali/Tamil
- * OpenType shaping, and CIDFont Type2 / Identity-H embedding are all handled
- * transparently by pdfnative.
+ * BiDi reordering, Arabic positional shaping, complex-script OpenType shaping
+ * (Thai/Devanagari/Bengali/Tamil/Telugu/Sinhala/Tibetan/Khmer/Myanmar), COLRv1
+ * colour emoji, and CIDFont Type2 / Identity-H embedding are all handled
+ * transparently by pdfnative. Input is NFC-normalised so decomposed sequences
+ * map to the widest possible glyph coverage.
  */
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -23,6 +26,7 @@ import {
 import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { splitParagraphSegments } from '../text.js';
 import { PDF_A_ENUM, PdfASchema } from '../pdfa.js';
 
 export const ADD_INTERNATIONAL_TEXT_NAME = 'add_international_text';
@@ -47,7 +51,16 @@ const LANG_TO_FONT_FILE: Readonly<Record<string, string>> = {
     vi: 'noto-vietnamese-data.js',
     // Added in v0.3.0 / pdfnative v1.1.0:
     latin: 'noto-sans-data.js',
-    emoji: 'noto-emoji-data.js',
+    // Added in v1.1.0 / pdfnative v1.3.0 — six new complex scripts:
+    te: 'noto-telugu-data.js',
+    si: 'noto-sinhala-data.js',
+    bo: 'noto-tibetan-data.js',
+    km: 'noto-khmer-data.js',
+    my: 'noto-myanmar-data.js',
+    am: 'noto-ethiopic-data.js',
+    // COLRv1 colour emoji (pdfnative v1.3.0). Falls back to monochrome glyphs
+    // automatically inside pdfnative when a colour table is unavailable.
+    emoji: 'noto-color-emoji-data.js',
 };
 
 const SUPPORTED_LANGS = Object.keys(LANG_TO_FONT_FILE) as ReadonlyArray<keyof typeof LANG_TO_FONT_FILE>;
@@ -188,11 +201,16 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
         fontEntries.push({ fontData, fontRef: `/F${3 + i}`, lang: code });
     }
 
-    const blocks: DocumentBlock[] = paragraphs.map((text) => ({ type: 'paragraph', text }));
+    const blocks: DocumentBlock[] = paragraphs.flatMap((text) =>
+        splitParagraphSegments(text).map((segment): DocumentBlock => ({ type: 'paragraph', text: segment })),
+    );
+    if (blocks.length === 0) {
+        throw new ToolError('VALIDATION_ERROR', 'paragraphs must contain at least one non-empty line of text.');
+    }
 
     const bytes = buildDocumentPDFBytes(
         { title, blocks, fontEntries },
-        pdfA !== undefined ? { tagged: pdfA } : {},
+        { normalize: 'NFC', ...(pdfA !== undefined ? { tagged: pdfA } : {}) },
     );
     return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
 }

@@ -81,10 +81,17 @@ import {
     extractText,
     type ExtractTextResult,
 } from './tools/extract-text.js';
+import {
+    VALIDATE_PDF_NAME,
+    VALIDATE_PDF_INPUT_SCHEMA,
+    VALIDATE_PDF_OUTPUT_SCHEMA,
+    validatePdf,
+    type ValidatePdfResult,
+} from './tools/validate-pdf.js';
 
 // JSON import attribute (Node 22+, TS 5.3+) keeps version in lock-step with package.json.
 // Hardcoded here to keep the build rootDir limited to ./src; tests assert it stays in sync.
-const SERVER_VERSION = '1.0.0';
+const SERVER_VERSION = '1.1.0';
 const SERVER_NAME = 'pdfnative-mcp';
 
 /**
@@ -93,7 +100,7 @@ const SERVER_NAME = 'pdfnative-mcp';
  * make a cached response unsafe to serve. Independent from SERVER_VERSION
  * (which tracks the npm package).
  */
-const TOOL_API_VERSION = '1.0.0';
+const TOOL_API_VERSION = '1.1.0';
 
 /** True when the call's input requests a file-mode output (filesystem side-effect). */
 function isFileOutput(input: unknown): boolean {
@@ -112,6 +119,9 @@ function dispatchOutput(output: unknown, name: string): CallToolResult {
         }
         if ('extractedPageCount' in output) {
             return buildExtractTextResult(output as ExtractTextResult, name);
+        }
+        if ('warnings' in output && 'valid' in output) {
+            return buildValidateResult(output as ValidatePdfResult, name);
         }
     }
     return buildInspectResult(output as InspectPdfResult, name);
@@ -145,7 +155,7 @@ interface ToolDefinition {
     };
     /** Minimal MCP `_meta.examples` payload — each entry is a self-contained input. */
     examples?: ReadonlyArray<{ readonly title: string; readonly input: Record<string, unknown> }>;
-    handler: (args: unknown) => Promise<OutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult>;
+    handler: (args: unknown) => Promise<OutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult | ValidatePdfResult>;
 }
 
 const TOOLS: readonly ToolDefinition[] = [
@@ -197,7 +207,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ADD_INTERNATIONAL_TEXT_NAME,
         title: 'Add international text',
         description:
-            'Generate a PDF rendering text in a non-Latin script (Arabic, Hebrew, Thai, CJK, Devanagari, Bengali, Tamil, Cyrillic, Greek, Georgian, Armenian, Vietnamese, Turkish, Polish, Latin fallback) with optional emoji rendering. BiDi reordering (incl. UAX#9 isolates), Arabic harakat positioning, and OpenType shaping are handled automatically by the embedded Noto fonts. Pass `lang` as a single code or an array (e.g. ["ar","emoji"]) for multi-script runs.',
+            'Generate a PDF rendering text in any of 24 scripts (Arabic, Hebrew, Thai, CJK, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Vietnamese, Turkish, Polish, Latin fallback) with optional COLRv1 colour emoji. BiDi reordering (incl. UAX#9 isolates), Arabic harakat positioning, and complex-script OpenType shaping are handled automatically by the embedded Noto fonts; input is NFC-normalised for maximal glyph coverage and embedded newlines auto-split into paragraphs. Pass `lang` as a single code or an array (e.g. ["ar","emoji"]) for multi-script runs.',
         inputSchema: ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -306,7 +316,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: EXTRACT_TEXT_NAME,
         title: 'Extract plain text from PDF',
         description:
-            "Best-effort plain-text extraction from a non-encrypted PDF. Walks each page's content stream and pulls the operands of Tj/'/\"/TJ text operators. The result.extractable boolean is FALSE when one or more pages have non-empty content but yielded no text (this is EXPECTED for PDFs using subset fonts without /ToUnicode CMaps — it is not an error). The accompanying `extractableReason` field explains why. Encrypted PDFs are rejected with EXTRACTION_UNSUPPORTED. For tagged-mode structure-tree extraction (cleaner output for tagged PDFs), wait for pdfnative-mcp v1.1.",
+            "Best-effort plain-text extraction from a non-encrypted PDF. Walks each page's content stream and pulls the operands of Tj/'/\"/TJ text operators. The result.extractable boolean is FALSE when one or more pages have non-empty content but yielded no text (this is EXPECTED for PDFs using subset fonts without /ToUnicode CMaps — it is not an error). The accompanying `extractableReason` field explains why. Encrypted PDFs are rejected with EXTRACTION_UNSUPPORTED. Tagged-mode structure-tree extraction (cleaner output for tagged PDFs) is tracked on the roadmap.",
         inputSchema: EXTRACT_TEXT_INPUT_SCHEMA,
         outputSchema: EXTRACT_TEXT_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -316,11 +326,24 @@ const TOOLS: readonly ToolDefinition[] = [
         ],
         handler: extractText,
     },
+    {
+        name: VALIDATE_PDF_NAME,
+        title: 'Validate PDF/UA structure',
+        description:
+            "Read-only PDF/UA (ISO 14289-1) structural conformance check. Verifies the accessibility prerequisites of a Tagged PDF: catalog /MarkInfo /Marked true, /StructTreeRoot (+ /ParentTree), /Metadata (XMP), /Lang, and per-page MCID uniqueness. Response shape: { standard: 'pdf-ua-1', valid, errors: [], warnings: [], summary }. Read `valid` for an overall yes/no; iterate `errors[]` for blocking violations and `warnings[]` for best-practice recommendations. This is a fast structural gate, NOT a full reference validator (veraPDF) — it does not check fonts, colour or rendering. Generate accessible input with any document tool using pdfA (e.g. pdfA='pdfa2u'), then validate the result here.",
+        inputSchema: VALIDATE_PDF_INPUT_SCHEMA,
+        outputSchema: VALIDATE_PDF_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Validate a tagged PDF for PDF/UA structure', input: { pdfBase64: '<tagged-pdf-base64>' } },
+        ],
+        handler: validatePdf,
+    },
 ];
 
 const TOOL_INDEX: ReadonlyMap<string, ToolDefinition> = new Map(TOOLS.map((t) => [t.name, t]));
 
-const SERVER_INSTRUCTIONS = `pdfnative-mcp bridges the zero-dependency 'pdfnative' v1.2 library to MCP. API version: 1.0.0 (stable).
+const SERVER_INSTRUCTIONS = `pdfnative-mcp bridges the zero-dependency 'pdfnative' v1.3 library to MCP. API version: 1.1.0 (stable).
 
 DECISION TREE — pick the right tool in one step:
   • Plain document (headings, paragraphs, lists)             → ${GENERATE_BASIC_PDF_NAME}
@@ -334,6 +357,7 @@ DECISION TREE — pick the right tool in one step:
   • Factur-X / ZUGFeRD invoice or any PDF with attachments   → ${ADD_ATTACHMENT_NAME}   (NOT generate_basic_pdf)
   • Inspect / assert PDF metadata in CI                      → ${INSPECT_PDF_NAME}
   • Verify all PAdES signatures                              → ${VERIFY_PDF_NAME}
+  • Validate PDF/UA accessibility structure                  → ${VALIDATE_PDF_NAME}
   • Pull plain text from a PDF                               → ${EXTRACT_TEXT_NAME}
 
 COMMON PITFALLS (read these to avoid retry loops):
@@ -345,9 +369,11 @@ COMMON PITFALLS (read these to avoid retry loops):
   • sign_pdf auto-injects a placeholder when missing — call it directly on ANY PDF unless you specifically need to customize the placeholder.
   • For Factur-X / ZUGFeRD invoices, use add_attachment (PDF/A-3) — generate_basic_pdf cannot embed files.
   • PDF/A: pass pdfA='pdfa2b' for the widest reader compatibility. PDF/A-3 is required when you have attachments.
+  • PDF/A text is now robust: embedded newlines ('\\n') in paragraphs are auto-split into separate paragraphs; the Euro sign and other CP-1252 symbols extract correctly (pdfnative 1.3); wrapped table cells get unique per-line MCIDs. Write naturally — no manual workarounds needed.
+  • add_international_text covers 24 scripts and COLRv1 colour emoji; pass 'lang' as a single code or an array (e.g. ["ar","emoji"]) for multi-script runs. Input is NFC-normalised automatically.
   • outputMode='file' is only available when the host sets PDFNATIVE_MCP_OUTPUT_DIR; otherwise PDFs are returned as base64.
 
-Every tool ships JSON-Schema-typed inputs/outputs, _meta.apiVersion = '1.0.0', and worked-example _meta.examples. See docs/AI_GUIDE.md for a longer walk-through.`;
+Every tool ships JSON-Schema-typed inputs/outputs, _meta.apiVersion = '1.1.0', and worked-example _meta.examples. See docs/AI_GUIDE.md for a longer walk-through.`;
 
 function buildInspectResult(output: InspectPdfResult, toolName: string): CallToolResult {
     return {
@@ -362,6 +388,13 @@ function buildInspectResult(output: InspectPdfResult, toolName: string): CallToo
 }
 
 function buildVerifyResult(output: VerifyPdfResult, toolName: string): CallToolResult {
+    return {
+        content: [{ type: 'text', text: `${toolName}: ${output.summary}` }],
+        structuredContent: output as unknown as Record<string, unknown>,
+    };
+}
+
+function buildValidateResult(output: ValidatePdfResult, toolName: string): CallToolResult {
     return {
         content: [{ type: 'text', text: `${toolName}: ${output.summary}` }],
         structuredContent: output as unknown as Record<string, unknown>,

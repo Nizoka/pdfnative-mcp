@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-09
+
+A minor, fully backward-compatible release that upgrades the engine to
+[pdfnative v1.3.0](https://github.com/Nizoka/pdfnative/releases/tag/v1.3.0) and
+hardens the server for AI agents. Adds a 13th tool (`validate_pdf`), six new
+scripts, COLRv1 colour emoji, and a deterministic newline sanitizer. No breaking
+changes.
+
+### Added
+
+- **Tool `validate_pdf`** (new, read-only): PDF/UA (ISO 14289-1) structural conformance check wrapping pdfnative's `validatePdfUA()`. Verifies catalog `/MarkInfo /Marked true`, `/StructTreeRoot` (+ `/ParentTree`), `/Metadata` (XMP), `/Lang`, and per-page MCID uniqueness. Returns `{ standard: 'pdf-ua-1', valid, errors[], warnings[], summary }`. A fast developer-time gate, not a substitute for a full reference validator (veraPDF).
+- **`add_international_text`**: six new scripts — Telugu (`te`), Sinhala (`si`), Tibetan (`bo`), Khmer (`km`), Myanmar (`my`), Ethiopic (`am`) — for **24 scripts** total, via pdfnative v1.3's new bundled Noto font modules.
+- **`add_international_text`**: COLRv1 colour emoji via the `emoji` lang code (`noto-color-emoji-data.js`), with automatic monochrome fallback.
+- **Newline auto-split sanitizer** (`src/text.ts`): paragraphs containing `\n` / `\r\n` / `\r` are split into discrete paragraph blocks in `generate_basic_pdf` and `add_international_text`, eliminating `.notdef` tofu from LLM-style multi-line text. Whitespace-only paragraphs are rejected with `VALIDATION_ERROR`.
+
+### Changed
+
+- **Dependency:** `pdfnative` bumped `^1.2.0` → `^1.3.0`.
+- **`add_international_text`** now passes `normalize: 'NFC'` to the document builder for maximal glyph coverage (intentionally changes output bytes for some decomposed inputs).
+- **MCP `_meta.apiVersion`** bumped `1.0.0` → `1.1.0` on every tool; `SERVER_VERSION` → `1.1.0`.
+- **`SERVER_INSTRUCTIONS` / `llms.txt`**: refreshed decision tree (13 tools), 24-script copy, and PDF/A survival directives.
+- Tool count: **13** (was 12 in v1.0.0).
+
+### Fixed
+
+- **Euro sign and CP-1252 symbols** (`€ ‚ ƒ „ … † ‡ ™ œ ž Ÿ`) now render and extract correctly thanks to pdfnative v1.3 ([pdfnative #48](https://github.com/Nizoka/pdfnative/issues/48)); the previous `EUR` workaround is no longer needed.
+- **Duplicate MCID in wrapped table cells** — pdfnative v1.3 assigns a unique MCID per line, making tagged/PDF-A tables with wrapping cells PDF/UA-safe.
+
+### Deferred (still blocked)
+
+- **`merge_pdfs`**, **`split_pdf`**, **`redact_pdf`** — pdfnative v1.3 still does not export the page-tree manipulation primitives required; building them on raw `openPdf` / `createModifier` would require production-unsafe page-tree surgery that contradicts the thin-wrapper philosophy. Remain on the roadmap, blocked upstream.
+
+### Upgrade guide
+
+1. Bump your dependency to `^1.1.0` — no code changes required.
+2. Stop pre-splitting multi-line text or substituting `EUR` for `€`; write naturally.
+3. After producing a tagged/PDF-A document, call `validate_pdf` to assert PDF/UA structural conformance.
+
 ## [1.0.0] - 2026-01-15
 
 This is the **first stable release** of `pdfnative-mcp`. It consolidates the

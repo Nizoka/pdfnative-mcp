@@ -1,7 +1,7 @@
 {
     "name": "pdfnative-mcp",
-    "version": "1.0.0",
-    "description": "Model Context Protocol (MCP) server bridging the zero-dependency pdfnative v1.2 library — generate PDFs (PDF/A-1b/2b/2u/3b), embed barcodes & QR codes, sign and **verify** PAdES documents (RSA / ECDSA P-256 CMS), render 18 scripts including emoji, build smart tables and AcroForms, embed images, embed files (Factur-X / ZUGFeRD PDF/A-3), extract text, and inspect existing PDFs — from any MCP-compatible AI client (Claude, Cursor, ChatGPT, Continue, Zed, Windsurf, Cline, Roo Code, …).",
+    "version": "1.1.0",
+    "description": "Model Context Protocol (MCP) server bridging the zero-dependency pdfnative v1.3 library — generate PDFs (PDF/A-1b/2b/2u/3b), validate PDF/UA structure, embed barcodes & QR codes, sign and **verify** PAdES documents (RSA / ECDSA P-256 CMS), render 24 scripts including colour emoji, build smart tables and AcroForms, embed images, embed files (Factur-X / ZUGFeRD PDF/A-3), extract text, and inspect existing PDFs — from any MCP-compatible AI client (Claude, Cursor, ChatGPT, Continue, Zed, Windsurf, Cline, Roo Code, …).",
     "mcpName": "io.github.nizoka/pdfnative-mcp",
     "keywords": [
         "mcp",
@@ -18,6 +18,9 @@
         "pdf-a-2b",
         "pdf-a-2u",
         "pdf-a-3b",
+        "pdf-ua",
+        "pdf-ua-1",
+        "validate-pdf",
         "tagged-pdf",
         "pdf-accessibility",
         "pades",
@@ -45,6 +48,8 @@
         "bidi",
         "opentype",
         "emoji",
+        "color-emoji",
+        "colr",
         "noto",
         "arabic",
         "hebrew",
@@ -52,6 +57,12 @@
         "devanagari",
         "bengali",
         "tamil",
+        "telugu",
+        "sinhala",
+        "tibetan",
+        "khmer",
+        "myanmar",
+        "ethiopic",
         "cjk",
         "vietnamese",
         "factur-x",
@@ -131,7 +142,7 @@
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",
-        "pdfnative": "^1.2.0",
+        "pdfnative": "^1.3.0",
         "zod": "^3.23.8"
     },
     "devDependencies": {

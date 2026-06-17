@@ -9,6 +9,7 @@ import { buildDocumentPDFBytes, type DocumentBlock } from 'pdfnative';
 import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { splitParagraphSegments } from '../text.js';
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
 
 export const GENERATE_BASIC_PDF_NAME = 'generate_basic_pdf';
@@ -46,7 +47,12 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
                         required: ['type', 'text'],
                         properties: {
                             type: { const: 'paragraph' },
-                            text: { type: 'string', minLength: 1, maxLength: 50000 },
+                            text: {
+                                type: 'string',
+                                minLength: 1,
+                                maxLength: 50000,
+                                description: "Paragraph text. Embedded newlines ('\\n') are automatically split into separate paragraphs — no need to pre-split; never emit a literal newline expecting a soft line break.",
+                            },
                         },
                     },
                     {
@@ -149,20 +155,23 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
     }
     const { title, blocks, footerText, pdfA, outputMode, outputPath } = parsed.data;
 
-    const docBlocks: DocumentBlock[] = blocks.map((block): DocumentBlock => {
+    const docBlocks: DocumentBlock[] = blocks.flatMap((block): DocumentBlock[] => {
         switch (block.type) {
             case 'heading':
-                return { type: 'heading', text: block.text, level: block.level };
+                return [{ type: 'heading', text: block.text, level: block.level }];
             case 'paragraph':
-                return { type: 'paragraph', text: block.text };
+                return splitParagraphSegments(block.text).map((text) => ({ type: 'paragraph', text }));
             case 'list':
-                return { type: 'list', items: block.items, style: block.style };
+                return [{ type: 'list', items: block.items, style: block.style }];
             case 'pageBreak':
-                return { type: 'pageBreak' };
+                return [{ type: 'pageBreak' }];
             case 'spacer':
-                return { type: 'spacer', height: block.height };
+                return [{ type: 'spacer', height: block.height }];
         }
     });
+    if (docBlocks.length === 0) {
+        throw new ToolError('VALIDATION_ERROR', 'blocks must contain at least one block with renderable content.');
+    }
 
     const bytes = buildDocumentPDFBytes(
         {
