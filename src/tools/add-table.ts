@@ -16,6 +16,12 @@ import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
+import {
+    WATERMARK_INPUT_SCHEMA,
+    WatermarkSchema,
+    toWatermarkOptions,
+    assertWatermarkPdfACompatible,
+} from '../watermark.js';
 
 export const ADD_TABLE_NAME = 'add_table';
 
@@ -112,6 +118,7 @@ export const ADD_TABLE_INPUT_SCHEMA = {
             enum: [...PDF_A_ENUM],
             description: PDF_A_FIELD_DESCRIPTION,
         },
+        watermark: WATERMARK_INPUT_SCHEMA,
         outputMode: {
             type: 'string',
             enum: ['base64', 'file'],
@@ -150,6 +157,7 @@ const InputSchema = z.object({
     minRowHeight: z.number().min(1).max(200).optional(),
     cellPadding: z.number().min(0).max(50).optional(),
     pdfA: PdfASchema.optional(),
+    watermark: WatermarkSchema.optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -159,7 +167,8 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, headers, rows, infoItems, footerText, autoFitColumns, clipCells, wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, pdfA, outputMode, outputPath } = parsed.data;
+    const { title, headers, rows, infoItems, footerText, autoFitColumns, clipCells, wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, pdfA, watermark, outputMode, outputPath } = parsed.data;
+    assertWatermarkPdfACompatible(watermark, pdfA);
 
     // Validate column count consistency: every row must have the same length as headers
     for (let i = 0; i < rows.length; i++) {
@@ -172,7 +181,7 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
     }
 
     const smartTableField = wrap !== undefined || repeatHeader !== undefined || zebra !== undefined || caption !== undefined || minRowHeight !== undefined || cellPadding !== undefined;
-    const useDocumentBackend = autoFitColumns !== undefined || clipCells !== undefined || pdfA !== undefined || smartTableField;
+    const useDocumentBackend = autoFitColumns !== undefined || clipCells !== undefined || pdfA !== undefined || watermark !== undefined || smartTableField;
 
     let bytes: Uint8Array;
     if (useDocumentBackend) {
@@ -198,7 +207,10 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
         blocks.push(tableBlock);
         bytes = buildDocumentPDFBytes(
             { title, blocks, ...(footerText !== undefined ? { footerText } : {}) },
-            pdfA !== undefined ? { tagged: pdfA } : {},
+            {
+                ...(pdfA !== undefined ? { tagged: pdfA } : {}),
+                ...(watermark !== undefined ? { watermark: toWatermarkOptions(watermark) } : {}),
+            },
         );
     } else {
         bytes = buildPDFBytes({

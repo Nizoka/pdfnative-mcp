@@ -14,7 +14,7 @@ describe('server', () => {
 
     it('exposes stable metadata', () => {
         expect(__serverMetadata.name).toBe('pdfnative-mcp');
-        expect(__serverMetadata.version).toBe('1.1.0');
+        expect(__serverMetadata.version).toBe('1.2.0');
     });
 
     it('SERVER_INSTRUCTIONS advertises decision tree and pitfalls for AI clients', () => {
@@ -26,6 +26,7 @@ describe('server', () => {
             'generate_basic_pdf', 'add_barcode', 'add_international_text', 'add_table',
             'add_form', 'embed_image', 'prepare_signature_placeholder', 'sign_pdf',
             'verify_pdf', 'validate_pdf', 'inspect_pdf', 'add_attachment', 'extract_text',
+            'extract_attachments',
         ]) {
             expect(__serverInstructions).toContain(t);
         }
@@ -48,6 +49,7 @@ describe('server', () => {
             'add_international_text',
             'add_table',
             'embed_image',
+            'extract_attachments',
             'extract_text',
             'generate_basic_pdf',
             'inspect_pdf',
@@ -59,7 +61,7 @@ describe('server', () => {
 
         // Every tool advertises _meta.apiVersion and at least one example.
         for (const t of response.tools) {
-            expect(t._meta?.apiVersion).toBe('1.1.0');
+            expect(t._meta?.apiVersion).toBe('1.2.0');
             expect(Array.isArray(t._meta?.examples)).toBe(true);
             expect((t._meta?.examples ?? []).length).toBeGreaterThan(0);
         }
@@ -94,14 +96,21 @@ describe('server', () => {
             },
         })) as {
             isError?: boolean;
-            content: Array<{ type: string; text?: string }>;
-            structuredContent?: { mode?: string; base64?: string };
+            content: Array<{ type: string; text?: string; resource?: { blob?: string; mimeType?: string } }>;
+            structuredContent?: { mode?: string; base64?: string; sizeBytes?: number };
         };
 
         expect(response.isError).not.toBe(true);
         expect(response.content[0]?.text ?? '').toContain('produced');
         expect(response.structuredContent?.mode).toBe('base64');
-        expect(typeof response.structuredContent?.base64).toBe('string');
+        expect(typeof response.structuredContent?.sizeBytes).toBe('number');
+        // Token-frugal: base64 is NOT duplicated into structuredContent; it is
+        // delivered once as an embedded resource content block.
+        expect(response.structuredContent?.base64).toBeUndefined();
+        const resourceBlock = response.content.find((c) => c.type === 'resource');
+        expect(resourceBlock?.resource?.mimeType).toBe('application/pdf');
+        expect(typeof resourceBlock?.resource?.blob).toBe('string');
+        expect((resourceBlock?.resource?.blob ?? '').length).toBeGreaterThan(0);
     });
 
     it('returns success payload for file mode tool call', async () => {
@@ -207,5 +216,106 @@ describe('server', () => {
         for (const tool of response.tools) {
             expect(tool.outputSchema, `${tool.name} should have outputSchema`).toBeDefined();
         }
+    });
+});
+
+describe('token-frugal projection (verbosity / fields)', () => {
+    beforeAll(async () => {
+        delete process.env[OUTPUT_ENV];
+        await ensureCompressionReady();
+    });
+
+    type CallResponse = { isError?: boolean; structuredContent?: Record<string, unknown> };
+
+    async function call(name: string, args: Record<string, unknown>): Promise<CallResponse> {
+        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
+        const callHandler = server._requestHandlers.get('tools/call');
+        return (await callHandler!({ method: 'tools/call', params: { name, arguments: args } })) as CallResponse;
+    }
+
+    async function samplePdf(): Promise<string> {
+        const r = await (await import('../src/tools/generate-basic-pdf.js')).generateBasicPdf({
+            title: 'Projection sample',
+            blocks: [{ type: 'paragraph', text: 'Hello projection.' }],
+        });
+        if (r.mode !== 'base64' || r.base64 === undefined) throw new Error('expected base64');
+        return r.base64;
+    }
+
+    it('inspect_pdf full output (default) is unchanged and includes the heavy arrays', async () => {
+        const pdfBase64 = await samplePdf();
+        const res = await call('inspect_pdf', { pdfBase64, pages: true });
+        expect(res.structuredContent).toBeDefined();
+        expect(res.structuredContent!['attachments']).toBeDefined();
+        expect(res.structuredContent!['perPage']).toBeDefined();
+        expect(res.structuredContent!['attachmentCount']).toBeUndefined();
+    });
+
+    it("inspect_pdf verbosity='summary' collapses to scalars and drops arrays", async () => {
+        const pdfBase64 = await samplePdf();
+        const res = await call('inspect_pdf', { pdfBase64, verbosity: 'summary' });
+        const sc = res.structuredContent!;
+        expect(sc['pageCount']).toBeGreaterThanOrEqual(1);
+        expect(sc['attachmentCount']).toBe(0);
+        expect(sc['attachments']).toBeUndefined();
+        expect(sc['perPage']).toBeUndefined();
+        expect(sc['info']).toBeUndefined();
+    });
+
+    it('inspect_pdf fields projection returns only the requested paths', async () => {
+        const pdfBase64 = await samplePdf();
+        const res = await call('inspect_pdf', { pdfBase64, fields: ['pageCount', 'signatureCount'] });
+        expect(res.structuredContent).toEqual({
+            pageCount: res.structuredContent!['pageCount'],
+            signatureCount: 0,
+        });
+    });
+
+    it('inspect_pdf composes summary then fields', async () => {
+        const pdfBase64 = await samplePdf();
+        const res = await call('inspect_pdf', { pdfBase64, verbosity: 'summary', fields: ['attachmentCount'] });
+        expect(res.structuredContent).toEqual({ attachmentCount: 0 });
+    });
+
+    it("verify_pdf verbosity='summary' returns a compact verdict without signatures[]", async () => {
+        const pdfBase64 = await samplePdf();
+        const full = await call('verify_pdf', { pdfBase64 });
+        const res = await call('verify_pdf', { pdfBase64, verbosity: 'summary' });
+        const sc = res.structuredContent!;
+        // Verdict mirrors full mode (a 0-signature PDF reports allValid=false).
+        expect(sc['allValid']).toBe(full.structuredContent!['allValid']);
+        expect(sc['signatureCount']).toBe(0);
+        expect(sc['invalid']).toBe(0);
+        expect(sc['signatures']).toBeUndefined();
+    });
+
+    it("validate_pdf verbosity='summary' drops errors[]/warnings[] for counts", async () => {
+        const pdfBase64 = await samplePdf();
+        const res = await call('validate_pdf', { pdfBase64, verbosity: 'summary' });
+        const sc = res.structuredContent!;
+        expect(sc['standard']).toBe('pdf-ua-1');
+        expect(typeof sc['valid']).toBe('boolean');
+        expect(typeof sc['errorCount']).toBe('number');
+        expect(sc['errors']).toBeUndefined();
+        expect(sc['warnings']).toBeUndefined();
+    });
+
+    it("extract_text verbosity='summary' drops pages[] and fullText", async () => {
+        const pdfBase64 = await samplePdf();
+        const res = await call('extract_text', { pdfBase64, verbosity: 'summary' });
+        const sc = res.structuredContent!;
+        expect(typeof sc['pageCount']).toBe('number');
+        expect(typeof sc['charCount']).toBe('number');
+        expect(sc['pages']).toBeUndefined();
+        expect(sc['fullText']).toBeUndefined();
+    });
+
+    it('extract_text full output (default) still returns pages[] and fullText', async () => {
+        const pdfBase64 = await samplePdf();
+        const res = await call('extract_text', { pdfBase64 });
+        const sc = res.structuredContent!;
+        expect(Array.isArray(sc['pages'])).toBe(true);
+        expect(typeof sc['fullText']).toBe('string');
+        expect(sc['charCount']).toBeUndefined();
     });
 });

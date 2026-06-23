@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-23
+
+A minor, backward-compatible release that adds a 14th tool (`extract_attachments`),
+text watermarks and opt-in Unicode normalization, makes the read-only tools
+token-frugal for AI agents (typically ~90% fewer output tokens on large results),
+upgrades to zod 4, and fixes the MCP registry publish block caused by `mcpName`
+casing. Default tool calls return responses identical to v1.1.0 — all new
+behaviour is opt-in.
+
+### Added
+
+- **Tool `extract_attachments`** (new, read-only): extract embedded files from a PDF byte-for-byte, completing the Factur-X / ZUGFeRD round-trip with `add_attachment`. Returns `{ attachmentCount, attachments: [{ name, sizeBytes?, mimeType?, relationship?, description?, dataBase64? }] }`. Shares the `collectEmbeddedFiles()` collector with `inspect_pdf`; supports a `filename` filter and an `includeData: false` metadata-only probe; rejects encrypted PDFs (`EXTRACTION_UNSUPPORTED`); caps payloads at 16 MiB/file and 32 MiB aggregate.
+- **Watermarks:** `generate_basic_pdf` and `add_table` gain an optional `watermark` ({ text, fontSize?, opacity?, angle?, color? [r,g,b] 0–1, position? }) rendered on every page. Omitted = byte-identical output; a semi-transparent watermark (`opacity < 1.0`, including the 0.15 default) is rejected under `pdfA: 'pdfa1b'` with a stable `PDF_A_COMPLIANCE_VIOLATION` error (ISO 19005-1 §6.4 forbids transparency).
+- **Unicode `normalize`:** `generate_basic_pdf` and `add_international_text` gain an optional `normalize` (`'NFC'|'NFD'|'NFKC'|'NFKD'`). `add_international_text` keeps its `'NFC'` default; `generate_basic_pdf` defaults to no normalization (byte-stable).
+- **Token-frugal reads:** `inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`, and `extract_attachments` gain an optional `verbosity` input (`'summary'` | `'full'`, default `'full'`). `'summary'` returns a canonical scalar subset — e.g. `verify_pdf` → `{ signatureCount, allValid, invalid, summary }`, `extract_text` → `{ pageCount, extractedPageCount, extractable, charCount }` — dropping the heavy arrays / full text.
+- **Field projection:** the read-only tools gain an optional `fields` input — a dot-path projection (e.g. `['allValid']`, `['signatures.valid']`) applied **after** `verbosity` (order: `verbosity` shapes, then `fields` projects, then unknown paths are omitted leniently — never an error). Backed by a new dependency-free `src/projection.ts` module.
+- **Docs:** new root `AGENTS.md` agent operations manual (catalogue, decision tree, recipes, error table).
+- **Tooling:** examples-as-tests — `tests/examples.test.ts` executes every `examples/*.json` (validates tool names; runs self-contained examples and checks produced PDFs with the new `assertValidPdf` helper). New example files (`watermarked-report.json`, `basic-watermark-normalize.json`, `factur-x-roundtrip.json`, `token-frugal-read.json`) and an `examples:check` script.
+- **Docs (contributing):** new `docs/guides/LOCAL_TESTING.md` covering the quality gate, examples runner, verifying PDF correctness, file output + viewer, optional veraPDF, and the MCP Inspector — linked from README and CONTRIBUTING.
+
+### Changed
+
+- **Dependency:** upgraded `zod` `^3.23.8` → `^4.0.0`. The MCP SDK peer range already permitted zod 4. Tool error **codes** are unchanged — clients branch on `error.code`, not zod prose.
+- **MCP registry ID:** `mcpName` (`package.json`) and `name` (`server.json`) → `io.github.Nizoka/pdfnative-mcp` (canonical GitHub login casing). The npm package name stays lowercase `pdfnative-mcp`.
+- **MCP `_meta.apiVersion`** bumped `1.1.0` → `1.2.0` on every tool; `SERVER_VERSION` and `server.json` versions → `1.2.0`.
+- **Base64 delivery:** base64-mode PDF-producing tools no longer duplicate the PDF into `structuredContent.base64`; the bytes are delivered once via the embedded `resource` content block. `structuredContent` for base64 mode is now `{ mode, sizeBytes }`. File mode is unchanged.
+- **Docs:** README, `AGENTS.md`, `docs/AI_GUIDE.md`, `docs/API_STABILITY.md`, `docs/KNOWLEDGE_BASE.md`, `ROADMAP.md`, and `llms.txt` refreshed for the v1.2.0 surface.
+
+### Fixed
+
+- **MCP registry publication** failed because validation compares `mcpName` to the GitHub namespace with case-sensitive equality (`Nizoka`), while the published metadata used lowercase `nizoka`. Corrected to `io.github.Nizoka/pdfnative-mcp`.
+- **Stale example** `multilingual-doc.json` used the removed `text` field instead of `paragraphs`; corrected and now guarded by examples-as-tests.
+
 ## [1.1.0] - 2026-06-09
 
 A minor, fully backward-compatible release that upgrades the engine to
@@ -148,7 +181,10 @@ stability via the new per-tool `_meta.apiVersion` field. Built on top of
 - Strict JSON Schema + Zod validation at every tool boundary.
 - Vitest test suite with sandbox security checks.
 
-[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v0.3.0...v1.0.0
 [0.3.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Nizoka/pdfnative-mcp/releases/tag/v0.1.0

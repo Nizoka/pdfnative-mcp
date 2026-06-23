@@ -2,7 +2,7 @@
 
 > Reference for AI assistants (GitHub Copilot, Claude, Cursor, Continue, Zed, Windsurf, Cline, Roo Code)
 > and human contributors. Captures the full context needed to understand, extend, and debug
-> pdfnative-mcp **v1.1.0** without reading every source file.
+> pdfnative-mcp **v1.2.0** without reading every source file.
 
 > If you are an AI agent calling pdfnative-mcp from a chat session, also read
 > [`AI_GUIDE.md`](AI_GUIDE.md) — the short, action-oriented decision tree.
@@ -23,7 +23,7 @@ verify, validate, attach, inspect and extract PDF files.
 - The MCP server is a thin, secure dispatch layer: validate inputs with Zod → call pdfnative → emit PDF as base64 or to a sandboxed file.
 - Every tool is fully self-contained (its own file in [src/tools/](../src/tools)).
 - Security at every boundary: Zod validation on all inputs, path traversal prevention on file output, no key-material echo in logs or errors.
-- Every tool ships `_meta.apiVersion = '1.1.0'` and worked-example `_meta.examples` so AI clients can introspect supported behavior — see [`API_STABILITY.md`](API_STABILITY.md).
+- Every tool ships `_meta.apiVersion = '1.2.0'` and worked-example `_meta.examples` so AI clients can introspect supported behavior — see [`API_STABILITY.md`](API_STABILITY.md).
 
 **Runtime:** Node.js ≥ 22 (ESM, strict TypeScript). Transport: stdio.
 
@@ -44,6 +44,8 @@ src/
 ├── output.ts         # outputMode logic: base64 inline vs sandboxed file write
 ├── cache.ts          # In-process LRU cache for idempotent tool results
 ├── text.ts           # newline sanitizer (Safe PDF/A)
+├── watermark.ts      # shared text-watermark schema + WatermarkOptions mapping
+├── normalize.ts      # shared Unicode-normalization schema
 ├── errors.ts         # ToolError + SecurityError
 └── tools/
     ├── generate-basic-pdf.ts          # generate_basic_pdf
@@ -58,6 +60,7 @@ src/
     ├── validate-pdf.ts                # validate_pdf (PDF/UA)
     ├── inspect-pdf.ts                 # inspect_pdf
     ├── add-attachment.ts              # add_attachment (PDF/A-3 / Factur-X)
+    ├── extract-attachments.ts         # extract_attachments (read-only)
     └── extract-text.ts                # extract_text
 ```
 
@@ -84,9 +87,15 @@ src/tools/<tool>.ts
   call pdfnative API
   emitPdf(bytes, { mode, outputPath })  ← src/output.ts
     │
-    ├── mode='base64' → base64 string inline in response
+    ├── mode='base64' → PDF returned once as an embedded `resource` content block (data: URI); structuredContent = { mode, sizeBytes }
     └── mode='file'   → write to sandboxed path → return filePath + sizeBytes
 ```
+
+Read-only tools (`inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`, `extract_attachments`) additionally
+apply an opt-in projection layer (`src/projection.ts`) before emitting `structuredContent`:
+`verbosity: 'summary'` swaps the full result for a compact scalar subset, then
+`fields: ['a','b.c']` projects to named dot-paths. Defaults (`'full'`, no `fields`) are
+unchanged.
 
 ---
 
@@ -115,13 +124,13 @@ interface ToolDefinition {
 A `TOOL_INDEX: ReadonlyMap<string, ToolDefinition>` is derived from the array for O(1) lookup on `CallToolRequest`.
 
 **`_meta` per tool** — emitted in the `ListTools` response so AI clients can introspect:
-- `_meta.apiVersion` = `'1.1.0'` (see [`API_STABILITY.md`](API_STABILITY.md) for the bump policy)
+- `_meta.apiVersion` = `'1.2.0'` (see [`API_STABILITY.md`](API_STABILITY.md) for the bump policy)
 - `_meta.examples`   = at least one worked example per tool
 
 **Server metadata:**
 - `SERVER_NAME = 'pdfnative-mcp'`
-- `SERVER_VERSION = '1.1.0'`
-- `serverInfo._meta.mcpName = 'pdfnative-mcp'` (machine ID used by the MCP registry)
+- `SERVER_VERSION = '1.2.0'`
+- `serverInfo._meta.mcpName = 'io.github.Nizoka/pdfnative-mcp'` (registry ID in `package.json` `mcpName` / `server.json` `name`; uses the canonical GitHub login casing `Nizoka` so the MCP registry's case-sensitive validation accepts the lowercase npm package `pdfnative-mcp`)
 - `SERVER_INSTRUCTIONS` — high-level decision tree + common-pitfall guide returned to the client in `serverInfo.instructions`
 
 **Boot:** `initCrypto()` and `initNodeCompression()` are awaited lazily on the first request so the cold start is not paid up-front.
@@ -149,6 +158,7 @@ A `TOOL_INDEX: ReadonlyMap<string, ToolDefinition>` is derived from the array fo
 ```
 
 Optional `pdfA: 'pdfa1b' | 'pdfa2b' | 'pdfa2u' | 'pdfa3b'` produces an archival document.
+Optional `watermark: { text, fontSize?, opacity?, angle?, color?, position? }` renders a text watermark on every page (`color` is an `[r,g,b]` 0–1 triple; `opacity < 1.0` is rejected under `pdfa1b`). Optional `normalize: 'NFC'|'NFD'|'NFKC'|'NFKD'` applies Unicode normalization (omit for byte-stable output).
 For Factur-X / ZUGFeRD invoices use [`add_attachment`](#add_attachment) instead — `generate_basic_pdf` cannot embed files.
 
 > **Newline sanitizer (Safe PDF/A):** a `paragraph` whose `text` contains `\n` / `\r\n` / `\r` is automatically split into separate paragraph blocks (`src/text.ts`). Write multi-line text naturally — never emit a literal newline expecting a soft line break; doing so previously produced `.notdef` tofu in PDF/A. Whitespace-only paragraphs are rejected with `VALIDATION_ERROR`.
@@ -170,11 +180,11 @@ For Factur-X / ZUGFeRD invoices use [`add_attachment`](#add_attachment) instead 
 
 ### `add_international_text`
 
-24 scripts via embedded Noto fonts (Arabic, Hebrew, Thai, Japanese/Chinese/Korean, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Turkish, Polish, Vietnamese, Latin, …). BiDi isolates + Arabic harakat + complex-script shaping + COLRv1 colour emoji handled automatically. Input is NFC-normalised (`normalize: 'NFC'`) for maximal glyph coverage, and embedded newlines auto-split into paragraphs. Lang codes added in v1.1.0: `te` (Telugu), `si` (Sinhala), `bo` (Tibetan), `km` (Khmer), `my` (Myanmar), `am` (Ethiopic); the `emoji` code now maps to `noto-color-emoji-data.js` (COLRv1, monochrome fallback).
+24 scripts via embedded Noto fonts (Arabic, Hebrew, Thai, Japanese/Chinese/Korean, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Turkish, Polish, Vietnamese, Latin, …). BiDi isolates + Arabic harakat + complex-script shaping + COLRv1 colour emoji handled automatically. Input is NFC-normalised by default (`normalize` defaults to `'NFC'`; override with `'NFD'`/`'NFKC'`/`'NFKD'`) for maximal glyph coverage, and embedded newlines auto-split into paragraphs. Lang codes added in v1.1.0: `te` (Telugu), `si` (Sinhala), `bo` (Tibetan), `km` (Khmer), `my` (Myanmar), `am` (Ethiopic); the `emoji` code now maps to `noto-color-emoji-data.js` (COLRv1, monochrome fallback).
 
 ### `add_table`
 
-Tabular reports with v1.2 smart-table fields: `wrap` (`auto`/`always`/`never`), `repeatHeader`, `zebra`, `caption`, `minRowHeight`, `cellPadding`. Every row must have the same length as `headers`. Optional `infoItems` for a metadata block under the title. Optional `pdfA` for archival output. Since pdfnative v1.3, wrapped cells receive a unique MCID per line, so tagged/PDF-A tables are PDF/UA-safe.
+Tabular reports with v1.2 smart-table fields: `wrap` (`auto`/`always`/`never`), `repeatHeader`, `zebra`, `caption`, `minRowHeight`, `cellPadding`. Every row must have the same length as `headers`. Optional `infoItems` for a metadata block under the title. Optional `pdfA` for archival output and optional `watermark` (text only; forces the document backend). Since pdfnative v1.3, wrapped cells receive a unique MCID per line, so tagged/PDF-A tables are PDF/UA-safe.
 
 ### `add_form`
 
@@ -237,6 +247,10 @@ Structural / security inspection.
 ### `add_attachment`
 
 PDF/A-3 (ISO 19005-3) with one or more embedded files. **Primary use case: Factur-X / ZUGFeRD invoices** (single XML payload, `relationship: 'Source'`). Each attachment is capped at 8 MiB. Optional `blocks[]` for the visible body.
+
+### `extract_attachments`
+
+Read-only counterpart to `add_attachment` — walks the catalog name tree (`/Names → /EmbeddedFiles → Names[]`) via the shared `collectEmbeddedFiles()` collector (same metadata as `inspect_pdf`) and returns `{ attachmentCount, attachments: [{ name, sizeBytes?, mimeType?, relationship?, description?, dataBase64? }] }`. `includeData` (default `true`) toggles payload bytes; `filename` filters to one file (`ATTACHMENT_NOT_FOUND` when nothing matches). Payloads are capped at 16 MiB/file and 32 MiB aggregate (`OUTPUT_TOO_LARGE`); encrypted PDFs are rejected with `EXTRACTION_UNSUPPORTED`. Completes the Factur-X round-trip.
 
 ### `validate_pdf`
 
@@ -313,6 +327,21 @@ Two transports are supported. Default = stdio. Set `PDFNATIVE_MCP_PORT` to expos
 | `PDFNATIVE_MCP_PORT`       | No | When set to a valid port (1–65535), switches the transport to Streamable HTTP. Unset = stdio. |
 
 > Historical note: pre-v1.0.0 used a misspelled env var (`PDFNATIVE_MPC_OUTPUT_DIR`). v1.0.0 standardized on `PDFNATIVE_MCP_OUTPUT_DIR`. Update any old config.
+
+### Privacy & data handling
+
+- **No telemetry, no network egress.** The server makes no outbound calls, opens no
+  sockets of its own, and emits no analytics/usage data. Document bytes never leave
+  the process except in the JSON-RPC response to the caller.
+- **Transit.** stdio (default) is a local pipe to the parent process. The opt-in
+  HTTP transport (`PDFNATIVE_MCP_PORT`) binds **`127.0.0.1`** only; terminate TLS in a
+  reverse proxy if you expose it beyond localhost.
+- **Attachments are passed through verbatim.** `add_attachment` embeds, and
+  `extract_attachments` returns, payload bytes **as-is** — the server does **not**
+  execute, render, or virus-scan embedded files. Treat extracted content as untrusted
+  and scan it in the caller if it originates from an untrusted PDF.
+- **No secret retention.** Key/cert material supplied to `sign_pdf` is used in-memory
+  for the single call and never logged, cached, or echoed in errors.
 
 ---
 

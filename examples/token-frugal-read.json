@@ -1,0 +1,9 @@
+{
+  "description": "Token-frugal read (v1.2.0): the smallest 'is this PDF signed and valid?' probe. `verbosity: 'summary'` drops the heavy per-signature array and `fields` projects to the single boolean you branch on. Replace <base64 signed PDF> with real bytes.",
+  "tool": "verify_pdf",
+  "arguments": {
+    "pdfBase64": "<base64 signed PDF>",
+    "verbosity": "summary",
+    "fields": ["allValid"]
+  }
+}

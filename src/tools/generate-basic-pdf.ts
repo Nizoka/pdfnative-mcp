@@ -11,6 +11,13 @@ import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { splitParagraphSegments } from '../text.js';
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
+import { NORMALIZE_ENUM, NORMALIZE_FIELD_DESCRIPTION, NormalizeSchema } from '../normalize.js';
+import {
+    WATERMARK_INPUT_SCHEMA,
+    WatermarkSchema,
+    toWatermarkOptions,
+    assertWatermarkPdfACompatible,
+} from '../watermark.js';
 
 export const GENERATE_BASIC_PDF_NAME = 'generate_basic_pdf';
 
@@ -100,6 +107,12 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
             enum: [...PDF_A_ENUM],
             description: PDF_A_FIELD_DESCRIPTION,
         },
+        watermark: WATERMARK_INPUT_SCHEMA,
+        normalize: {
+            type: 'string',
+            enum: [...NORMALIZE_ENUM],
+            description: NORMALIZE_FIELD_DESCRIPTION,
+        },
         outputMode: {
             type: 'string',
             enum: ['base64', 'file'],
@@ -144,6 +157,8 @@ const InputSchema = z.object({
         .max(5000),
     footerText: z.string().max(200).optional(),
     pdfA: PdfASchema.optional(),
+    watermark: WatermarkSchema.optional(),
+    normalize: NormalizeSchema.optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -153,7 +168,8 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, blocks, footerText, pdfA, outputMode, outputPath } = parsed.data;
+    const { title, blocks, footerText, pdfA, watermark, normalize, outputMode, outputPath } = parsed.data;
+    assertWatermarkPdfACompatible(watermark, pdfA);
 
     const docBlocks: DocumentBlock[] = blocks.flatMap((block): DocumentBlock[] => {
         switch (block.type) {
@@ -179,7 +195,11 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
             blocks: docBlocks,
             ...(footerText !== undefined ? { footerText } : {}),
         },
-        pdfA !== undefined ? { tagged: pdfA } : {},
+        {
+            ...(pdfA !== undefined ? { tagged: pdfA } : {}),
+            ...(watermark !== undefined ? { watermark: toWatermarkOptions(watermark) } : {}),
+            ...(normalize !== undefined ? { normalize } : {}),
+        },
     );
 
     return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });

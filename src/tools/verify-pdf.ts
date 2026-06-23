@@ -65,6 +65,20 @@ export const VERIFY_PDF_INPUT_SCHEMA = {
             maxItems: 16,
             items: { type: 'string', minLength: 4 },
         },
+        verbosity: {
+            type: 'string',
+            enum: ['summary', 'full'],
+            default: 'full',
+            description:
+                "Response verbosity. 'full' (default) returns the per-signature signatures[] array; 'summary' returns a token-frugal verdict { signatureCount, allValid, invalid, summary } and drops signatures[].",
+        },
+        fields: {
+            type: 'array',
+            description:
+                "Optional dot-path projection applied to the structured result (e.g. ['allValid'] or ['signatures.valid']). Composes after verbosity. Unknown paths are omitted.",
+            maxItems: 16,
+            items: { type: 'string', minLength: 1 },
+        },
     },
     required: ['pdfBase64'],
 } as const;
@@ -106,6 +120,8 @@ export const VERIFY_PDF_OUTPUT_SCHEMA = {
 const InputSchema = z.object({
     pdfBase64: z.string().min(4),
     trustedRootsDerBase64: z.array(z.string().min(4)).max(16).optional(),
+    verbosity: z.enum(['summary', 'full']).optional(),
+    fields: z.array(z.string().min(1)).max(16).optional(),
 });
 
 export type ChainTrust = 'trusted' | 'self-signed' | 'unverified' | 'unknown';

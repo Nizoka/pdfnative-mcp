@@ -2,17 +2,12 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { embedImage } from '../src/tools/embed-image.js';
 import { ensureCompressionReady } from '../src/server.js';
 import { ToolError } from '../src/errors.js';
+import { assertValidPdf } from './_pdf-assert.js';
 
 beforeAll(async () => {
     delete process.env['PDFNATIVE_MCP_OUTPUT_DIR'];
     await ensureCompressionReady();
 });
-
-const PDF_HEADER = '%PDF-';
-
-function decode(b64: string): string {
-    return Buffer.from(b64, 'base64').toString('latin1').slice(0, 5);
-}
 
 /**
  * Minimal valid 1×1 white JPEG (generated offline, embedded as base64).
@@ -40,7 +35,7 @@ describe('embed_image', () => {
         });
         expect(result.mode).toBe('base64');
         expect(result.sizeBytes).toBeGreaterThan(100);
-        expect(decode(result.base64!)).toBe(PDF_HEADER);
+        assertValidPdf(result.base64!);
     });
 
     it('wraps pdfnative image errors as ToolError (e.g. alpha-channel PNG not supported)', async () => {

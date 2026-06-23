@@ -26,6 +26,7 @@ import {
 } from 'pdfnative';
 import { z } from 'zod';
 import { ToolError } from '../errors.js';
+import { collectEmbeddedFiles } from '../pdf-introspection.js';
 
 export const INSPECT_PDF_NAME = 'inspect_pdf';
 
@@ -52,6 +53,20 @@ export const INSPECT_PDF_INPUT_SCHEMA = {
                 "Optional CI assertions. The result.checksPassed flag is true only when every requested check holds (e.g. ['pdfa','signed']).",
             maxItems: 8,
             items: { type: 'string', enum: [...CHECK_VALUES] },
+        },
+        verbosity: {
+            type: 'string',
+            enum: ['summary', 'full'],
+            default: 'full',
+            description:
+                "Response verbosity. 'full' (default) returns every field; 'summary' returns a token-frugal scalar subset (version, pageCount, encryption, pdfA, signatureCount, hasSignaturePlaceholder, attachmentCount) — drops the attachments[], info and perPage arrays.",
+        },
+        fields: {
+            type: 'array',
+            description:
+                "Optional dot-path projection applied to the structured result (e.g. ['pageCount','signatureCount']). Composes after verbosity. Unknown paths are omitted.",
+            maxItems: 16,
+            items: { type: 'string', minLength: 1 },
         },
     },
     required: ['pdfBase64'],
@@ -119,6 +134,8 @@ const InputSchema = z.object({
     pdfBase64: z.string().min(4),
     pages: z.boolean().default(false),
     check: z.array(z.enum(CHECK_VALUES)).max(8).optional(),
+    verbosity: z.enum(['summary', 'full']).optional(),
+    fields: z.array(z.string().min(1)).max(16).optional(),
 });
 
 export interface AttachmentSummary {
@@ -249,55 +266,8 @@ function isAllZero(s: string): boolean {
 }
 
 function readAttachments(reader: PdfReader): AttachmentSummary[] {
-    const catalog = reader.getCatalog();
-    const namesEntry = catalog.get('Names');
-    if (namesEntry === undefined) return [];
-    const names = isRef(namesEntry) ? reader.resolve(namesEntry) : namesEntry;
-    if (!isDict(names)) return [];
-    const embEntry = names.get('EmbeddedFiles');
-    if (embEntry === undefined) return [];
-    const emb = isRef(embEntry) ? reader.resolve(embEntry) : embEntry;
-    if (!isDict(emb)) return [];
-    const namesArrEntry = emb.get('Names');
-    if (namesArrEntry === undefined) return [];
-    const namesArr = isRef(namesArrEntry) ? reader.resolve(namesArrEntry) : namesArrEntry;
-    if (!isArray(namesArr)) return [];
-    const out: AttachmentSummary[] = [];
-    for (let i = 0; i + 1 < namesArr.length; i += 2) {
-        const name = namesArr[i];
-        if (typeof name !== 'string') continue;
-        const fsEntry = namesArr[i + 1];
-        const fileSpec = fsEntry !== undefined && isRef(fsEntry) ? reader.resolve(fsEntry) : fsEntry;
-        if (!isDict(fileSpec)) {
-            out.push({ name });
-            continue;
-        }
-        const summary: { -readonly [K in keyof AttachmentSummary]: AttachmentSummary[K] } = { name };
-        const rel = fileSpec.get('AFRelationship');
-        if (rel !== undefined && isName(rel)) summary.relationship = rel.value;
-        const desc = fileSpec.get('Desc');
-        if (typeof desc === 'string') summary.description = desc;
-        const efEntry = fileSpec.get('EF');
-        const ef = efEntry !== undefined && isRef(efEntry) ? reader.resolve(efEntry) : efEntry;
-        if (ef !== undefined && isDict(ef)) {
-            const fEntry = ef.get('F') ?? ef.get('UF');
-            const fStream = fEntry !== undefined && isRef(fEntry) ? reader.resolve(fEntry) : fEntry;
-            if (fStream !== undefined && isStream(fStream)) {
-                const len = fStream.dict.get('Length');
-                if (typeof len === 'number') summary.sizeBytes = len;
-                const params = fStream.dict.get('Params');
-                const paramsDict = params !== undefined && isRef(params) ? reader.resolve(params) : params;
-                if (paramsDict !== undefined && isDict(paramsDict)) {
-                    const sz = paramsDict.get('Size');
-                    if (typeof sz === 'number') summary.sizeBytes = sz;
-                }
-                const subtype = fStream.dict.get('Subtype');
-                if (subtype !== undefined && isName(subtype)) summary.mimeType = subtype.value.replace(/#2F/gi, '/');
-            }
-        }
-        out.push(summary);
-    }
-    return out;
+    // Metadata-only view of the shared embedded-file collector (no payload bytes).
+    return collectEmbeddedFiles(reader).map(({ data: _data, ...summary }) => summary);
 }
 
 function findAcroFormDict(reader: PdfReader): PdfDict | null {

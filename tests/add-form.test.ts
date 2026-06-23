@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { addForm } from '../src/tools/add-form.js';
 import { ensureCompressionReady } from '../src/server.js';
 import { ToolError } from '../src/errors.js';
+import { assertValidPdf } from './_pdf-assert.js';
 
 beforeAll(async () => {
     delete process.env['PDFNATIVE_MCP_OUTPUT_DIR'];
@@ -25,7 +26,7 @@ describe('add_form', () => {
         });
         expect(result.mode).toBe('base64');
         expect(result.sizeBytes).toBeGreaterThan(100);
-        expect(decode(result.base64!)).toBe(PDF_HEADER);
+        assertValidPdf(result.base64!);
     });
 
     it('produces a PDF with all supported field types', async () => {

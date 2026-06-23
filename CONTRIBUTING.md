@@ -11,6 +11,8 @@ npm install
 npm run typecheck && npm run lint && npm test
 ```
 
+For the full local-verification workflow — quality gate, examples-as-tests, checking that generated PDFs are actually valid, opening output in a viewer, external PDF/A validation, and the MCP Inspector — see [docs/guides/LOCAL_TESTING.md](docs/guides/LOCAL_TESTING.md).
+
 ## Workflow
 
 1. **Open an issue first** for non-trivial changes (new tools, breaking changes, dependency additions).
@@ -36,7 +38,8 @@ npm run typecheck && npm run lint && npm test
 2. Register the tool in `src/server.ts` (`TOOLS` array). Provide `title`, `description`, and appropriate `annotations`.
 3. Add tests in `tests/tools.test.ts` (or a dedicated file).
 4. Document the tool in `README.md`.
-5. Bump the changelog.
+5. Add a worked example under `examples/` (it is automatically executed by `tests/examples.test.ts` — run `npm run examples:check`).
+6. Bump the changelog.
 
 ## Reporting bugs
 

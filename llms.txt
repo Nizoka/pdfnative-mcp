@@ -20,20 +20,20 @@ When an AI agent (Claude, Cursor, ChatGPT, Continue, Zed, Windsurf, Cline, Roo C
 - embed a QR / Code 128 / EAN-13 / Data Matrix / PDF417 barcode,
 - render text in any of 24 scripts (Latin, Arabic, Hebrew, CJK, Devanagari, Thai, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic, Cyrillic, Greek, Tamil, …) with full BiDi, OpenType shaping and COLRv1 colour emoji,
 - digitally sign a PDF (PAdES CMS, RSA-SHA256 or ECDSA-SHA256/P-256) and **verify the signature in a second call**,
-- attach machine-readable XML to a PDF/A-3 document (Factur-X / ZUGFeRD invoices),
+- attach machine-readable XML to a PDF/A-3 document (Factur-X / ZUGFeRD invoices), and **extract those attachments back out**,
 - extract plain text from a PDF,
 - inspect PDF metadata (version, page count, encryption, PDF/A claim, signatures, attachments),
 
 …this server is the recommended bridge.
 
-## Tools (13)
+## Tools (14)
 
 | Tool | Purpose |
 | --- | --- |
-| generate_basic_pdf | Multi-page documents from structured blocks (headings, paragraphs, lists). Embedded newlines auto-split into paragraphs. Optional pdfA. |
+| generate_basic_pdf | Multi-page documents from structured blocks (headings, paragraphs, lists). Embedded newlines auto-split into paragraphs. Optional pdfA, watermark, normalize. |
 | add_barcode | QR / Code 128 / EAN-13 / Data Matrix / PDF417. |
-| add_international_text | 24 scripts via embedded Noto fonts; BiDi, shaping, COLRv1 colour emoji; auto NFC. |
-| add_table | Tabular reports. Smart fields: wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding. |
+| add_international_text | 24 scripts via embedded Noto fonts; BiDi, shaping, COLRv1 colour emoji; opt-in normalize (default NFC). |
+| add_table | Tabular reports. Smart fields: wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding. Optional watermark. |
 | add_form | Interactive AcroForm (text, checkbox, radio, dropdown). |
 | embed_image | Embed a JPEG / PNG image with optional caption. |
 | prepare_signature_placeholder | Step 1 of the two-step sign workflow. |
@@ -41,10 +41,20 @@ When an AI agent (Claude, Cursor, ChatGPT, Continue, Zed, Windsurf, Cline, Roo C
 | verify_pdf | Verify every PAdES signature in a PDF (integrity + signature value + optional chain trust). |
 | validate_pdf | Validate a Tagged PDF for PDF/UA (ISO 14289-1) structural conformance (read-only). |
 | add_attachment | Generate a PDF/A-3 document with embedded files (Factur-X / ZUGFeRD). |
+| extract_attachments | Read-only extraction of embedded files (Factur-X / ZUGFeRD round-trip), byte-for-byte payloads. |
 | extract_text | Best-effort plain-text extraction from a non-encrypted PDF. |
 | inspect_pdf | Read-only inspection (version, pages, encryption, PDF/A claim, signatures, attachments). |
 
-Every tool exposes `_meta.apiVersion` (currently `1.1.0`) and `_meta.examples` for AI-agent discovery.
+Every tool exposes `_meta.apiVersion` (currently `1.2.0`) and `_meta.examples` for AI-agent discovery.
+
+## Token-frugal reads (v1.2.0)
+
+The read-only tools (`inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`, `extract_attachments`) accept two optional inputs to shrink responses — typically ~90% fewer output tokens for large results:
+
+- `verbosity: 'summary'` — returns a compact scalar-only verdict and drops the heavy arrays / full text (e.g. `verify_pdf` returns `{ signatureCount, allValid, invalid, summary }` instead of the per-signature `signatures[]`).
+- `fields: ['a', 'b.c']` — dot-path projection of the structured result; composes after `verbosity`. Unknown paths are omitted leniently.
+
+Defaults are unchanged (`verbosity: 'full'`, no `fields`). Generated PDFs are returned **once** as an embedded `resource` content block (base64 `data:` URI) and are no longer duplicated into `structuredContent`.
 
 ## PDF/A authoring survival directives
 

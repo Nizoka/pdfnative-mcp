@@ -16,6 +16,7 @@ import {
     isDict,
     isName,
     isRef,
+    isStream,
     type ParsedDict as PdfDict,
     type PdfReader,
 } from 'pdfnative';
@@ -141,4 +142,90 @@ export function collectSignatureWidgets(reader: PdfReader): SignatureWidget[] {
         });
     }
     return widgets;
+}
+
+/**
+ * Metadata for a single embedded file (`/EmbeddedFiles` filespec), optionally
+ * carrying the decoded payload bytes.
+ *
+ * Shared by `inspect_pdf` (metadata only) and `extract_attachments`
+ * (`includeData: true`). Walking the catalog `/Names → /EmbeddedFiles → Names[]`
+ * tree once keeps the two tools byte-for-byte consistent.
+ */
+export interface EmbeddedFile {
+    readonly name: string;
+    readonly sizeBytes?: number;
+    readonly mimeType?: string;
+    readonly relationship?: string;
+    readonly description?: string;
+    /** Decoded file bytes — present only when `collectEmbeddedFiles` is called with `includeData: true`. */
+    readonly data?: Uint8Array;
+}
+
+/**
+ * Enumerate every embedded file reachable from the catalog name tree
+ * (`/Names → /EmbeddedFiles → Names[]`). When `includeData` is true the
+ * `/EmbeddedFile` stream is decoded via the hardened reader and returned as
+ * `data`; otherwise only metadata is collected.
+ */
+export function collectEmbeddedFiles(
+    reader: PdfReader,
+    opts?: { readonly includeData?: boolean },
+): EmbeddedFile[] {
+    const includeData = opts?.includeData ?? false;
+    const catalog = reader.getCatalog();
+    const namesEntry = catalog.get('Names');
+    if (namesEntry === undefined) return [];
+    const names = isRef(namesEntry) ? reader.resolve(namesEntry) : namesEntry;
+    if (!isDict(names)) return [];
+    const embEntry = names.get('EmbeddedFiles');
+    if (embEntry === undefined) return [];
+    const emb = isRef(embEntry) ? reader.resolve(embEntry) : embEntry;
+    if (!isDict(emb)) return [];
+    const namesArrEntry = emb.get('Names');
+    if (namesArrEntry === undefined) return [];
+    const namesArr = isRef(namesArrEntry) ? reader.resolve(namesArrEntry) : namesArrEntry;
+    if (!isArray(namesArr)) return [];
+    const out: EmbeddedFile[] = [];
+    for (let i = 0; i + 1 < namesArr.length; i += 2) {
+        const name = namesArr[i];
+        if (typeof name !== 'string') continue;
+        const fsEntry = namesArr[i + 1];
+        const fileSpec = fsEntry !== undefined && isRef(fsEntry) ? reader.resolve(fsEntry) : fsEntry;
+        if (!isDict(fileSpec)) {
+            out.push({ name });
+            continue;
+        }
+        const file: { -readonly [K in keyof EmbeddedFile]: EmbeddedFile[K] } = { name };
+        const rel = fileSpec.get('AFRelationship');
+        if (rel !== undefined && isName(rel)) file.relationship = rel.value;
+        const desc = fileSpec.get('Desc');
+        if (typeof desc === 'string') file.description = desc;
+        const efEntry = fileSpec.get('EF');
+        const ef = efEntry !== undefined && isRef(efEntry) ? reader.resolve(efEntry) : efEntry;
+        if (ef !== undefined && isDict(ef)) {
+            const fEntry = ef.get('F') ?? ef.get('UF');
+            const fStream = fEntry !== undefined && isRef(fEntry) ? reader.resolve(fEntry) : fEntry;
+            if (fStream !== undefined && isStream(fStream)) {
+                const len = fStream.dict.get('Length');
+                if (typeof len === 'number') file.sizeBytes = len;
+                const params = fStream.dict.get('Params');
+                const paramsDict = params !== undefined && isRef(params) ? reader.resolve(params) : params;
+                if (paramsDict !== undefined && isDict(paramsDict)) {
+                    const sz = paramsDict.get('Size');
+                    if (typeof sz === 'number') file.sizeBytes = sz;
+                }
+                const subtype = fStream.dict.get('Subtype');
+                if (subtype !== undefined && isName(subtype)) file.mimeType = subtype.value.replace(/#2F/gi, '/');
+                if (includeData) {
+                    const decoded = reader.decodeStream(fStream);
+                    file.data = decoded;
+                    // Prefer the actual decoded length when the dictionary lacked /Params /Size.
+                    if (file.sizeBytes === undefined) file.sizeBytes = decoded.length;
+                }
+            }
+        }
+        out.push(file);
+    }
+    return out;
 }

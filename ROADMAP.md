@@ -64,11 +64,21 @@ Priorities may shift based on community feedback and sponsorship.
 - [x] **Engine fixes surfaced** — Euro/CP-1252 symbols extract correctly ([pdfnative #48](https://github.com/Nizoka/pdfnative/issues/48)); wrapped table cells get unique per-line MCIDs (PDF/UA-safe).
 - [x] **Survival directives** — refreshed `SERVER_INSTRUCTIONS`, `llms.txt`, and docs for AI agents.
 
+### v1.2.0 — token-frugal responses, attachment round-trip, watermarks
+
+- [x] **Tool `extract_attachments`** — read-only extraction of embedded files (byte-for-byte), completing the Factur-X / ZUGFeRD round-trip. **14th tool.**
+- [x] **Watermarks** — optional `watermark` (text, opacity, angle, colour, position) on `generate_basic_pdf` and `add_table`.
+- [x] **Unicode `normalize`** — opt-in `NFC`/`NFD`/`NFKC`/`NFKD` on `generate_basic_pdf` and `add_international_text`.
+- [x] **Token-frugal reads** — optional `verbosity: 'summary'` + `fields: […]` on every read-only tool (~90% smaller responses); no base64 duplication in `structuredContent`.
+- [x] **MCP registry publish fix** — canonical `io.github.Nizoka/pdfnative-mcp` casing.
+- [x] **Dependency** — upgraded to **zod 4**.
+- [x] **AGENTS.md** — root agent operations manual (catalogue, decision tree, recipes, error table).
+
 ---
 
 ## In Progress
 
-_v1.1.0 is the active release. Page-tree manipulation tools remain blocked on an upstream pdfnative page-tree export API (see Blocked below)._
+_v1.2.0 is the active release. Page-tree manipulation tools remain blocked on an upstream pdfnative page-tree export API (see Blocked below)._
 
 ---
 

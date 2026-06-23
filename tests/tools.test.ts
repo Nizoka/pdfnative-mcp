@@ -3,6 +3,7 @@ import { generateBasicPdf } from '../src/tools/generate-basic-pdf.js';
 import { addBarcode } from '../src/tools/add-barcode.js';
 import { ensureCompressionReady } from '../src/server.js';
 import { ToolError } from '../src/errors.js';
+import { assertValidPdf } from './_pdf-assert.js';
 
 beforeAll(async () => {
     delete process.env['PDFNATIVE_MCP_OUTPUT_DIR'];
@@ -26,7 +27,7 @@ describe('generate_basic_pdf', () => {
         });
         expect(result.mode).toBe('base64');
         expect(result.sizeBytes).toBeGreaterThan(100);
-        expect(decode(result.base64!)).toBe(PDF_HEADER);
+        assertValidPdf(result.base64!);
     });
 
     it('rejects invalid inputs', async () => {
@@ -77,7 +78,7 @@ describe('add_barcode', () => {
             caption: 'Scan me',
         });
         expect(result.mode).toBe('base64');
-        expect(decode(result.base64!)).toBe(PDF_HEADER);
+        assertValidPdf(result.base64!);
     });
 
     it('validates EAN-13 length', async () => {

@@ -1,0 +1,39 @@
+{
+  "description": "Factur-X / ZUGFeRD round-trip (v1.2.0): embed the structured XML into a PDF/A-3b carrier, confirm it with inspect_pdf, then read it back byte-for-byte with extract_attachments. Replace the <...> placeholders with the base64 produced by the preceding step.",
+  "steps": [
+    {
+      "tool": "add_attachment",
+      "arguments": {
+        "title": "Invoice INV-2026-042",
+        "blocks": [
+          { "type": "heading", "text": "Invoice INV-2026-042", "level": 1 },
+          { "type": "paragraph", "text": "Total due: 1\u00a0234,56 EUR \u00b7 net 30 days" }
+        ],
+        "attachments": [
+          {
+            "filename": "factur-x.xml",
+            "mimeType": "application/xml",
+            "dataBase64": "PD94bWwgdmVyc2lvbj0iMS4wIj8+PEludm9pY2UvPg==",
+            "relationship": "Source",
+            "description": "Factur-X / ZUGFeRD structured invoice (CII)"
+          }
+        ]
+      }
+    },
+    {
+      "tool": "inspect_pdf",
+      "arguments": {
+        "pdfBase64": "<base64 from step 1>",
+        "verbosity": "summary",
+        "fields": ["pdfA", "attachmentCount"]
+      }
+    },
+    {
+      "tool": "extract_attachments",
+      "arguments": {
+        "pdfBase64": "<base64 from step 1>",
+        "filename": "factur-x.xml"
+      }
+    }
+  ]
+}

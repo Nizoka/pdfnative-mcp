@@ -28,6 +28,7 @@ import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { splitParagraphSegments } from '../text.js';
 import { PDF_A_ENUM, PdfASchema } from '../pdfa.js';
+import { NORMALIZE_ENUM, NormalizeSchema } from '../normalize.js';
 
 export const ADD_INTERNATIONAL_TEXT_NAME = 'add_international_text';
 
@@ -132,6 +133,12 @@ export const ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA = {
             enum: [...PDF_A_ENUM],
             description: "Optional PDF/A conformance level. When set, Tagged PDF + sRGB OutputIntent + XMP metadata are emitted; the 'latin' Noto Sans fallback is auto-registered for non-WinAnsi Latin (ISO 19005-1 \u00a76.3.4). See docs/guides/PDFA.md for the full authoring guide.",
         },
+        normalize: {
+            type: 'string',
+            enum: [...NORMALIZE_ENUM],
+            description:
+                "Unicode normalization form applied before shaping. Defaults to 'NFC' (recommended for international scripts: composes decomposed sequences for the widest glyph coverage). Override with 'NFD'/'NFKC'/'NFKD' only for specialised needs.",
+        },
         outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
         outputPath: { type: 'string' },
     },
@@ -149,6 +156,7 @@ const InputSchema = z.object({
     lang: LangInput,
     paragraphs: z.array(z.string().min(1).max(50000)).min(1).max(1000),
     pdfA: PdfASchema.optional(),
+    normalize: NormalizeSchema.optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -181,7 +189,7 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, lang, paragraphs, pdfA, outputMode, outputPath } = parsed.data;
+    const { title, lang, paragraphs, pdfA, normalize, outputMode, outputPath } = parsed.data;
 
     const langs = normaliseLangs(lang);
     // Auto-register Noto Sans Latin fallback under PDF/A so non-WinAnsi Latin (smart
@@ -210,7 +218,7 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
 
     const bytes = buildDocumentPDFBytes(
         { title, blocks, fontEntries },
-        { normalize: 'NFC', ...(pdfA !== undefined ? { tagged: pdfA } : {}) },
+        { normalize: normalize ?? 'NFC', ...(pdfA !== undefined ? { tagged: pdfA } : {}) },
     );
     return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
 }

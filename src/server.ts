@@ -15,6 +15,7 @@ import { initCrypto, initNodeCompression } from 'pdfnative';
 import { ToolError } from './errors.js';
 import { getCached, setCached } from './cache.js';
 import { type OutputResult } from './output.js';
+import { readFields, readVerbosity, selectFields } from './projection.js';
 import {
     GENERATE_BASIC_PDF_NAME,
     GENERATE_BASIC_PDF_INPUT_SCHEMA,
@@ -88,10 +89,17 @@ import {
     validatePdf,
     type ValidatePdfResult,
 } from './tools/validate-pdf.js';
+import {
+    EXTRACT_ATTACHMENTS_NAME,
+    EXTRACT_ATTACHMENTS_INPUT_SCHEMA,
+    EXTRACT_ATTACHMENTS_OUTPUT_SCHEMA,
+    extractAttachments,
+    type ExtractAttachmentsResult,
+} from './tools/extract-attachments.js';
 
 // JSON import attribute (Node 22+, TS 5.3+) keeps version in lock-step with package.json.
 // Hardcoded here to keep the build rootDir limited to ./src; tests assert it stays in sync.
-const SERVER_VERSION = '1.1.0';
+const SERVER_VERSION = '1.2.0';
 const SERVER_NAME = 'pdfnative-mcp';
 
 /**
@@ -100,7 +108,7 @@ const SERVER_NAME = 'pdfnative-mcp';
  * make a cached response unsafe to serve. Independent from SERVER_VERSION
  * (which tracks the npm package).
  */
-const TOOL_API_VERSION = '1.1.0';
+const TOOL_API_VERSION = '1.2.0';
 
 /** True when the call's input requests a file-mode output (filesystem side-effect). */
 function isFileOutput(input: unknown): boolean {
@@ -109,22 +117,43 @@ function isFileOutput(input: unknown): boolean {
     return mode === 'file';
 }
 
-function dispatchOutput(output: unknown, name: string): CallToolResult {
+function dispatchOutput(output: unknown, name: string, input: unknown): CallToolResult {
     if (output !== null && typeof output === 'object') {
         if ('mode' in output) {
             return buildSuccessResult(output as OutputResult, name);
         }
         if ('signatureCount' in output && 'allValid' in output) {
-            return buildVerifyResult(output as VerifyPdfResult, name);
+            return buildVerifyResult(output as VerifyPdfResult, name, input);
         }
         if ('extractedPageCount' in output) {
-            return buildExtractTextResult(output as ExtractTextResult, name);
+            return buildExtractTextResult(output as ExtractTextResult, name, input);
         }
         if ('warnings' in output && 'valid' in output) {
-            return buildValidateResult(output as ValidatePdfResult, name);
+            return buildValidateResult(output as ValidatePdfResult, name, input);
+        }
+        if ('attachmentCount' in output && 'attachments' in output) {
+            return buildExtractAttachmentsResult(output as ExtractAttachmentsResult, name, input);
         }
     }
-    return buildInspectResult(output as InspectPdfResult, name);
+    return buildInspectResult(output as InspectPdfResult, name, input);
+}
+
+
+/**
+ * Apply the opt-in token-frugal projection to a read-only tool's
+ * `structuredContent`. `verbosity: 'summary'` swaps the full result for a
+ * canonical scalar-only subset; `fields: [...]` then projects to named dot-paths.
+ * Defaults (`verbosity: 'full'`, no `fields`) return the full result unchanged.
+ */
+function projectStructured(
+    full: Record<string, unknown>,
+    summary: Record<string, unknown>,
+    input: unknown,
+): Record<string, unknown> {
+    const base = readVerbosity(input) === 'summary' ? summary : full;
+    const fields = readFields(input);
+    if (fields.length === 0) return base;
+    return selectFields(base, fields) as Record<string, unknown>;
 }
 
 
@@ -133,11 +162,12 @@ const PDF_OUTPUT_SCHEMA = {
     type: 'object',
     additionalProperties: false,
     required: ['mode', 'sizeBytes'],
+    description:
+        "Structured result of a PDF-producing tool. In base64 mode the PDF bytes are delivered out-of-band as an embedded `resource` content block (data: URI), NOT duplicated here, to keep responses token-frugal. In file mode `filePath` is the sandboxed absolute path.",
     properties: {
         mode: { type: 'string', enum: ['base64', 'file'] },
         sizeBytes: { type: 'integer', minimum: 0 },
         filePath: { type: 'string', description: "Absolute sandboxed file path (when mode='file')." },
-        base64: { type: 'string', description: "Base64-encoded PDF bytes (when mode='base64')." },
     },
 } as const;
 
@@ -155,7 +185,7 @@ interface ToolDefinition {
     };
     /** Minimal MCP `_meta.examples` payload — each entry is a self-contained input. */
     examples?: ReadonlyArray<{ readonly title: string; readonly input: Record<string, unknown> }>;
-    handler: (args: unknown) => Promise<OutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult | ValidatePdfResult>;
+    handler: (args: unknown) => Promise<OutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult | ValidatePdfResult | ExtractAttachmentsResult>;
 }
 
 const TOOLS: readonly ToolDefinition[] = [
@@ -282,6 +312,7 @@ const TOOLS: readonly ToolDefinition[] = [
             { title: 'CI: assert PDF/A + signed', input: { pdfBase64: '<base64>', check: ['pdfa', 'signed'] } },
             { title: 'Detect Factur-X attachments', input: { pdfBase64: '<base64>', check: ['attachments'] } },
             { title: 'Detect an unsigned placeholder ready for sign_pdf', input: { pdfBase64: '<base64>', check: ['placeholder'] } },
+            { title: 'Token-frugal summary verdict', input: { pdfBase64: '<base64>', verbosity: 'summary' } },
         ],
         handler: inspectPdf,
     },
@@ -296,6 +327,7 @@ const TOOLS: readonly ToolDefinition[] = [
         examples: [
             { title: 'Verify a signed PDF (no chain trust)', input: { pdfBase64: '<signed-pdf-base64>' } },
             { title: 'Verify with a trusted root certificate', input: { pdfBase64: '<signed-pdf-base64>', trustedRootsDerBase64: ['<root-cert-der-base64>'] } },
+            { title: 'Token-frugal yes/no verdict', input: { pdfBase64: '<signed-pdf-base64>', verbosity: 'summary', fields: ['allValid'] } },
         ],
         handler: verifyPdf,
     },
@@ -339,11 +371,26 @@ const TOOLS: readonly ToolDefinition[] = [
         ],
         handler: validatePdf,
     },
+    {
+        name: EXTRACT_ATTACHMENTS_NAME,
+        title: 'Extract embedded files from PDF',
+        description:
+            "Read-only extraction of embedded files from a non-encrypted PDF (PDF/A-3 / Factur-X / ZUGFeRD). Walks the catalog /Names → /EmbeddedFiles tree and returns each attachment's metadata (name, mimeType, AFRelationship, description, sizeBytes) plus, by default, its decoded payload as dataBase64. Completes the invoice round-trip: add_attachment → inspect_pdf → extract_attachments. Pass `filename` to pull a single named file, or `includeData: false` for a metadata-only probe. Encrypted PDFs are rejected with EXTRACTION_UNSUPPORTED.",
+        inputSchema: EXTRACT_ATTACHMENTS_INPUT_SCHEMA,
+        outputSchema: EXTRACT_ATTACHMENTS_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Extract every embedded file (with payloads)', input: { pdfBase64: '<base64>' } },
+            { title: 'Pull just the Factur-X XML payload', input: { pdfBase64: '<base64>', filename: 'factur-x.xml' } },
+            { title: 'Metadata-only probe (no payloads)', input: { pdfBase64: '<base64>', includeData: false, verbosity: 'summary' } },
+        ],
+        handler: extractAttachments,
+    },
 ];
 
 const TOOL_INDEX: ReadonlyMap<string, ToolDefinition> = new Map(TOOLS.map((t) => [t.name, t]));
 
-const SERVER_INSTRUCTIONS = `pdfnative-mcp bridges the zero-dependency 'pdfnative' v1.3 library to MCP. API version: 1.1.0 (stable).
+const SERVER_INSTRUCTIONS = `pdfnative-mcp bridges the zero-dependency 'pdfnative' v1.3 library to MCP. API version: 1.2.0 (stable).
 
 DECISION TREE — pick the right tool in one step:
   • Plain document (headings, paragraphs, lists)             → ${GENERATE_BASIC_PDF_NAME}
@@ -359,6 +406,7 @@ DECISION TREE — pick the right tool in one step:
   • Verify all PAdES signatures                              → ${VERIFY_PDF_NAME}
   • Validate PDF/UA accessibility structure                  → ${VALIDATE_PDF_NAME}
   • Pull plain text from a PDF                               → ${EXTRACT_TEXT_NAME}
+  • Pull embedded files back out (Factur-X XML, side-cars)   → ${EXTRACT_ATTACHMENTS_NAME}
 
 COMMON PITFALLS (read these to avoid retry loops):
   • Barcode 'data' is the RAW payload — do NOT URL-encode URLs. For a QR pointing to https://google.com just pass data: 'https://google.com'.
@@ -370,12 +418,26 @@ COMMON PITFALLS (read these to avoid retry loops):
   • For Factur-X / ZUGFeRD invoices, use add_attachment (PDF/A-3) — generate_basic_pdf cannot embed files.
   • PDF/A: pass pdfA='pdfa2b' for the widest reader compatibility. PDF/A-3 is required when you have attachments.
   • PDF/A text is now robust: embedded newlines ('\\n') in paragraphs are auto-split into separate paragraphs; the Euro sign and other CP-1252 symbols extract correctly (pdfnative 1.3); wrapped table cells get unique per-line MCIDs. Write naturally — no manual workarounds needed.
-  • add_international_text covers 24 scripts and COLRv1 colour emoji; pass 'lang' as a single code or an array (e.g. ["ar","emoji"]) for multi-script runs. Input is NFC-normalised automatically.
+  • add_international_text covers 24 scripts and COLRv1 colour emoji; pass 'lang' as a single code or an array (e.g. ["ar","emoji"]) for multi-script runs. Input is NFC-normalised by default; override with normalize ('NFC'|'NFD'|'NFKC'|'NFKD'|false).
+  • generate_basic_pdf and add_table accept an optional text 'watermark' (e.g. { text: 'DRAFT' }). Opacity < 1.0 is rejected under pdfA='pdfa1b' (ISO 19005-1 forbids transparency) — use pdfa2b/2u/3b instead.
+  • Round-trip: build an invoice with add_attachment, confirm with inspect_pdf (check:['attachments']), then pull the XML back with extract_attachments (filename:'factur-x.xml').
   • outputMode='file' is only available when the host sets PDFNATIVE_MCP_OUTPUT_DIR; otherwise PDFs are returned as base64.
+  • TOKEN-FRUGAL READS: the read-only tools (inspect_pdf, verify_pdf, validate_pdf, extract_text, extract_attachments) accept verbosity:'summary' for a compact scalar-only verdict (drops large arrays / full text) and fields:[...] for dot-path projection (e.g. fields:['allValid']). Defaults are unchanged (full output). Generated PDFs are returned as an embedded resource block, not duplicated in structuredContent.
 
-Every tool ships JSON-Schema-typed inputs/outputs, _meta.apiVersion = '1.1.0', and worked-example _meta.examples. See docs/AI_GUIDE.md for a longer walk-through.`;
+Every tool ships JSON-Schema-typed inputs/outputs, _meta.apiVersion = '1.2.0', and worked-example _meta.examples. See docs/AI_GUIDE.md for a longer walk-through.`;
 
-function buildInspectResult(output: InspectPdfResult, toolName: string): CallToolResult {
+function buildInspectResult(output: InspectPdfResult, toolName: string, input: unknown): CallToolResult {
+    const full = output as unknown as Record<string, unknown>;
+    const summary: Record<string, unknown> = {
+        version: output.version,
+        pageCount: output.pageCount,
+        encryption: output.encryption,
+        pdfA: output.pdfA,
+        signatureCount: output.signatureCount,
+        hasSignaturePlaceholder: output.hasSignaturePlaceholder,
+        attachmentCount: output.attachments.length,
+        ...(output.checksPassed !== undefined ? { checksPassed: output.checksPassed } : {}),
+    };
     return {
         content: [
             {
@@ -383,25 +445,48 @@ function buildInspectResult(output: InspectPdfResult, toolName: string): CallToo
                 text: `${toolName}: PDF v${output.version}, ${output.pageCount} page(s), encryption=${output.encryption}, pdfA=${output.pdfA ?? 'none'}, signatures=${output.signatureCount}.`,
             },
         ],
-        structuredContent: output as unknown as Record<string, unknown>,
+        structuredContent: projectStructured(full, summary, input),
     };
 }
 
-function buildVerifyResult(output: VerifyPdfResult, toolName: string): CallToolResult {
+function buildVerifyResult(output: VerifyPdfResult, toolName: string, input: unknown): CallToolResult {
+    const full = output as unknown as Record<string, unknown>;
+    const summary: Record<string, unknown> = {
+        signatureCount: output.signatureCount,
+        allValid: output.allValid,
+        invalid: output.signatures.filter((s) => !s.valid).length,
+        summary: output.summary,
+    };
     return {
         content: [{ type: 'text', text: `${toolName}: ${output.summary}` }],
-        structuredContent: output as unknown as Record<string, unknown>,
+        structuredContent: projectStructured(full, summary, input),
     };
 }
 
-function buildValidateResult(output: ValidatePdfResult, toolName: string): CallToolResult {
+function buildValidateResult(output: ValidatePdfResult, toolName: string, input: unknown): CallToolResult {
+    const full = output as unknown as Record<string, unknown>;
+    const summary: Record<string, unknown> = {
+        standard: output.standard,
+        valid: output.valid,
+        errorCount: output.errors.length,
+        warningCount: output.warnings.length,
+        summary: output.summary,
+    };
     return {
         content: [{ type: 'text', text: `${toolName}: ${output.summary}` }],
-        structuredContent: output as unknown as Record<string, unknown>,
+        structuredContent: projectStructured(full, summary, input),
     };
 }
 
-function buildExtractTextResult(output: ExtractTextResult, toolName: string): CallToolResult {
+function buildExtractTextResult(output: ExtractTextResult, toolName: string, input: unknown): CallToolResult {
+    const full = output as unknown as Record<string, unknown>;
+    const summary: Record<string, unknown> = {
+        pageCount: output.pageCount,
+        extractedPageCount: output.extractedPageCount,
+        extractable: output.extractable,
+        charCount: output.fullText.length,
+        ...(output.extractableReason !== undefined ? { extractableReason: output.extractableReason } : {}),
+    };
     return {
         content: [
             {
@@ -409,7 +494,27 @@ function buildExtractTextResult(output: ExtractTextResult, toolName: string): Ca
                 text: `${toolName}: extracted ${output.extractedPageCount}/${output.pageCount} page(s), ${output.fullText.length} char(s)${output.extractable ? '' : ' (some pages had non-empty content streams but no extractable text)'}.`,
             },
         ],
-        structuredContent: output as unknown as Record<string, unknown>,
+        structuredContent: projectStructured(full, summary, input),
+    };
+}
+
+function buildExtractAttachmentsResult(
+    output: ExtractAttachmentsResult,
+    toolName: string,
+    input: unknown,
+): CallToolResult {
+    const full = output as unknown as Record<string, unknown>;
+    const summary: Record<string, unknown> = { attachmentCount: output.attachmentCount };
+    return {
+        content: [
+            {
+                type: 'text',
+                text: `${toolName}: ${output.attachmentCount} embedded file(s)${
+                    output.attachmentCount > 0 ? ` — ${output.attachments.map((a) => a.name).join(', ')}` : ''
+                }.`,
+            },
+        ],
+        structuredContent: projectStructured(full, summary, input),
     };
 }
 
@@ -433,7 +538,7 @@ function buildSuccessResult(output: OutputResult, toolName: string): CallToolRes
         content: [
             {
                 type: 'text',
-                text: `${toolName}: produced ${output.sizeBytes} bytes (base64-encoded below).`,
+                text: `${toolName}: produced ${output.sizeBytes} bytes (base64 PDF delivered as the embedded resource below).`,
             },
             {
                 type: 'resource',
@@ -447,7 +552,6 @@ function buildSuccessResult(output: OutputResult, toolName: string): CallToolRes
         structuredContent: {
             mode: output.mode,
             sizeBytes: output.sizeBytes,
-            base64: output.base64,
         },
     };
 }
@@ -508,14 +612,14 @@ export function createServer(): Server {
             if (cacheKey !== null) {
                 const hit = getCached<unknown>(cacheKey.tool, cacheKey.apiVersion, input);
                 if (hit !== null) {
-                    return dispatchOutput(hit, name);
+                    return dispatchOutput(hit, name, input);
                 }
             }
             const output = await tool.handler(input);
             if (cacheKey !== null) {
                 setCached(cacheKey.tool, cacheKey.apiVersion, input, output);
             }
-            return dispatchOutput(output, name);
+            return dispatchOutput(output, name, input);
         } catch (err) {
             return buildErrorResult(err, name);
         }
