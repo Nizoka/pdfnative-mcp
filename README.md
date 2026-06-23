@@ -16,7 +16,7 @@
 
 ## ✨ Features
 
-`pdfnative-mcp` exposes **13 production-grade tools** to any MCP host:
+`pdfnative-mcp` exposes **14 production-grade tools** to any MCP host:
 
 | Tool                               | Purpose                                                                                          |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
@@ -31,14 +31,19 @@
 | `verify_pdf`                       | Verify every PAdES signature in a PDF (integrity + signature value + optional chain trust).      |
 | `validate_pdf` *(new in v1.1.0)*   | Validate a Tagged PDF for PDF/UA (ISO 14289-1) structural conformance (read-only).              |
 | `add_attachment`                   | Generate a PDF/A-3 document with embedded files (Factur-X / ZUGFeRD invoices).                  |
+| `extract_attachments`              | Read-only extraction of embedded files (Factur-X / ZUGFeRD XML round-trip) with byte-for-byte payloads. |
 | `extract_text`                     | Best-effort plain-text extraction from a non-encrypted PDF.                                     |
 | `inspect_pdf`                      | Read-only inspection: PDF version, page count, encryption, PDF/A claim, signatures, attachments, placeholder state. |
 
 **New in v1.2.0:**
 
-- 🪙 **Token-frugal reads** — the read-only tools (`inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`) accept optional `verbosity: 'summary'` and `fields: […]` inputs for ~90% smaller responses on large results, with no loss of the fields agents branch on. Defaults are unchanged.
+- 🆕 **Tool `extract_attachments`** — read embedded files back out of a PDF (completes the Factur-X / ZUGFeRD round-trip) with byte-for-byte payloads, a `filename` filter, and an `includeData: false` metadata-only probe.
+- 💧 **Watermarks** — `generate_basic_pdf` and `add_table` accept an optional `watermark` (text, opacity, angle, colour, position) rendered on every page.
+- 🌐 **Unicode `normalize`** — opt-in `NFC`/`NFD`/`NFKC`/`NFKD` on `generate_basic_pdf` and `add_international_text`.
+- 🪙 **Token-frugal reads** — the read-only tools (`inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`, `extract_attachments`) accept optional `verbosity: 'summary'` and `fields: […]` inputs for ~90% smaller responses on large results, with no loss of the fields agents branch on. Defaults are unchanged.
 - 🪙 **No base64 duplication** — generated PDFs (base64 mode) are returned **once** as an embedded `resource` content block instead of also being copied into `structuredContent`.
 - 🔧 **MCP registry publish fix** — `mcpName` now uses the canonical GitHub login casing (`io.github.Nizoka/pdfnative-mcp`) so the registry's case-sensitive validation accepts the npm package.
+- ⬆ **Dependency** — upgraded to **zod 4**.
 
 **New in v1.1.0:**
 
@@ -57,7 +62,7 @@
 - 🆕 **Signing ergonomics:** `sign_pdf` accepts ECDSA SEC1 / PKCS#8 DER keys and auto-injects a `/Sig` placeholder when missing (one-call signing of any PDF).
 - 🆕 **Opt-in cache** (`PDFNATIVE_MCP_CACHE_DIR`): SHA-256 keyed, 1 h TTL, 256 MiB LRU.
 - 🆕 **`_meta.apiVersion`** and per-tool **`_meta.examples`** for AI-agent discovery — see [`docs/API_STABILITY.md`](docs/API_STABILITY.md).
-- 🆕 **AI agent guide:** [`docs/AI_GUIDE.md`](docs/AI_GUIDE.md) — decision tree + common pitfalls.
+- 🆕 **AI agent guide:** [`docs/AI_GUIDE.md`](docs/AI_GUIDE.md) — decision tree + common pitfalls. See also the root [`AGENTS.md`](AGENTS.md) operations manual.
 - 🆕 **PDF/A authoring guide:** [`docs/guides/PDFA.md`](docs/guides/PDFA.md).
 - 🛠 **Env-var rename:** `PDFNATIVE_MCP_OUTPUT_DIR` (was `PDFNATIVE_MPC_OUTPUT_DIR`; old name still works with a one-shot deprecation warning).
 - ⏭ **Deferred to v1.1:** `merge_pdfs`, `split_pdf`, `redact_pdf` (require pdfnative page-tree primitives not yet exported).

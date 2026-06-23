@@ -26,6 +26,7 @@ describe('server', () => {
             'generate_basic_pdf', 'add_barcode', 'add_international_text', 'add_table',
             'add_form', 'embed_image', 'prepare_signature_placeholder', 'sign_pdf',
             'verify_pdf', 'validate_pdf', 'inspect_pdf', 'add_attachment', 'extract_text',
+            'extract_attachments',
         ]) {
             expect(__serverInstructions).toContain(t);
         }
@@ -48,6 +49,7 @@ describe('server', () => {
             'add_international_text',
             'add_table',
             'embed_image',
+            'extract_attachments',
             'extract_text',
             'generate_basic_pdf',
             'inspect_pdf',

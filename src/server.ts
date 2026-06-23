@@ -89,6 +89,13 @@ import {
     validatePdf,
     type ValidatePdfResult,
 } from './tools/validate-pdf.js';
+import {
+    EXTRACT_ATTACHMENTS_NAME,
+    EXTRACT_ATTACHMENTS_INPUT_SCHEMA,
+    EXTRACT_ATTACHMENTS_OUTPUT_SCHEMA,
+    extractAttachments,
+    type ExtractAttachmentsResult,
+} from './tools/extract-attachments.js';
 
 // JSON import attribute (Node 22+, TS 5.3+) keeps version in lock-step with package.json.
 // Hardcoded here to keep the build rootDir limited to ./src; tests assert it stays in sync.
@@ -123,6 +130,9 @@ function dispatchOutput(output: unknown, name: string, input: unknown): CallTool
         }
         if ('warnings' in output && 'valid' in output) {
             return buildValidateResult(output as ValidatePdfResult, name, input);
+        }
+        if ('attachmentCount' in output && 'attachments' in output) {
+            return buildExtractAttachmentsResult(output as ExtractAttachmentsResult, name, input);
         }
     }
     return buildInspectResult(output as InspectPdfResult, name, input);
@@ -175,7 +185,7 @@ interface ToolDefinition {
     };
     /** Minimal MCP `_meta.examples` payload — each entry is a self-contained input. */
     examples?: ReadonlyArray<{ readonly title: string; readonly input: Record<string, unknown> }>;
-    handler: (args: unknown) => Promise<OutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult | ValidatePdfResult>;
+    handler: (args: unknown) => Promise<OutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult | ValidatePdfResult | ExtractAttachmentsResult>;
 }
 
 const TOOLS: readonly ToolDefinition[] = [
@@ -361,6 +371,21 @@ const TOOLS: readonly ToolDefinition[] = [
         ],
         handler: validatePdf,
     },
+    {
+        name: EXTRACT_ATTACHMENTS_NAME,
+        title: 'Extract embedded files from PDF',
+        description:
+            "Read-only extraction of embedded files from a non-encrypted PDF (PDF/A-3 / Factur-X / ZUGFeRD). Walks the catalog /Names → /EmbeddedFiles tree and returns each attachment's metadata (name, mimeType, AFRelationship, description, sizeBytes) plus, by default, its decoded payload as dataBase64. Completes the invoice round-trip: add_attachment → inspect_pdf → extract_attachments. Pass `filename` to pull a single named file, or `includeData: false` for a metadata-only probe. Encrypted PDFs are rejected with EXTRACTION_UNSUPPORTED.",
+        inputSchema: EXTRACT_ATTACHMENTS_INPUT_SCHEMA,
+        outputSchema: EXTRACT_ATTACHMENTS_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Extract every embedded file (with payloads)', input: { pdfBase64: '<base64>' } },
+            { title: 'Pull just the Factur-X XML payload', input: { pdfBase64: '<base64>', filename: 'factur-x.xml' } },
+            { title: 'Metadata-only probe (no payloads)', input: { pdfBase64: '<base64>', includeData: false, verbosity: 'summary' } },
+        ],
+        handler: extractAttachments,
+    },
 ];
 
 const TOOL_INDEX: ReadonlyMap<string, ToolDefinition> = new Map(TOOLS.map((t) => [t.name, t]));
@@ -381,6 +406,7 @@ DECISION TREE — pick the right tool in one step:
   • Verify all PAdES signatures                              → ${VERIFY_PDF_NAME}
   • Validate PDF/UA accessibility structure                  → ${VALIDATE_PDF_NAME}
   • Pull plain text from a PDF                               → ${EXTRACT_TEXT_NAME}
+  • Pull embedded files back out (Factur-X XML, side-cars)   → ${EXTRACT_ATTACHMENTS_NAME}
 
 COMMON PITFALLS (read these to avoid retry loops):
   • Barcode 'data' is the RAW payload — do NOT URL-encode URLs. For a QR pointing to https://google.com just pass data: 'https://google.com'.
@@ -392,9 +418,11 @@ COMMON PITFALLS (read these to avoid retry loops):
   • For Factur-X / ZUGFeRD invoices, use add_attachment (PDF/A-3) — generate_basic_pdf cannot embed files.
   • PDF/A: pass pdfA='pdfa2b' for the widest reader compatibility. PDF/A-3 is required when you have attachments.
   • PDF/A text is now robust: embedded newlines ('\\n') in paragraphs are auto-split into separate paragraphs; the Euro sign and other CP-1252 symbols extract correctly (pdfnative 1.3); wrapped table cells get unique per-line MCIDs. Write naturally — no manual workarounds needed.
-  • add_international_text covers 24 scripts and COLRv1 colour emoji; pass 'lang' as a single code or an array (e.g. ["ar","emoji"]) for multi-script runs. Input is NFC-normalised automatically.
+  • add_international_text covers 24 scripts and COLRv1 colour emoji; pass 'lang' as a single code or an array (e.g. ["ar","emoji"]) for multi-script runs. Input is NFC-normalised by default; override with normalize ('NFC'|'NFD'|'NFKC'|'NFKD'|false).
+  • generate_basic_pdf and add_table accept an optional text 'watermark' (e.g. { text: 'DRAFT' }). Opacity < 1.0 is rejected under pdfA='pdfa1b' (ISO 19005-1 forbids transparency) — use pdfa2b/2u/3b instead.
+  • Round-trip: build an invoice with add_attachment, confirm with inspect_pdf (check:['attachments']), then pull the XML back with extract_attachments (filename:'factur-x.xml').
   • outputMode='file' is only available when the host sets PDFNATIVE_MCP_OUTPUT_DIR; otherwise PDFs are returned as base64.
-  • TOKEN-FRUGAL READS: the read-only tools (inspect_pdf, verify_pdf, validate_pdf, extract_text) accept verbosity:'summary' for a compact scalar-only verdict (drops large arrays / full text) and fields:[...] for dot-path projection (e.g. fields:['allValid']). Defaults are unchanged (full output). Generated PDFs are returned as an embedded resource block, not duplicated in structuredContent.
+  • TOKEN-FRUGAL READS: the read-only tools (inspect_pdf, verify_pdf, validate_pdf, extract_text, extract_attachments) accept verbosity:'summary' for a compact scalar-only verdict (drops large arrays / full text) and fields:[...] for dot-path projection (e.g. fields:['allValid']). Defaults are unchanged (full output). Generated PDFs are returned as an embedded resource block, not duplicated in structuredContent.
 
 Every tool ships JSON-Schema-typed inputs/outputs, _meta.apiVersion = '1.2.0', and worked-example _meta.examples. See docs/AI_GUIDE.md for a longer walk-through.`;
 
@@ -464,6 +492,26 @@ function buildExtractTextResult(output: ExtractTextResult, toolName: string, inp
             {
                 type: 'text',
                 text: `${toolName}: extracted ${output.extractedPageCount}/${output.pageCount} page(s), ${output.fullText.length} char(s)${output.extractable ? '' : ' (some pages had non-empty content streams but no extractable text)'}.`,
+            },
+        ],
+        structuredContent: projectStructured(full, summary, input),
+    };
+}
+
+function buildExtractAttachmentsResult(
+    output: ExtractAttachmentsResult,
+    toolName: string,
+    input: unknown,
+): CallToolResult {
+    const full = output as unknown as Record<string, unknown>;
+    const summary: Record<string, unknown> = { attachmentCount: output.attachmentCount };
+    return {
+        content: [
+            {
+                type: 'text',
+                text: `${toolName}: ${output.attachmentCount} embedded file(s)${
+                    output.attachmentCount > 0 ? ` — ${output.attachments.map((a) => a.name).join(', ')}` : ''
+                }.`,
             },
         ],
         structuredContent: projectStructured(full, summary, input),

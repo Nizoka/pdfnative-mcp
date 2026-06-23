@@ -44,6 +44,8 @@ src/
 ├── output.ts         # outputMode logic: base64 inline vs sandboxed file write
 ├── cache.ts          # In-process LRU cache for idempotent tool results
 ├── text.ts           # newline sanitizer (Safe PDF/A)
+├── watermark.ts      # shared text-watermark schema + WatermarkOptions mapping
+├── normalize.ts      # shared Unicode-normalization schema
 ├── errors.ts         # ToolError + SecurityError
 └── tools/
     ├── generate-basic-pdf.ts          # generate_basic_pdf
@@ -58,6 +60,7 @@ src/
     ├── validate-pdf.ts                # validate_pdf (PDF/UA)
     ├── inspect-pdf.ts                 # inspect_pdf
     ├── add-attachment.ts              # add_attachment (PDF/A-3 / Factur-X)
+    ├── extract-attachments.ts         # extract_attachments (read-only)
     └── extract-text.ts                # extract_text
 ```
 
@@ -88,7 +91,7 @@ src/tools/<tool>.ts
     └── mode='file'   → write to sandboxed path → return filePath + sizeBytes
 ```
 
-Read-only tools (`inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`) additionally
+Read-only tools (`inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`, `extract_attachments`) additionally
 apply an opt-in projection layer (`src/projection.ts`) before emitting `structuredContent`:
 `verbosity: 'summary'` swaps the full result for a compact scalar subset, then
 `fields: ['a','b.c']` projects to named dot-paths. Defaults (`'full'`, no `fields`) are
@@ -155,6 +158,7 @@ A `TOOL_INDEX: ReadonlyMap<string, ToolDefinition>` is derived from the array fo
 ```
 
 Optional `pdfA: 'pdfa1b' | 'pdfa2b' | 'pdfa2u' | 'pdfa3b'` produces an archival document.
+Optional `watermark: { text, fontSize?, opacity?, angle?, color?, position? }` renders a text watermark on every page (`color` is an `[r,g,b]` 0–1 triple; `opacity < 1.0` is rejected under `pdfa1b`). Optional `normalize: 'NFC'|'NFD'|'NFKC'|'NFKD'` applies Unicode normalization (omit for byte-stable output).
 For Factur-X / ZUGFeRD invoices use [`add_attachment`](#add_attachment) instead — `generate_basic_pdf` cannot embed files.
 
 > **Newline sanitizer (Safe PDF/A):** a `paragraph` whose `text` contains `\n` / `\r\n` / `\r` is automatically split into separate paragraph blocks (`src/text.ts`). Write multi-line text naturally — never emit a literal newline expecting a soft line break; doing so previously produced `.notdef` tofu in PDF/A. Whitespace-only paragraphs are rejected with `VALIDATION_ERROR`.
@@ -176,11 +180,11 @@ For Factur-X / ZUGFeRD invoices use [`add_attachment`](#add_attachment) instead 
 
 ### `add_international_text`
 
-24 scripts via embedded Noto fonts (Arabic, Hebrew, Thai, Japanese/Chinese/Korean, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Turkish, Polish, Vietnamese, Latin, …). BiDi isolates + Arabic harakat + complex-script shaping + COLRv1 colour emoji handled automatically. Input is NFC-normalised (`normalize: 'NFC'`) for maximal glyph coverage, and embedded newlines auto-split into paragraphs. Lang codes added in v1.1.0: `te` (Telugu), `si` (Sinhala), `bo` (Tibetan), `km` (Khmer), `my` (Myanmar), `am` (Ethiopic); the `emoji` code now maps to `noto-color-emoji-data.js` (COLRv1, monochrome fallback).
+24 scripts via embedded Noto fonts (Arabic, Hebrew, Thai, Japanese/Chinese/Korean, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Turkish, Polish, Vietnamese, Latin, …). BiDi isolates + Arabic harakat + complex-script shaping + COLRv1 colour emoji handled automatically. Input is NFC-normalised by default (`normalize` defaults to `'NFC'`; override with `'NFD'`/`'NFKC'`/`'NFKD'`) for maximal glyph coverage, and embedded newlines auto-split into paragraphs. Lang codes added in v1.1.0: `te` (Telugu), `si` (Sinhala), `bo` (Tibetan), `km` (Khmer), `my` (Myanmar), `am` (Ethiopic); the `emoji` code now maps to `noto-color-emoji-data.js` (COLRv1, monochrome fallback).
 
 ### `add_table`
 
-Tabular reports with v1.2 smart-table fields: `wrap` (`auto`/`always`/`never`), `repeatHeader`, `zebra`, `caption`, `minRowHeight`, `cellPadding`. Every row must have the same length as `headers`. Optional `infoItems` for a metadata block under the title. Optional `pdfA` for archival output. Since pdfnative v1.3, wrapped cells receive a unique MCID per line, so tagged/PDF-A tables are PDF/UA-safe.
+Tabular reports with v1.2 smart-table fields: `wrap` (`auto`/`always`/`never`), `repeatHeader`, `zebra`, `caption`, `minRowHeight`, `cellPadding`. Every row must have the same length as `headers`. Optional `infoItems` for a metadata block under the title. Optional `pdfA` for archival output and optional `watermark` (text only; forces the document backend). Since pdfnative v1.3, wrapped cells receive a unique MCID per line, so tagged/PDF-A tables are PDF/UA-safe.
 
 ### `add_form`
 
@@ -243,6 +247,10 @@ Structural / security inspection.
 ### `add_attachment`
 
 PDF/A-3 (ISO 19005-3) with one or more embedded files. **Primary use case: Factur-X / ZUGFeRD invoices** (single XML payload, `relationship: 'Source'`). Each attachment is capped at 8 MiB. Optional `blocks[]` for the visible body.
+
+### `extract_attachments`
+
+Read-only counterpart to `add_attachment` — walks the catalog name tree (`/Names → /EmbeddedFiles → Names[]`) via the shared `collectEmbeddedFiles()` collector (same metadata as `inspect_pdf`) and returns `{ attachmentCount, attachments: [{ name, sizeBytes?, mimeType?, relationship?, description?, dataBase64? }] }`. `includeData` (default `true`) toggles payload bytes; `filename` filters to one file (`ATTACHMENT_NOT_FOUND` when nothing matches). Payloads are capped at 16 MiB/file and 32 MiB aggregate (`OUTPUT_TOO_LARGE`); encrypted PDFs are rejected with `EXTRACTION_UNSUPPORTED`. Completes the Factur-X round-trip.
 
 ### `validate_pdf`
 

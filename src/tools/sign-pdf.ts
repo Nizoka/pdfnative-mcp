@@ -105,7 +105,7 @@ const InputSchema = z
     .superRefine((val, ctx) => {
         if (val.algorithm === 'rsa-sha256' && val.rsaKeyPkcs1DerBase64 === undefined) {
             ctx.addIssue({
-                code: z.ZodIssueCode.custom,
+                code: 'custom',
                 message: 'rsaKeyPkcs1DerBase64 is required when algorithm=rsa-sha256.',
             });
         }
@@ -114,13 +114,13 @@ const InputSchema = z
             const haveDer = val.ecPrivateKeyDerBase64 !== undefined;
             if (!haveScalar && !haveDer) {
                 ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
+                    code: 'custom',
                     message: 'ecPrivateScalarHex or ecPrivateKeyDerBase64 is required when algorithm=ecdsa-sha256.',
                 });
             }
             if (haveScalar && haveDer) {
                 ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
+                    code: 'custom',
                     message: 'ecPrivateScalarHex and ecPrivateKeyDerBase64 are mutually exclusive.',
                 });
             }

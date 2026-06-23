@@ -68,17 +68,20 @@ When a tool, field or error code is scheduled for removal:
 
 ## 5. Per-tool stability matrix
 
-All 13 tools shipped in pdfnative-mcp 1.2.0 are at `_meta.apiVersion = '1.2.0'` and are considered **stable**:
+All 14 tools shipped in pdfnative-mcp 1.2.0 are at `_meta.apiVersion = '1.2.0'` and are considered **stable**:
 
 `generate_basic_pdf`, `add_barcode`, `add_international_text`, `add_table`, `add_form`,
 `embed_image`, `prepare_signature_placeholder`, `sign_pdf`, `verify_pdf`, `validate_pdf`,
-`inspect_pdf`, `add_attachment`, `extract_text`.
+`inspect_pdf`, `add_attachment`, `extract_attachments`, `extract_text`.
 
-> **v1.2.0 minor bump rationale:** the four read-only tools (`inspect_pdf`, `verify_pdf`,
-> `validate_pdf`, `extract_text`) gained two **optional** inputs — `verbosity` (`'summary'` |
-> `'full'`, default `'full'`) and `fields` (dot-path projection) — both backward-compatible
-> additions per §3 ("new optional input field with a backward-compatible default"). Default
-> responses are byte-identical to v1.1.0.
+> **v1.2.0 minor bump rationale:** the read-only tools (`inspect_pdf`, `verify_pdf`,
+> `validate_pdf`, `extract_text`, `extract_attachments`) gained two **optional** inputs —
+> `verbosity` (`'summary'` | `'full'`, default `'full'`) and `fields` (dot-path projection) —
+> both backward-compatible additions per §3 ("new optional input field with a
+> backward-compatible default"). `generate_basic_pdf` and `add_table` gained an optional
+> `watermark`; `generate_basic_pdf` and `add_international_text` gained an optional
+> `normalize`. A new tool (`extract_attachments`) and a dependency bump (zod 3 → 4) are
+> likewise additive. Default responses are byte-identical to v1.1.0.
 >
 > **One ergonomic change to PDF-producing tools:** in base64 mode the generated PDF bytes
 > are now delivered **once** as an embedded `resource` content block (a `data:` URI) and are

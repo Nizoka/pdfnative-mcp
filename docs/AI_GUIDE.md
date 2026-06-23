@@ -1,7 +1,7 @@
 # AI Agent Guide — pdfnative-mcp
 
 > **Read this first if you are an AI agent (Copilot, Claude, Cursor, Continue, Zed, Windsurf, Cline, Roo Code, …) about to call pdfnative-mcp.**
-> It tells you which of the 13 tools to pick and how to avoid the common retry loops.
+> It tells you which of the 14 tools to pick and how to avoid the common retry loops.
 
 The server also returns the same decision tree in `serverInfo.instructions`. The full reference lives in [`KNOWLEDGE_BASE.md`](KNOWLEDGE_BASE.md); the stability charter in [`API_STABILITY.md`](API_STABILITY.md). Worked invocations are in [`../examples/`](../examples).
 
@@ -20,6 +20,7 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 | Digitally sign any PDF | `sign_pdf` *(auto-injects placeholder)* |
 | Customize the signature placeholder before signing | `prepare_signature_placeholder` → `sign_pdf` |
 | **Factur-X / ZUGFeRD invoice** or any PDF with attachments | `add_attachment` *(NOT `generate_basic_pdf`)* |
+| **Pull embedded files back out** (e.g. Factur-X XML) | `extract_attachments` |
 | Inspect / assert metadata | `inspect_pdf` |
 | Verify all PAdES signatures | `verify_pdf` |
 | Validate PDF/UA accessibility structure | `validate_pdf` |
@@ -48,6 +49,15 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 - Use `add_attachment`, **not** `generate_basic_pdf`. The latter cannot embed files.
 - The output is PDF/A-3b. PDF/A-3 is the only PDF/A part that permits embedded files.
 - Per-attachment cap: 8 MiB. Use `relationship: 'Source'` for the structured invoice XML.
+- To read attachments back out, call `extract_attachments` — it returns each embedded file's bytes as `dataBase64` (byte-for-byte). Set `includeData: false` for a metadata-only probe, or `filename: '…'` to pull a single file. `inspect_pdf` lists attachment metadata only (no payload).
+
+### Watermarks
+- `generate_basic_pdf` and `add_table` accept an optional `watermark: { text, fontSize?, opacity?, angle?, color?, position? }` rendered on every page. `color` is an `[r, g, b]` triple in the `0.0–1.0` range.
+- Defaults match pdfnative: `opacity 0.15`, `angle -45`, light-gray, `position 'background'`. Omit `watermark` and output is byte-identical to before.
+- **PDF/A-1b forbids transparency** (ISO 19005-1 §6.4): combining `opacity < 1.0` with `pdfA: 'pdfa1b'` throws. Use `opacity: 1.0` or a PDF/A-2/3 level.
+
+### Unicode normalization
+- `generate_basic_pdf` and `add_international_text` accept an optional `normalize: 'NFC' | 'NFD' | 'NFKC' | 'NFKD'`. `add_international_text` defaults to `'NFC'` (best glyph coverage for complex scripts); `generate_basic_pdf` defaults to no normalization (byte-stable). Only set it when input may contain decomposed combining sequences (e.g. macOS-copied text).
 
 ### PDF/A
 - Pass `pdfA: 'pdfa2b'` for the widest reader compatibility.
@@ -74,6 +84,7 @@ The four read-only tools — `inspect_pdf`, `verify_pdf`, `validate_pdf`, `extra
   - `verify_pdf` → `{ signatureCount, allValid, invalid, summary }` (drops `signatures[]`).
   - `validate_pdf` → `{ standard, valid, errorCount, warningCount, summary }` (drops `errors[]`, `warnings[]`).
   - `extract_text` → `{ pageCount, extractedPageCount, extractable, charCount }` (drops `pages[]`, `fullText`).
+  - `extract_attachments` → `{ attachmentCount }` (drops `attachments[]`).
 - `fields: ['a', 'b.c']` projects the structured result to named dot-paths (an array segment maps over every element, e.g. `['signatures.valid']`). It composes **after** `verbosity`; unknown paths are omitted leniently.
 
 Defaults are unchanged: omit both and you get the full v1.1.0-identical response. Smallest "is this PDF signed and valid?" probe: `{ pdfBase64, verbosity: 'summary', fields: ['allValid'] }`.
@@ -86,7 +97,29 @@ Defaults are unchanged: omit both and you get the full v1.1.0-identical response
 
 ---
 
-## 3. Self-documenting metadata
+## 3. Recipes (multi-tool workflows)
+
+### Factur-X / ZUGFeRD round-trip
+1. `add_attachment` — embed the invoice XML (`relationship: 'Source'`) into a PDF/A-3b carrier.
+2. `inspect_pdf` — assert `pdfA: '3B'` and that the attachment is present.
+3. `extract_attachments` — pull the XML back out (`filename: 'factur-x.xml'`) and parse it downstream.
+4. *(optional)* `validate_pdf` — confirm PDF/UA structural conformance.
+
+### Sign and verify
+1. `sign_pdf` — pass `certDerBase64` + one key form; the `/Sig` placeholder is auto-injected.
+2. `verify_pdf` — confirm `allValid: true`. Supply `trustedRootsDerBase64` to upgrade `chainTrust` from `self-signed`/`unverified` to `trusted`.
+
+### Authoring a PDF/A document
+1. `generate_basic_pdf` (or `add_table` / `add_international_text`) with `pdfA: 'pdfa2b'`.
+2. `validate_pdf` — assert `valid: true` for PDF/UA structure before delivery.
+
+### Watermarked report
+1. `add_table` with `watermark: { text: 'CONFIDENTIAL', opacity: 0.2 }`.
+2. *(optional)* `inspect_pdf` to confirm the page count / metadata.
+
+---
+
+## 4. Self-documenting metadata
 
 Every tool ships:
 - `_meta.apiVersion` = `'1.2.0'` — see [`API_STABILITY.md`](API_STABILITY.md).
@@ -96,7 +129,7 @@ You can rely on these fields when negotiating capabilities before calling a tool
 
 ---
 
-## 4. When things still fail
+## 5. When things still fail
 
 The MCP error response always includes a `code` and a message:
 
@@ -105,8 +138,13 @@ The MCP error response always includes a `code` and a message:
 | `VALIDATION_ERROR` | Zod rejected the input | Re-read the field’s schema (the message lists the offending path). |
 | `PDF_PARSE_FAILED` | Input PDF is malformed or truncated | Re-encode the base64; verify the source PDF opens in a normal reader. |
 | `MISSING_PLACEHOLDER` | `sign_pdf` called with `autoInjectPlaceholder: false` on a PDF without `/Sig` | Set `autoInjectPlaceholder: true` (the default) or call `prepare_signature_placeholder` first. |
-| `EXTRACTION_UNSUPPORTED` | Encrypted PDF passed to `extract_text` | Decrypt the PDF outside the server first. |
-| `OUTPUT_TOO_LARGE` | Generated PDF over 50 MiB | Reduce embedded images or split into multiple documents. |
+| `EXTRACTION_UNSUPPORTED` | Encrypted PDF passed to `extract_text` / `extract_attachments` | Decrypt the PDF outside the server first. |
+| `ATTACHMENT_NOT_FOUND` | `extract_attachments` `filename` filter matched no embedded file | Omit `filename`, or call `inspect_pdf` to list the real attachment names. |
+| `ATTACHMENT_TOO_LARGE` | An `add_attachment` payload exceeds the 8 MiB per-file cap | Compress / shrink the payload, or split it across files. |
+| `OUTPUT_TOO_LARGE` | Generated PDF over 50 MiB, or extracted attachments over the 16 MiB/file · 32 MiB aggregate caps | Reduce embedded images / split documents; for extraction use `includeData: false` or the `filename` filter. |
+| `UNSUPPORTED_LANG` | `add_international_text` `lang` not in the supported set | Use a supported code (see the international-text pitfalls). |
+| `FONT_LOAD_FAILED` | A bundled Noto font module failed to load | Retry; if it persists the install is corrupt — reinstall `pdfnative`. |
+| `SIGNING_FAILED` / `CMS_PARSE_FAILED` / `EC_KEY_PARSE_FAILED` / `EC_CURVE_UNSUPPORTED` | Signing or key/cert material problem | Re-check the DER encodings; ECDSA keys must be P-256. |
 | `SECURITY_VIOLATION` | Sandbox or path-traversal rejection | Check `PDFNATIVE_MCP_OUTPUT_DIR` is set and `outputPath` is relative + ends in `.pdf`. |
 
 If a tool seems to return correct PDFs that downstream readers reject, run `inspect_pdf` and / or `verify_pdf` to confirm the byte-level structure.

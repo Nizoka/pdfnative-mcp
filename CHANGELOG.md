@@ -9,22 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.2.0] - 2026-06-23
 
-A minor, backward-compatible release that makes the four read-only tools token-frugal
-for AI agents (typically ~90% fewer output tokens on large results) and fixes the MCP
-registry publish block caused by `mcpName` casing. Default tool calls return responses
-identical to v1.1.0 — the new behaviour is fully opt-in.
+A minor, backward-compatible release that adds a 14th tool (`extract_attachments`),
+text watermarks and opt-in Unicode normalization, makes the read-only tools
+token-frugal for AI agents (typically ~90% fewer output tokens on large results),
+upgrades to zod 4, and fixes the MCP registry publish block caused by `mcpName`
+casing. Default tool calls return responses identical to v1.1.0 — all new
+behaviour is opt-in.
 
 ### Added
 
-- **Token-frugal reads:** `inspect_pdf`, `verify_pdf`, `validate_pdf`, and `extract_text` gain an optional `verbosity` input (`'summary'` | `'full'`, default `'full'`). `'summary'` returns a canonical scalar subset — e.g. `verify_pdf` → `{ signatureCount, allValid, invalid, summary }`, `extract_text` → `{ pageCount, extractedPageCount, extractable, charCount }` — dropping the heavy arrays / full text.
-- **Field projection:** the same four tools gain an optional `fields` input — a dot-path projection (e.g. `['allValid']`, `['signatures.valid']`) applied after `verbosity`; unknown paths are omitted leniently. Backed by a new dependency-free `src/projection.ts` module.
+- **Tool `extract_attachments`** (new, read-only): extract embedded files from a PDF byte-for-byte, completing the Factur-X / ZUGFeRD round-trip with `add_attachment`. Returns `{ attachmentCount, attachments: [{ name, sizeBytes?, mimeType?, relationship?, description?, dataBase64? }] }`. Shares the `collectEmbeddedFiles()` collector with `inspect_pdf`; supports a `filename` filter and an `includeData: false` metadata-only probe; rejects encrypted PDFs (`EXTRACTION_UNSUPPORTED`); caps payloads at 16 MiB/file and 32 MiB aggregate.
+- **Watermarks:** `generate_basic_pdf` and `add_table` gain an optional `watermark` ({ text, fontSize?, opacity?, angle?, color? [r,g,b] 0–1, position? }) rendered on every page. Omitted = byte-identical output; `opacity < 1.0` is rejected under `pdfA: 'pdfa1b'`.
+- **Unicode `normalize`:** `generate_basic_pdf` and `add_international_text` gain an optional `normalize` (`'NFC'|'NFD'|'NFKC'|'NFKD'`). `add_international_text` keeps its `'NFC'` default; `generate_basic_pdf` defaults to no normalization (byte-stable).
+- **Token-frugal reads:** `inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`, and `extract_attachments` gain an optional `verbosity` input (`'summary'` | `'full'`, default `'full'`). `'summary'` returns a canonical scalar subset — e.g. `verify_pdf` → `{ signatureCount, allValid, invalid, summary }`, `extract_text` → `{ pageCount, extractedPageCount, extractable, charCount }` — dropping the heavy arrays / full text.
+- **Field projection:** the read-only tools gain an optional `fields` input — a dot-path projection (e.g. `['allValid']`, `['signatures.valid']`) applied after `verbosity`; unknown paths are omitted leniently. Backed by a new dependency-free `src/projection.ts` module.
+- **Docs:** new root `AGENTS.md` agent operations manual (catalogue, decision tree, recipes, error table).
 
 ### Changed
 
+- **Dependency:** upgraded `zod` `^3.23.8` → `^4.0.0`. The MCP SDK peer range already permitted zod 4.
 - **MCP registry ID:** `mcpName` (`package.json`) and `name` (`server.json`) → `io.github.Nizoka/pdfnative-mcp` (canonical GitHub login casing). The npm package name stays lowercase `pdfnative-mcp`.
 - **MCP `_meta.apiVersion`** bumped `1.1.0` → `1.2.0` on every tool; `SERVER_VERSION` and `server.json` versions → `1.2.0`.
 - **Base64 delivery:** base64-mode PDF-producing tools no longer duplicate the PDF into `structuredContent.base64`; the bytes are delivered once via the embedded `resource` content block. `structuredContent` for base64 mode is now `{ mode, sizeBytes }`. File mode is unchanged.
-- **Docs:** README, `docs/AI_GUIDE.md`, `docs/API_STABILITY.md`, `docs/KNOWLEDGE_BASE.md`, and `llms.txt` refreshed for the v1.2.0 surface.
+- **Docs:** README, `AGENTS.md`, `docs/AI_GUIDE.md`, `docs/API_STABILITY.md`, `docs/KNOWLEDGE_BASE.md`, `ROADMAP.md`, and `llms.txt` refreshed for the v1.2.0 surface.
 
 ### Fixed
 

@@ -161,6 +161,20 @@ describe('add_international_text tool', () => {
         expect(layout?.tagged).toBe('pdfa2u');
     });
 
+    it('honours an explicit normalize override', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        await addInternationalText({ title: 'NFD', lang: 'ar', normalize: 'NFD', paragraphs: ['x'] });
+        const layout = buildDocumentPDFBytesMock.mock.calls[0]?.[1] as { normalize?: string } | undefined;
+        expect(layout?.normalize).toBe('NFD');
+    });
+
+    it('rejects an unsupported normalize form with VALIDATION_ERROR', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        await expect(
+            addInternationalText({ title: 'bad', lang: 'ar', normalize: 'NFG', paragraphs: ['x'] }),
+        ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    });
+
     it('auto-splits paragraphs on embedded newlines before building', async () => {
         const { addInternationalText } = await import('../src/tools/add-international-text.js');
         await addInternationalText({ title: 'Lines', lang: 'latin', paragraphs: ['a\nb\nc'] });

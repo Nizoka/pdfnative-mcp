@@ -136,4 +136,28 @@ describe('add_table', () => {
             }),
         ).rejects.toThrow(ToolError);
     });
+
+    it('renders a text watermark (forces the document backend)', async () => {
+        const result = await addTable({
+            title: 'Watermarked',
+            headers: ['A', 'B'],
+            rows: [['1', '2']],
+            watermark: { text: 'CONFIDENTIAL', fontSize: 48, opacity: 0.2, angle: -30, color: [0.8, 0.1, 0.1], position: 'foreground' },
+        });
+        expect(result.mode).toBe('base64');
+        expect(decode(result.base64!)).toBe(PDF_HEADER);
+        expect(result.sizeBytes).toBeGreaterThan(100);
+    });
+
+    it('rejects an out-of-range watermark opacity', async () => {
+        await expect(
+            addTable({
+                title: 'Bad',
+                headers: ['A'],
+                rows: [['1']],
+                watermark: { text: 'X', opacity: 2 },
+            }),
+        ).rejects.toThrow(ToolError);
+    });
 });
+
