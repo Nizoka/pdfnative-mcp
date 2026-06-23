@@ -66,6 +66,20 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 - `extract_text` returning `extractable: false` is **not an error**. The PDF uses subset fonts without `/ToUnicode` CMaps; the `extractableReason` field explains. The file is not corrupt.
 - Encrypted PDFs are rejected with `EXTRACTION_UNSUPPORTED`.
 
+### Token-frugal reads (v1.2.0)
+The four read-only tools — `inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text` — accept two **optional** inputs that shrink the response (typically ~90% fewer output tokens for large results) without losing the fields you branch on:
+
+- `verbosity: 'summary'` returns a compact scalar-only verdict and drops the heavy arrays / full text:
+  - `inspect_pdf` → `{ version, pageCount, encryption, pdfA, signatureCount, hasSignaturePlaceholder, attachmentCount }` (drops `attachments[]`, `info`, `perPage`).
+  - `verify_pdf` → `{ signatureCount, allValid, invalid, summary }` (drops `signatures[]`).
+  - `validate_pdf` → `{ standard, valid, errorCount, warningCount, summary }` (drops `errors[]`, `warnings[]`).
+  - `extract_text` → `{ pageCount, extractedPageCount, extractable, charCount }` (drops `pages[]`, `fullText`).
+- `fields: ['a', 'b.c']` projects the structured result to named dot-paths (an array segment maps over every element, e.g. `['signatures.valid']`). It composes **after** `verbosity`; unknown paths are omitted leniently.
+
+Defaults are unchanged: omit both and you get the full v1.1.0-identical response. Smallest "is this PDF signed and valid?" probe: `{ pdfBase64, verbosity: 'summary', fields: ['allValid'] }`.
+
+> **PDF bytes delivery:** generated PDFs (base64 mode) are returned **once** as an embedded `resource` content block (a `data:application/pdf;base64,…` URI), not duplicated into `structuredContent` (which is `{ mode, sizeBytes }`). Read the bytes from the resource block.
+
 ### File output mode
 - `outputMode: 'file'` only works if the host process set `PDFNATIVE_MCP_OUTPUT_DIR`. Otherwise the call returns `SecurityError`.
 - `outputPath` must be **relative**, end in `.pdf`, and contain no path traversal segments.
@@ -75,7 +89,7 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 ## 3. Self-documenting metadata
 
 Every tool ships:
-- `_meta.apiVersion` = `'1.0.0'` — see [`API_STABILITY.md`](API_STABILITY.md).
+- `_meta.apiVersion` = `'1.2.0'` — see [`API_STABILITY.md`](API_STABILITY.md).
 - `_meta.examples`   — at least one worked example per tool. Inspect the `ListTools` response to discover them.
 
 You can rely on these fields when negotiating capabilities before calling a tool.

@@ -34,6 +34,20 @@ export const VALIDATE_PDF_INPUT_SCHEMA = {
             minLength: 4,
             description: 'Base64-encoded PDF bytes to validate for PDF/UA (ISO 14289-1) structural conformance.',
         },
+        verbosity: {
+            type: 'string',
+            enum: ['summary', 'full'],
+            default: 'full',
+            description:
+                "Response verbosity. 'full' (default) returns errors[] and warnings[]; 'summary' returns a token-frugal verdict { standard, valid, errorCount, warningCount, summary } and drops the message arrays.",
+        },
+        fields: {
+            type: 'array',
+            description:
+                "Optional dot-path projection applied to the structured result (e.g. ['valid']). Composes after verbosity. Unknown paths are omitted.",
+            maxItems: 16,
+            items: { type: 'string', minLength: 1 },
+        },
     },
     required: ['pdfBase64'],
 } as const;
@@ -61,6 +75,8 @@ export const VALIDATE_PDF_OUTPUT_SCHEMA = {
 
 const InputSchema = z.object({
     pdfBase64: z.string().min(4),
+    verbosity: z.enum(['summary', 'full']).optional(),
+    fields: z.array(z.string().min(1)).max(16).optional(),
 });
 
 export interface ValidatePdfResult {

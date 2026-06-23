@@ -2,7 +2,7 @@
 
 > Reference for AI assistants (GitHub Copilot, Claude, Cursor, Continue, Zed, Windsurf, Cline, Roo Code)
 > and human contributors. Captures the full context needed to understand, extend, and debug
-> pdfnative-mcp **v1.1.0** without reading every source file.
+> pdfnative-mcp **v1.2.0** without reading every source file.
 
 > If you are an AI agent calling pdfnative-mcp from a chat session, also read
 > [`AI_GUIDE.md`](AI_GUIDE.md) — the short, action-oriented decision tree.
@@ -23,7 +23,7 @@ verify, validate, attach, inspect and extract PDF files.
 - The MCP server is a thin, secure dispatch layer: validate inputs with Zod → call pdfnative → emit PDF as base64 or to a sandboxed file.
 - Every tool is fully self-contained (its own file in [src/tools/](../src/tools)).
 - Security at every boundary: Zod validation on all inputs, path traversal prevention on file output, no key-material echo in logs or errors.
-- Every tool ships `_meta.apiVersion = '1.1.0'` and worked-example `_meta.examples` so AI clients can introspect supported behavior — see [`API_STABILITY.md`](API_STABILITY.md).
+- Every tool ships `_meta.apiVersion = '1.2.0'` and worked-example `_meta.examples` so AI clients can introspect supported behavior — see [`API_STABILITY.md`](API_STABILITY.md).
 
 **Runtime:** Node.js ≥ 22 (ESM, strict TypeScript). Transport: stdio.
 
@@ -84,9 +84,15 @@ src/tools/<tool>.ts
   call pdfnative API
   emitPdf(bytes, { mode, outputPath })  ← src/output.ts
     │
-    ├── mode='base64' → base64 string inline in response
+    ├── mode='base64' → PDF returned once as an embedded `resource` content block (data: URI); structuredContent = { mode, sizeBytes }
     └── mode='file'   → write to sandboxed path → return filePath + sizeBytes
 ```
+
+Read-only tools (`inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`) additionally
+apply an opt-in projection layer (`src/projection.ts`) before emitting `structuredContent`:
+`verbosity: 'summary'` swaps the full result for a compact scalar subset, then
+`fields: ['a','b.c']` projects to named dot-paths. Defaults (`'full'`, no `fields`) are
+unchanged.
 
 ---
 
@@ -115,13 +121,13 @@ interface ToolDefinition {
 A `TOOL_INDEX: ReadonlyMap<string, ToolDefinition>` is derived from the array for O(1) lookup on `CallToolRequest`.
 
 **`_meta` per tool** — emitted in the `ListTools` response so AI clients can introspect:
-- `_meta.apiVersion` = `'1.1.0'` (see [`API_STABILITY.md`](API_STABILITY.md) for the bump policy)
+- `_meta.apiVersion` = `'1.2.0'` (see [`API_STABILITY.md`](API_STABILITY.md) for the bump policy)
 - `_meta.examples`   = at least one worked example per tool
 
 **Server metadata:**
 - `SERVER_NAME = 'pdfnative-mcp'`
-- `SERVER_VERSION = '1.1.0'`
-- `serverInfo._meta.mcpName = 'pdfnative-mcp'` (machine ID used by the MCP registry)
+- `SERVER_VERSION = '1.2.0'`
+- `serverInfo._meta.mcpName = 'io.github.Nizoka/pdfnative-mcp'` (registry ID in `package.json` `mcpName` / `server.json` `name`; uses the canonical GitHub login casing `Nizoka` so the MCP registry's case-sensitive validation accepts the lowercase npm package `pdfnative-mcp`)
 - `SERVER_INSTRUCTIONS` — high-level decision tree + common-pitfall guide returned to the client in `serverInfo.instructions`
 
 **Boot:** `initCrypto()` and `initNodeCompression()` are awaited lazily on the first request so the cold start is not paid up-front.

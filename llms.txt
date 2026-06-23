@@ -44,7 +44,16 @@ When an AI agent (Claude, Cursor, ChatGPT, Continue, Zed, Windsurf, Cline, Roo C
 | extract_text | Best-effort plain-text extraction from a non-encrypted PDF. |
 | inspect_pdf | Read-only inspection (version, pages, encryption, PDF/A claim, signatures, attachments). |
 
-Every tool exposes `_meta.apiVersion` (currently `1.1.0`) and `_meta.examples` for AI-agent discovery.
+Every tool exposes `_meta.apiVersion` (currently `1.2.0`) and `_meta.examples` for AI-agent discovery.
+
+## Token-frugal reads (v1.2.0)
+
+The four read-only tools (`inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`) accept two optional inputs to shrink responses — typically ~90% fewer output tokens for large results:
+
+- `verbosity: 'summary'` — returns a compact scalar-only verdict and drops the heavy arrays / full text (e.g. `verify_pdf` returns `{ signatureCount, allValid, invalid, summary }` instead of the per-signature `signatures[]`).
+- `fields: ['a', 'b.c']` — dot-path projection of the structured result; composes after `verbosity`. Unknown paths are omitted leniently.
+
+Defaults are unchanged (`verbosity: 'full'`, no `fields`). Generated PDFs are returned **once** as an embedded `resource` content block (base64 `data:` URI) and are no longer duplicated into `structuredContent`.
 
 ## PDF/A authoring survival directives
 

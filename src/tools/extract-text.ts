@@ -51,6 +51,20 @@ export const EXTRACT_TEXT_INPUT_SCHEMA = {
             maxItems: 1000,
             items: { type: 'integer', minimum: 0 },
         },
+        verbosity: {
+            type: 'string',
+            enum: ['summary', 'full'],
+            default: 'full',
+            description:
+                "Response verbosity. 'full' (default) returns the per-page pages[] array and fullText; 'summary' returns a token-frugal { pageCount, extractedPageCount, extractable, charCount } and drops the text payloads.",
+        },
+        fields: {
+            type: 'array',
+            description:
+                "Optional dot-path projection applied to the structured result (e.g. ['fullText'] or ['extractable']). Composes after verbosity. Unknown paths are omitted.",
+            maxItems: 16,
+            items: { type: 'string', minLength: 1 },
+        },
     },
 } as const;
 
@@ -82,6 +96,8 @@ export const EXTRACT_TEXT_OUTPUT_SCHEMA = {
 const InputSchema = z.object({
     pdfBase64: z.string().min(4),
     pages: z.array(z.number().int().min(0)).max(1000).optional(),
+    verbosity: z.enum(['summary', 'full']).optional(),
+    fields: z.array(z.string().min(1)).max(16).optional(),
 });
 
 export interface ExtractedPage {

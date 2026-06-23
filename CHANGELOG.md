@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-23
+
+A minor, backward-compatible release that makes the four read-only tools token-frugal
+for AI agents (typically ~90% fewer output tokens on large results) and fixes the MCP
+registry publish block caused by `mcpName` casing. Default tool calls return responses
+identical to v1.1.0 — the new behaviour is fully opt-in.
+
+### Added
+
+- **Token-frugal reads:** `inspect_pdf`, `verify_pdf`, `validate_pdf`, and `extract_text` gain an optional `verbosity` input (`'summary'` | `'full'`, default `'full'`). `'summary'` returns a canonical scalar subset — e.g. `verify_pdf` → `{ signatureCount, allValid, invalid, summary }`, `extract_text` → `{ pageCount, extractedPageCount, extractable, charCount }` — dropping the heavy arrays / full text.
+- **Field projection:** the same four tools gain an optional `fields` input — a dot-path projection (e.g. `['allValid']`, `['signatures.valid']`) applied after `verbosity`; unknown paths are omitted leniently. Backed by a new dependency-free `src/projection.ts` module.
+
+### Changed
+
+- **MCP registry ID:** `mcpName` (`package.json`) and `name` (`server.json`) → `io.github.Nizoka/pdfnative-mcp` (canonical GitHub login casing). The npm package name stays lowercase `pdfnative-mcp`.
+- **MCP `_meta.apiVersion`** bumped `1.1.0` → `1.2.0` on every tool; `SERVER_VERSION` and `server.json` versions → `1.2.0`.
+- **Base64 delivery:** base64-mode PDF-producing tools no longer duplicate the PDF into `structuredContent.base64`; the bytes are delivered once via the embedded `resource` content block. `structuredContent` for base64 mode is now `{ mode, sizeBytes }`. File mode is unchanged.
+- **Docs:** README, `docs/AI_GUIDE.md`, `docs/API_STABILITY.md`, `docs/KNOWLEDGE_BASE.md`, and `llms.txt` refreshed for the v1.2.0 surface.
+
+### Fixed
+
+- **MCP registry publication** failed because validation compares `mcpName` to the GitHub namespace with case-sensitive equality (`Nizoka`), while the published metadata used lowercase `nizoka`. Corrected to `io.github.Nizoka/pdfnative-mcp`.
+
 ## [1.1.0] - 2026-06-09
 
 A minor, fully backward-compatible release that upgrades the engine to
@@ -148,7 +171,10 @@ stability via the new per-tool `_meta.apiVersion` field. Built on top of
 - Strict JSON Schema + Zod validation at every tool boundary.
 - Vitest test suite with sandbox security checks.
 
-[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v0.3.0...v1.0.0
 [0.3.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Nizoka/pdfnative-mcp/releases/tag/v0.1.0

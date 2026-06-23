@@ -34,6 +34,12 @@
 | `extract_text`                     | Best-effort plain-text extraction from a non-encrypted PDF.                                     |
 | `inspect_pdf`                      | Read-only inspection: PDF version, page count, encryption, PDF/A claim, signatures, attachments, placeholder state. |
 
+**New in v1.2.0:**
+
+- 🪙 **Token-frugal reads** — the read-only tools (`inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`) accept optional `verbosity: 'summary'` and `fields: […]` inputs for ~90% smaller responses on large results, with no loss of the fields agents branch on. Defaults are unchanged.
+- 🪙 **No base64 duplication** — generated PDFs (base64 mode) are returned **once** as an embedded `resource` content block instead of also being copied into `structuredContent`.
+- 🔧 **MCP registry publish fix** — `mcpName` now uses the canonical GitHub login casing (`io.github.Nizoka/pdfnative-mcp`) so the registry's case-sensitive validation accepts the npm package.
+
 **New in v1.1.0:**
 
 - 🆕 **Tool `validate_pdf`** — read-only PDF/UA (ISO 14289-1) structural conformance check.
@@ -58,8 +64,15 @@
 
 All tools support two output modes:
 
-- **`base64`** *(default)* — the PDF is returned inline in the MCP response.
+- **`base64`** *(default)* — the generated PDF is returned **once** as an embedded `resource` content block (a `data:application/pdf;base64,…` URI); `structuredContent` carries only `{ mode, sizeBytes }`.
 - **`file`** — the PDF is written to a sandboxed directory configured via `PDFNATIVE_MCP_OUTPUT_DIR`. File output is disabled unless this variable is set; absolute paths, path traversal, non-`.pdf` extensions, and NUL bytes are all rejected.
+
+**Token-frugal reads (v1.2.0).** The four read-only tools accept two optional inputs:
+
+- `verbosity: 'summary'` — returns a compact scalar-only verdict (drops the heavy arrays / full text). E.g. `verify_pdf` → `{ signatureCount, allValid, invalid, summary }`.
+- `fields: ['a', 'b.c']` — projects the structured result to named dot-paths; composes after `verbosity`. Unknown paths are omitted leniently.
+
+Smallest “is this PDF signed and valid?” probe: `{ "pdfBase64": "…", "verbosity": "summary", "fields": ["allValid"] }`.
 
 ### Why pdfnative?
 
