@@ -17,6 +17,7 @@ Full notes: [`release-notes/v1.2.0.md`](../../release-notes/v1.2.0.md).
 | 5 | Dependency: zod `^3.23.8` → `^4.0.0` |
 | 6 | Docs: AGENTS.md, AI_GUIDE recipes + error table, README/llms.txt/ROADMAP/API_STABILITY/KNOWLEDGE_BASE |
 | 7 | Tooling: examples-as-tests runner + `assertValidPdf` helper + 4 new example files + `LOCAL_TESTING.md` |
+| 8 | Hardening: enforce PDF/A-1b watermark transparency rule (`PDF_A_COMPLIANCE_VIOLATION`) + release-note/doc parity (migration snippet, error-code table, privacy note, publish dry-run & rollback) |
 
 ## Closes
 
@@ -27,8 +28,8 @@ Full notes: [`release-notes/v1.2.0.md`](../../release-notes/v1.2.0.md).
 
 - ✅ `npm run typecheck:all` — 0 errors
 - ✅ `npm run lint` — 0 errors (36 pre-existing non-null-assertion warnings from v1.0.0)
-- ✅ `npm run test` — 24 files passing (216 → grows with examples-as-tests + new feature tests)
-- ✅ `npm run test:coverage` — ≥ vitest thresholds (88 stmts / 75 branches / 85 funcs / 90 lines)
+- ✅ `npm run test` — 24 files, **247 tests** passing
+- ✅ `npm run test:coverage` — 89.77 stmts / 77.99 branches / 97.56 funcs / 92.25 lines (≥ vitest thresholds 88 / 75 / 85 / 90); `watermark.ts`, `generate-basic-pdf.ts`, `add-table.ts` at 100% stmts
 - ✅ `npm run build` — clean `dist/`
 - ✅ `npm run examples:check` — every `examples/*.json` references a live tool; self-contained examples execute and pass `assertValidPdf`
 
@@ -36,7 +37,7 @@ Full notes: [`release-notes/v1.2.0.md`](../../release-notes/v1.2.0.md).
 
 ### Added
 - **Tool `extract_attachments`** (new, 14th tool, read-only) — byte-for-byte extraction of embedded files, completing the Factur-X / ZUGFeRD round-trip with `add_attachment`. Returns `{ attachmentCount, attachments: [{ name, sizeBytes?, mimeType?, relationship?, description?, dataBase64? }] }`. Shares `collectEmbeddedFiles()` with `inspect_pdf`; `filename` filter; `includeData: false` probe; rejects encrypted PDFs (`EXTRACTION_UNSUPPORTED`); caps payloads at 16 MiB/file and 32 MiB aggregate (`OUTPUT_TOO_LARGE`); `ATTACHMENT_NOT_FOUND` when a filter matches nothing.
-- **Watermarks** — `generate_basic_pdf` and `add_table` accept an optional `watermark` ({ text, fontSize?, opacity?, angle?, color? [r,g,b] 0–1, position? }) rendered on every page. Omitted = byte-identical output. `opacity < 1.0` is rejected under `pdfA: 'pdfa1b'` (ISO 19005-1 §6.4).
+- **Watermarks** — `generate_basic_pdf` and `add_table` accept an optional `watermark` ({ text, fontSize?, opacity?, angle?, color? [r,g,b] 0–1, position? }) rendered on every page. Omitted = byte-identical output. A semi-transparent watermark (`opacity < 1.0`, **including the 0.15 default**) is rejected up-front under `pdfA: 'pdfa1b'` with a stable `PDF_A_COMPLIANCE_VIOLATION` error (ISO 19005-1 §6.4 forbids transparency) — enforced by `assertWatermarkPdfACompatible()` in `src/watermark.ts`, not an opaque library throw; use `opacity: 1.0`, or target `pdfa2b`/`pdfa3b`.
 - **Unicode `normalize`** — `generate_basic_pdf` and `add_international_text` accept an optional `normalize` (`'NFC' | 'NFD' | 'NFKC' | 'NFKD'`). `add_international_text` keeps its `'NFC'` default; `generate_basic_pdf` defaults to no normalization (byte-stable).
 - **Token-frugal reads** — `inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`, `extract_attachments` accept optional `verbosity: 'summary'` (compact scalar verdict) and `fields: ['a','b.c']` (dot-path projection, applied after `verbosity`). Backed by a new dependency-free `src/projection.ts`.
 - **Root `AGENTS.md`** — agent operations manual: 14-tool catalogue, decision tree, token-frugal usage, output modes, recipes, error→remediation table.
@@ -52,7 +53,8 @@ Full notes: [`release-notes/v1.2.0.md`](../../release-notes/v1.2.0.md).
 - **MCP `_meta.apiVersion`** bumped `1.1.0` → `1.2.0` on every tool; `SERVER_VERSION` and `server.json` versions → `1.2.0`.
 - **Base64 delivery:** base64-mode PDF-producing tools no longer duplicate the PDF into `structuredContent.base64`; the bytes are delivered once via the embedded `resource` content block. `structuredContent` for base64 mode is now `{ mode, sizeBytes }`. File mode is unchanged.
 - **Tool count assertion** in `tests/server.test.ts` — 13 → 14; decision-tree and `tools/list` lists include `extract_attachments`.
-- **Docs:** README, `AGENTS.md`, `docs/AI_GUIDE.md`, `docs/API_STABILITY.md`, `docs/KNOWLEDGE_BASE.md`, `ROADMAP.md`, `llms.txt` refreshed for the 14-tool / token-frugal surface.
+- **Docs:** README, `AGENTS.md`, `docs/AI_GUIDE.md`, `docs/API_STABILITY.md`, `docs/KNOWLEDGE_BASE.md`, `ROADMAP.md`, `llms.txt` refreshed for the 14-tool / token-frugal surface. Added a base64→`resource.blob` migration snippet (README + release notes), an error-code table, a privacy/data-handling note (no telemetry/egress; HTTP binds `127.0.0.1`; attachments passed through verbatim, never executed/scanned), and `PDF_A_COMPLIANCE_VIOLATION` to the AI_GUIDE + AGENTS error tables.
+- **Release process:** `.github/instructions/release.instructions.md` documents a `server.json` publish dry-run and the npm rollback policy (supersede with a patch, never unpublish/force-move tags).
 
 ### Fixed
 - **MCP registry publication** failed because validation compares `mcpName` to the GitHub namespace with case-sensitive equality (`Nizoka`), while the published metadata used lowercase `nizoka`. Corrected to `io.github.Nizoka/pdfnative-mcp`.
@@ -72,7 +74,7 @@ Full notes: [`release-notes/v1.2.0.md`](../../release-notes/v1.2.0.md).
 - [ ] Tool count assertion in `tests/server.test.ts` equals 14; list includes `extract_attachments`
 - [ ] Every tool exposes `_meta.apiVersion === '1.2.0'` and a non-empty `_meta.examples` array
 - [ ] `extract_attachments` schema + tests aligned (round-trip byte-match, filename filter, includeData:false, encrypted reject, caps, ATTACHMENT_NOT_FOUND)
-- [ ] `watermark` rejected with `opacity < 1.0` under `pdfa1b`; omitted watermark = byte-identical output
+- [ ] `watermark` rejected with a stable `PDF_A_COMPLIANCE_VIOLATION` when `opacity < 1.0` (incl. the 0.15 default) under `pdfa1b`; `opacity: 1.0` and `pdfa2b`/`pdfa3b` allowed; omitted watermark = byte-identical output
 - [ ] `normalize` default preserved (`NFC` on `add_international_text`, none on `generate_basic_pdf`)
 - [ ] base64 NOT present in `structuredContent`; PDF delivered via the `resource` content block
 - [ ] `verbosity: 'summary'` and `fields` project correctly; defaults unchanged
