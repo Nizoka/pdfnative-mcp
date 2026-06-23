@@ -24,6 +24,8 @@ behaviour is opt-in.
 - **Token-frugal reads:** `inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`, and `extract_attachments` gain an optional `verbosity` input (`'summary'` | `'full'`, default `'full'`). `'summary'` returns a canonical scalar subset — e.g. `verify_pdf` → `{ signatureCount, allValid, invalid, summary }`, `extract_text` → `{ pageCount, extractedPageCount, extractable, charCount }` — dropping the heavy arrays / full text.
 - **Field projection:** the read-only tools gain an optional `fields` input — a dot-path projection (e.g. `['allValid']`, `['signatures.valid']`) applied after `verbosity`; unknown paths are omitted leniently. Backed by a new dependency-free `src/projection.ts` module.
 - **Docs:** new root `AGENTS.md` agent operations manual (catalogue, decision tree, recipes, error table).
+- **Tooling:** examples-as-tests — `tests/examples.test.ts` executes every `examples/*.json` (validates tool names; runs self-contained examples and checks produced PDFs with the new `assertValidPdf` helper). New example files (`watermarked-report.json`, `basic-watermark-normalize.json`, `factur-x-roundtrip.json`, `token-frugal-read.json`) and an `examples:check` script.
+- **Docs (contributing):** new `docs/guides/LOCAL_TESTING.md` covering the quality gate, examples runner, verifying PDF correctness, file output + viewer, optional veraPDF, and the MCP Inspector — linked from README and CONTRIBUTING.
 
 ### Changed
 
@@ -36,6 +38,7 @@ behaviour is opt-in.
 ### Fixed
 
 - **MCP registry publication** failed because validation compares `mcpName` to the GitHub namespace with case-sensitive equality (`Nizoka`), while the published metadata used lowercase `nizoka`. Corrected to `io.github.Nizoka/pdfnative-mcp`.
+- **Stale example** `multilingual-doc.json` used the removed `text` field instead of `paragraphs`; corrected and now guarded by examples-as-tests.
 
 ## [1.1.0] - 2026-06-09
 

@@ -9,17 +9,12 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { generateBasicPdf } from '../src/tools/generate-basic-pdf.js';
 import { ensureCompressionReady } from '../src/server.js';
 import { ToolError } from '../src/errors.js';
+import { assertValidPdf } from './_pdf-assert.js';
 
 beforeAll(async () => {
     delete process.env['PDFNATIVE_MCP_OUTPUT_DIR'];
     await ensureCompressionReady();
 });
-
-const PDF_HEADER = '%PDF-';
-
-function head(b64: string): string {
-    return Buffer.from(b64, 'base64').toString('latin1').slice(0, 5);
-}
 
 const BASE = { title: 'Doc', blocks: [{ type: 'paragraph', text: 'Hello world.' }] } as const;
 
@@ -30,7 +25,7 @@ describe('generate_basic_pdf watermark + normalize', () => {
             watermark: { text: 'DRAFT', opacity: 0.15, angle: -45, color: [0.75, 0.75, 0.75] },
         });
         expect(result.mode).toBe('base64');
-        expect(head(result.base64!)).toBe(PDF_HEADER);
+        assertValidPdf(result.base64!);
         expect(result.sizeBytes).toBeGreaterThan(100);
     });
 
@@ -42,7 +37,7 @@ describe('generate_basic_pdf watermark + normalize', () => {
 
     it('accepts a normalize form', async () => {
         const result = await generateBasicPdf({ ...BASE, normalize: 'NFC' });
-        expect(head(result.base64!)).toBe(PDF_HEADER);
+        assertValidPdf(result.base64!);
     });
 
     it('rejects an out-of-range watermark opacity', async () => {

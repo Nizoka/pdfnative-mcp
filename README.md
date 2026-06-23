@@ -399,6 +399,8 @@ node dist/cli.js
 # In another terminal, send a JSON-RPC initialize request via stdin (e.g. with mcp-inspector).
 ```
 
+> **Contributors:** see [docs/guides/LOCAL_TESTING.md](docs/guides/LOCAL_TESTING.md) for the full local-verification workflow — the quality gate, examples-as-tests, validating that generated PDFs are structurally correct (`assertValidPdf`, `inspect_pdf`, `validate_pdf`, `verify_pdf`), opening output in a viewer, external PDF/A checking with veraPDF, and the MCP Inspector.
+
 ## 📣 Release process
 
 `pdfnative-mcp` follows the same release formalism as `pdfnative`:

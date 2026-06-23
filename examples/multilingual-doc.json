@@ -1,9 +1,9 @@
 {
-  "description": "Render a multilingual cover page with Arabic, CJK and Latin runs. Demonstrates BiDi reordering and Noto font embedding.",
+  "description": "Multilingual cover page with Arabic, CJK and Latin runs. Demonstrates BiDi reordering and Noto font embedding. `lang` accepts an array for multi-script run splitting; `normalize` defaults to NFC.",
   "tool": "add_international_text",
   "arguments": {
     "title": "International cover page",
-    "text": "\u0645\u0631\u062d\u0628\u064b\u0627 \u00b7 Hello \u00b7 \u3053\u3093\u306b\u3061\u306f \u00b7 \u4f60\u597d",
-    "lang": ["ar", "ja", "zh", "latin"]
+    "lang": ["ar", "ja", "zh", "latin"],
+    "paragraphs": ["\u0645\u0631\u062d\u0628\u064b\u0627 \u00b7 Hello \u00b7 \u3053\u3093\u306b\u3061\u306f \u00b7 \u4f60\u597d"]
   }
 }

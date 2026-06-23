@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { addAttachment } from '../src/tools/add-attachment.js';
 import { inspectPdf } from '../src/tools/inspect-pdf.js';
+import { assertValidPdf } from './_pdf-assert.js';
 
 function b64(s: string): string {
     return Buffer.from(s, 'utf8').toString('base64');
@@ -20,6 +21,7 @@ describe('add_attachment', () => {
         });
         expect(r.mode).toBe('base64');
         expect(r.sizeBytes).toBeGreaterThan(0);
+        assertValidPdf(r.base64!);
         const insp = await inspectPdf({ pdfBase64: r.base64! });
         expect(insp.pdfA).toBe('3B');
     });

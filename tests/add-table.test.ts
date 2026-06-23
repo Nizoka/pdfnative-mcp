@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { addTable } from '../src/tools/add-table.js';
 import { ensureCompressionReady } from '../src/server.js';
 import { ToolError } from '../src/errors.js';
+import { assertValidPdf } from './_pdf-assert.js';
 
 beforeAll(async () => {
     delete process.env['PDFNATIVE_MCP_OUTPUT_DIR'];
@@ -26,7 +27,7 @@ describe('add_table', () => {
         });
         expect(result.mode).toBe('base64');
         expect(result.sizeBytes).toBeGreaterThan(100);
-        expect(decode(result.base64!)).toBe(PDF_HEADER);
+        assertValidPdf(result.base64!);
     });
 
     it('includes infoItems and footerText', async () => {
@@ -145,7 +146,7 @@ describe('add_table', () => {
             watermark: { text: 'CONFIDENTIAL', fontSize: 48, opacity: 0.2, angle: -30, color: [0.8, 0.1, 0.1], position: 'foreground' },
         });
         expect(result.mode).toBe('base64');
-        expect(decode(result.base64!)).toBe(PDF_HEADER);
+        assertValidPdf(result.base64!);
         expect(result.sizeBytes).toBeGreaterThan(100);
     });
 

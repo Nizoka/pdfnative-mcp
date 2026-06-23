@@ -1,0 +1,15 @@
+{
+  "description": "Plain document with a DRAFT watermark and explicit Unicode normalization (v1.2.0). `normalize: 'NFC'` composes decomposed sequences for the widest glyph coverage; omit it for byte-stable output.",
+  "tool": "generate_basic_pdf",
+  "arguments": {
+    "title": "Project Brief",
+    "normalize": "NFC",
+    "watermark": { "text": "DRAFT", "opacity": 0.15 },
+    "blocks": [
+      { "type": "heading", "text": "Project Brief", "level": 1 },
+      { "type": "paragraph", "text": "This document is a working draft and subject to change." },
+      { "type": "heading", "text": "Goals", "level": 2 },
+      { "type": "list", "style": "bullet", "items": ["Ship v1.2.0", "Keep responses token-frugal", "Maintain zero superfluous dependencies"] }
+    ]
+  }
+}
