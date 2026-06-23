@@ -52,6 +52,36 @@ describe('generate_basic_pdf watermark + normalize', () => {
         ).rejects.toThrow(ToolError);
     });
 
+    it('rejects a semi-transparent watermark under pdfA=pdfa1b with PDF_A_COMPLIANCE_VIOLATION', async () => {
+        await expect(
+            generateBasicPdf({ ...BASE, pdfA: 'pdfa1b', watermark: { text: 'DRAFT', opacity: 0.2 } }),
+        ).rejects.toMatchObject({ code: 'PDF_A_COMPLIANCE_VIOLATION' });
+    });
+
+    it('rejects a default-opacity watermark under pdfA=pdfa1b (0.15 default is transparent)', async () => {
+        await expect(
+            generateBasicPdf({ ...BASE, pdfA: 'pdfa1b', watermark: { text: 'DRAFT' } }),
+        ).rejects.toMatchObject({ code: 'PDF_A_COMPLIANCE_VIOLATION' });
+    });
+
+    it('allows an opaque watermark under pdfA=pdfa1b', async () => {
+        const result = await generateBasicPdf({
+            ...BASE,
+            pdfA: 'pdfa1b',
+            watermark: { text: 'DRAFT', opacity: 1 },
+        });
+        assertValidPdf(result.base64!);
+    });
+
+    it('allows a semi-transparent watermark under pdfA=pdfa2b', async () => {
+        const result = await generateBasicPdf({
+            ...BASE,
+            pdfA: 'pdfa2b',
+            watermark: { text: 'DRAFT', opacity: 0.2 },
+        });
+        assertValidPdf(result.base64!);
+    });
+
     it('rejects an unsupported normalize form', async () => {
         await expect(generateBasicPdf({ ...BASE, normalize: 'NFG' })).rejects.toThrow(ToolError);
     });

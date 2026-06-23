@@ -75,6 +75,12 @@ content block (`data:application/pdf;base64,…`), not duplicated into
 - `PDFNATIVE_MCP_OUTPUT_DIR` — sandbox root for file output (unset = file mode disabled).
 - `PDFNATIVE_MCP_CACHE_DIR` — opt-in SHA-256 cache (1 h TTL, 256 MiB LRU).
 
+**Privacy:** no telemetry, no outbound network calls — document bytes only ever
+flow back in the JSON-RPC response. The optional HTTP transport
+(`PDFNATIVE_MCP_PORT`) binds `127.0.0.1` only. Embedded files are passed through
+verbatim — the server never executes, renders, or scans them, so scan untrusted
+attachments in the caller.
+
 ## 5. Recipes
 
 - **Factur-X round-trip:** `add_attachment` → `inspect_pdf` → `extract_attachments` → *(optional)* `validate_pdf`.
@@ -88,6 +94,7 @@ content block (`data:application/pdf;base64,…`), not duplicated into
 |--------|---------|-----|
 | `VALIDATION_ERROR` | Zod rejected the input | Re-read the field schema (message lists the path). |
 | `PDF_PARSE_FAILED` | Input PDF malformed/truncated | Re-encode the base64; confirm it opens in a reader. |
+| `PDF_A_COMPLIANCE_VIOLATION` | Watermark `opacity < 1.0` (incl. 0.15 default) under `pdfA:'pdfa1b'` | Use `opacity:1.0`, or target `pdfa2b`/`pdfa3b` (allow transparency). |
 | `MISSING_PLACEHOLDER` | `sign_pdf` w/ `autoInjectPlaceholder:false` on unplaceheld PDF | Keep the default `true`, or run `prepare_signature_placeholder`. |
 | `EXTRACTION_UNSUPPORTED` | Encrypted PDF to `extract_text` / `extract_attachments` | Decrypt outside the server first. |
 | `ATTACHMENT_NOT_FOUND` | `extract_attachments` `filename` matched nothing | Drop `filename` or list names via `inspect_pdf`. |

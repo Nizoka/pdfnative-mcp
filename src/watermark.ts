@@ -5,12 +5,17 @@
  * pdfnative's `WatermarkOptions`. Image watermarks are intentionally out of
  * scope for this release.
  *
- * Note: PDF/A-1b forbids transparency (ISO 19005-1 §6.4); pdfnative throws when
- * an opacity < 1.0 watermark is combined with `tagged: 'pdfa1b'`. Surface that
- * to callers via the tool's normal error path.
+ * Note: PDF/A-1b forbids transparency (ISO 19005-1 §6.4); a `opacity < 1.0`
+ * watermark combined with `tagged: 'pdfa1b'` is rejected up-front by
+ * {@link assertWatermarkPdfACompatible} with a stable `PDF_A_COMPLIANCE_VIOLATION`
+ * code, rather than surfacing pdfnative's opaque throw.
  */
 import { z } from 'zod';
 import type { WatermarkOptions, WatermarkText } from 'pdfnative';
+import { ToolError } from './errors.js';
+
+/** Default watermark opacity applied by pdfnative when `opacity` is omitted. */
+const DEFAULT_WATERMARK_OPACITY = 0.15;
 
 /** JSON-Schema fragment for the optional `watermark` property (text watermark). */
 export const WATERMARK_INPUT_SCHEMA = {
@@ -73,6 +78,27 @@ export const WatermarkSchema = z.object({
 });
 
 export type WatermarkInput = z.infer<typeof WatermarkSchema>;
+
+/**
+ * Reject the one PDF/A-incompatible watermark combination *before* handing it to
+ * pdfnative, so callers get a stable `ToolError` code instead of an opaque library
+ * throw. PDF/A-1b (ISO 19005-1 §6.4) forbids transparency, so a semi-transparent
+ * watermark (`opacity < 1.0`, including the 0.15 default) cannot coexist with
+ * `pdfA: 'pdfa1b'`. PDF/A-2b and PDF/A-3b permit transparency and are unaffected.
+ */
+export function assertWatermarkPdfACompatible(
+    watermark: WatermarkInput | undefined,
+    pdfA: string | undefined,
+): void {
+    if (watermark === undefined || pdfA !== 'pdfa1b') return;
+    const opacity = watermark.opacity ?? DEFAULT_WATERMARK_OPACITY;
+    if (opacity < 1) {
+        throw new ToolError(
+            'PDF_A_COMPLIANCE_VIOLATION',
+            "Watermark opacity < 1.0 is not permitted under pdfA='pdfa1b' (ISO 19005-1 §6.4 forbids transparency). Set watermark.opacity to 1.0, or target pdfA='pdfa2b'/'pdfa3b' which allow transparency.",
+        );
+    }
+}
 
 /** Map a validated `watermark` input to pdfnative's `WatermarkOptions`. */
 export function toWatermarkOptions(input: WatermarkInput): WatermarkOptions {

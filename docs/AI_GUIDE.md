@@ -137,6 +137,7 @@ The MCP error response always includes a `code` and a message:
 |---|---|---|
 | `VALIDATION_ERROR` | Zod rejected the input | Re-read the field’s schema (the message lists the offending path). |
 | `PDF_PARSE_FAILED` | Input PDF is malformed or truncated | Re-encode the base64; verify the source PDF opens in a normal reader. |
+| `PDF_A_COMPLIANCE_VIOLATION` | `generate_basic_pdf` / `add_table` watermark with `opacity < 1.0` (incl. the 0.15 default) under `pdfA: 'pdfa1b'` | Set `watermark.opacity: 1.0`, or target `pdfa2b` / `pdfa3b` (which allow transparency). |
 | `MISSING_PLACEHOLDER` | `sign_pdf` called with `autoInjectPlaceholder: false` on a PDF without `/Sig` | Set `autoInjectPlaceholder: true` (the default) or call `prepare_signature_placeholder` first. |
 | `EXTRACTION_UNSUPPORTED` | Encrypted PDF passed to `extract_text` / `extract_attachments` | Decrypt the PDF outside the server first. |
 | `ATTACHMENT_NOT_FOUND` | `extract_attachments` `filename` filter matched no embedded file | Omit `filename`, or call `inspect_pdf` to list the real attachment names. |

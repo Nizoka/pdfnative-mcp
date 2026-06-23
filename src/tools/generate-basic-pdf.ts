@@ -12,7 +12,12 @@ import { ToolError } from '../errors.js';
 import { splitParagraphSegments } from '../text.js';
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
 import { NORMALIZE_ENUM, NORMALIZE_FIELD_DESCRIPTION, NormalizeSchema } from '../normalize.js';
-import { WATERMARK_INPUT_SCHEMA, WatermarkSchema, toWatermarkOptions } from '../watermark.js';
+import {
+    WATERMARK_INPUT_SCHEMA,
+    WatermarkSchema,
+    toWatermarkOptions,
+    assertWatermarkPdfACompatible,
+} from '../watermark.js';
 
 export const GENERATE_BASIC_PDF_NAME = 'generate_basic_pdf';
 
@@ -164,6 +169,7 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
     const { title, blocks, footerText, pdfA, watermark, normalize, outputMode, outputPath } = parsed.data;
+    assertWatermarkPdfACompatible(watermark, pdfA);
 
     const docBlocks: DocumentBlock[] = blocks.flatMap((block): DocumentBlock[] => {
         switch (block.type) {

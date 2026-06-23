@@ -72,6 +72,17 @@ All tools support two output modes:
 - **`base64`** *(default)* — the generated PDF is returned **once** as an embedded `resource` content block (a `data:application/pdf;base64,…` URI); `structuredContent` carries only `{ mode, sizeBytes }`.
 - **`file`** — the PDF is written to a sandboxed directory configured via `PDFNATIVE_MCP_OUTPUT_DIR`. File output is disabled unless this variable is set; absolute paths, path traversal, non-`.pdf` extensions, and NUL bytes are all rejected.
 
+> **Upgrading from v1.1.0:** the only behaviour change is that base64-mode bytes are
+> no longer duplicated into `structuredContent.base64`. Read them from the embedded
+> `resource` block instead:
+>
+> ```diff
+> - const base64 = response.structuredContent.base64;   // v1.1.0
+> + const block = response.content.find((c) => c.type === 'resource');
+> + const base64 = block.resource.blob;                  // v1.2.0
+> ```
+
+
 **Token-frugal reads (v1.2.0).** The four read-only tools accept two optional inputs:
 
 - `verbosity: 'summary'` — returns a compact scalar-only verdict (drops the heavy arrays / full text). E.g. `verify_pdf` → `{ signatureCount, allValid, invalid, summary }`.

@@ -16,7 +16,12 @@ import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
-import { WATERMARK_INPUT_SCHEMA, WatermarkSchema, toWatermarkOptions } from '../watermark.js';
+import {
+    WATERMARK_INPUT_SCHEMA,
+    WatermarkSchema,
+    toWatermarkOptions,
+    assertWatermarkPdfACompatible,
+} from '../watermark.js';
 
 export const ADD_TABLE_NAME = 'add_table';
 
@@ -163,6 +168,7 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
     const { title, headers, rows, infoItems, footerText, autoFitColumns, clipCells, wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, pdfA, watermark, outputMode, outputPath } = parsed.data;
+    assertWatermarkPdfACompatible(watermark, pdfA);
 
     // Validate column count consistency: every row must have the same length as headers
     for (let i = 0; i < rows.length; i++) {

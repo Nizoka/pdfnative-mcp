@@ -328,6 +328,21 @@ Two transports are supported. Default = stdio. Set `PDFNATIVE_MCP_PORT` to expos
 
 > Historical note: pre-v1.0.0 used a misspelled env var (`PDFNATIVE_MPC_OUTPUT_DIR`). v1.0.0 standardized on `PDFNATIVE_MCP_OUTPUT_DIR`. Update any old config.
 
+### Privacy & data handling
+
+- **No telemetry, no network egress.** The server makes no outbound calls, opens no
+  sockets of its own, and emits no analytics/usage data. Document bytes never leave
+  the process except in the JSON-RPC response to the caller.
+- **Transit.** stdio (default) is a local pipe to the parent process. The opt-in
+  HTTP transport (`PDFNATIVE_MCP_PORT`) binds **`127.0.0.1`** only; terminate TLS in a
+  reverse proxy if you expose it beyond localhost.
+- **Attachments are passed through verbatim.** `add_attachment` embeds, and
+  `extract_attachments` returns, payload bytes **as-is** — the server does **not**
+  execute, render, or virus-scan embedded files. Treat extracted content as untrusted
+  and scan it in the caller if it originates from an untrusted PDF.
+- **No secret retention.** Key/cert material supplied to `sign_pdf` is used in-memory
+  for the single call and never logged, cached, or echoed in errors.
+
 ---
 
 ## 9. Adding a New Tool

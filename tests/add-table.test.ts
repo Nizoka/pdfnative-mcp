@@ -160,5 +160,28 @@ describe('add_table', () => {
             }),
         ).rejects.toThrow(ToolError);
     });
+
+    it('rejects a semi-transparent watermark under pdfA=pdfa1b with PDF_A_COMPLIANCE_VIOLATION', async () => {
+        await expect(
+            addTable({
+                title: 'Bad',
+                headers: ['A'],
+                rows: [['1']],
+                pdfA: 'pdfa1b',
+                watermark: { text: 'CONFIDENTIAL', opacity: 0.2 },
+            }),
+        ).rejects.toMatchObject({ code: 'PDF_A_COMPLIANCE_VIOLATION' });
+    });
+
+    it('allows an opaque watermark under pdfA=pdfa1b', async () => {
+        const result = await addTable({
+            title: 'Opaque',
+            headers: ['A', 'B'],
+            rows: [['1', '2']],
+            pdfA: 'pdfa1b',
+            watermark: { text: 'CONFIDENTIAL', opacity: 1 },
+        });
+        assertValidPdf(result.base64!);
+    });
 });
 
