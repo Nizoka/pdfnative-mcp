@@ -29,6 +29,11 @@ import { ToolError } from '../errors.js';
 import { splitParagraphSegments } from '../text.js';
 import { PDF_A_ENUM, PdfASchema } from '../pdfa.js';
 import { NORMALIZE_ENUM, NormalizeSchema } from '../normalize.js';
+import {
+    VIEWER_PREFERENCES_INPUT_SCHEMA,
+    ViewerPreferencesSchema,
+    toViewerPreferences,
+} from '../doc-features.js';
 
 export const ADD_INTERNATIONAL_TEXT_NAME = 'add_international_text';
 
@@ -139,6 +144,7 @@ export const ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA = {
             description:
                 "Unicode normalization form applied before shaping. Defaults to 'NFC' (recommended for international scripts: composes decomposed sequences for the widest glyph coverage). Override with 'NFD'/'NFKC'/'NFKD' only for specialised needs.",
         },
+        viewerPreferences: VIEWER_PREFERENCES_INPUT_SCHEMA,
         outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
         outputPath: { type: 'string' },
     },
@@ -157,6 +163,7 @@ const InputSchema = z.object({
     paragraphs: z.array(z.string().min(1).max(50000)).min(1).max(1000),
     pdfA: PdfASchema.optional(),
     normalize: NormalizeSchema.optional(),
+    viewerPreferences: ViewerPreferencesSchema.optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -189,7 +196,7 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, lang, paragraphs, pdfA, normalize, outputMode, outputPath } = parsed.data;
+    const { title, lang, paragraphs, pdfA, normalize, viewerPreferences, outputMode, outputPath } = parsed.data;
 
     const langs = normaliseLangs(lang);
     // Auto-register Noto Sans Latin fallback under PDF/A so non-WinAnsi Latin (smart
@@ -218,7 +225,11 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
 
     const bytes = buildDocumentPDFBytes(
         { title, blocks, fontEntries },
-        { normalize: normalize ?? 'NFC', ...(pdfA !== undefined ? { tagged: pdfA } : {}) },
+        {
+            normalize: normalize ?? 'NFC',
+            ...(pdfA !== undefined ? { tagged: pdfA } : {}),
+            ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
+        },
     );
     return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
 }

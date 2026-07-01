@@ -16,7 +16,7 @@
 
 ## ✨ Features
 
-`pdfnative-mcp` exposes **14 production-grade tools** to any MCP host:
+`pdfnative-mcp` exposes **17 production-grade tools** to any MCP host:
 
 | Tool                               | Purpose                                                                                          |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
@@ -34,8 +34,17 @@
 | `extract_attachments`              | Read-only extraction of embedded files (Factur-X / ZUGFeRD XML round-trip) with byte-for-byte payloads. |
 | `extract_text`                     | Best-effort plain-text extraction from a non-encrypted PDF.                                     |
 | `inspect_pdf`                      | Read-only inspection: PDF version, page count, encryption, PDF/A claim, signatures, attachments, placeholder state. |
+| `merge_pdfs` *(new in v1.3.0)*     | Concatenate 2–50 PDFs into one via pdfnative's page-tree API.                                  |
+| `split_pdf` *(new in v1.3.0)*      | Split one PDF into one document per page range (multi-output).                                  |
+| `extract_pages` *(new in v1.3.0)*  | Pull an arbitrary page subset into a single PDF.                                               |
 
-**New in v1.2.0:**
+**New in v1.3.0:**
+
+- 🆕 **Three page-tree tools** — `merge_pdfs`, `split_pdf`, `extract_pages` (built on [pdfnative v1.4.0](https://github.com/Nizoka/pdfnative)'s page-tree API; encrypted sources are rejected).
+- 🔖 **Bookmarks, page labels & nested lists** — `generate_basic_pdf` gains `outline` (`'auto'` or explicit tree), `pageLabels`, multi-level `list` items, and `viewerPreferences`.
+- 📐 **Table cell borders & alignment** — `add_table` gains `cellBorders`, `cellVAlign`, and `viewerPreferences`; `add_international_text` gains `viewerPreferences`.
+- 🔐 **Constant-time signing** — `sign_pdf` signs RSA and EC-DER keys through a `node:crypto` provider with a transparent pure-JS fallback; signatures stay interoperable.
+- ⬆ **Engine upgrade** — pdfnative **v1.4.0**.
 
 - 🆕 **Tool `extract_attachments`** — read embedded files back out of a PDF (completes the Factur-X / ZUGFeRD round-trip) with byte-for-byte payloads, a `filename` filter, and an `includeData: false` metadata-only probe.
 - 💧 **Watermarks** — `generate_basic_pdf` and `add_table` accept an optional `watermark` (text, opacity, angle, colour, position) rendered on every page.
@@ -65,7 +74,7 @@
 - 🆕 **AI agent guide:** [`docs/AI_GUIDE.md`](docs/AI_GUIDE.md) — decision tree + common pitfalls. See also the root [`AGENTS.md`](AGENTS.md) operations manual.
 - 🆕 **PDF/A authoring guide:** [`docs/guides/PDFA.md`](docs/guides/PDFA.md).
 - 🛠 **Env-var rename:** `PDFNATIVE_MCP_OUTPUT_DIR` (was `PDFNATIVE_MPC_OUTPUT_DIR`; old name still works with a one-shot deprecation warning).
-- ⏭ **Deferred to v1.1:** `merge_pdfs`, `split_pdf`, `redact_pdf` (require pdfnative page-tree primitives not yet exported).
+- ✅ **Now shipped (v1.3.0):** `merge_pdfs`, `split_pdf`, `extract_pages` — built on pdfnative v1.4.0's page-tree API. `redact_pdf` remains blocked upstream.
 
 All tools support two output modes:
 
@@ -161,7 +170,7 @@ Any MCP-compatible client that supports stdio servers will work. Use the same `c
 | ----------------------------- | ---------------------------------------------------------------------------------- |
 | `PDFNATIVE_MCP_OUTPUT_DIR`    | Absolute path to the sandbox directory. **Required to enable `outputMode: 'file'`.** |
 | `PDFNATIVE_MCP_CACHE_DIR`     | Absolute path to enable the persistent SHA-256-keyed result cache (1 h TTL, 256 MiB LRU). When unset, the cache is disabled. |
-| `PDFNATIVE_MCP_PORT`          | When set to a valid port (1–65535), starts an HTTP server on `http://127.0.0.1:<port>/mcp` instead of stdio. |
+| `PDFNATIVE_MCP_PORT`          | When set to a valid port (1–65535), starts an HTTP server on `http://127.0.0.1:<port>/mcp` instead of stdio. Binds loopback only and enables DNS-rebinding protection (foreign `Host`/`Origin` → **403**). |
 
 ---
 
@@ -432,8 +441,11 @@ src/
 ├── cli.ts                      # stdio entrypoint (#!/usr/bin/env node)
 ├── index.ts                    # public library exports
 ├── server.ts                   # McpServer factory + tool registry
-├── output.ts                   # sandboxed file writer / base64 emitter
+├── output.ts                   # sandboxed file writer / base64 emitter (single + multi)
 ├── text.ts                     # newline sanitizer (Safe PDF/A)
+├── doc-features.ts             # nested lists, outline, page labels, viewer prefs
+├── pagetree.ts                 # page-tree error mapping (merge/split/extract)
+├── crypto-provider.ts          # node:crypto constant-time signature provider
 ├── errors.ts                   # ToolError, SecurityError
 └── tools/
     ├── generate-basic-pdf.ts
@@ -447,7 +459,11 @@ src/
     ├── verify-pdf.ts
     ├── validate-pdf.ts
     ├── add-attachment.ts
+    ├── extract-attachments.ts
     ├── extract-text.ts
+    ├── merge-pdfs.ts
+    ├── split-pdf.ts
+    ├── extract-pages.ts
     └── prepare-signature-placeholder.ts
 tests/                          # vitest suites
 ```
@@ -456,11 +472,11 @@ tests/                          # vitest suites
 
 ## 🗺 Roadmap
 
-v1.1.0 is shipped. The full plan — released milestones, in-progress work, and long-term direction — lives in [ROADMAP.md](ROADMAP.md).
+v1.3.0 is shipped. The full plan — released milestones, in-progress work, and long-term direction — lives in [ROADMAP.md](ROADMAP.md).
 
 **Blocked upstream (page-tree manipulation):**
 
-- `merge_pdfs`, `split_pdf`, `redact_pdf` — pdfnative does not yet export the page-tree manipulation primitives required to build these safely. They remain on the roadmap, blocked on an upstream API.
+- `redact_pdf` and an encrypted-PDF round-trip — pdfnative does not yet export the content-redaction / decryption primitives required to build these safely. They remain on the roadmap, blocked on an upstream API. (`merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0.)
 
 Have a feature idea? Open an issue or PR.
 

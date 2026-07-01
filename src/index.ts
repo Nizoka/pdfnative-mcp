@@ -3,5 +3,5 @@
  * pdfnative-mpc can be embedded in another Node process if desired.
  */
 export { createServer, ensureCompressionReady } from './server.js';
-export type { OutputMode, OutputResult } from './output.js';
+export type { OutputMode, OutputResult, MultiOutputResult, MultiOutputPart } from './output.js';
 export { ToolError, SecurityError } from './errors.js';

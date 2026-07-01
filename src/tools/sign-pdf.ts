@@ -15,6 +15,12 @@
  *   - Signer metadata (`signerName`, `reason`, `location`, `contactInfo`,
  *     `signingTime`) is written into the `/Sig` dictionary at signing time
  *     (this matches PAdES Baseline behaviour and pdfnative v1.2 semantics).
+ *
+ * v1.3.0 security:
+ *   - Constant-time signing via `node:crypto`. RSA (PKCS#1) and ECDSA P-256
+ *     (SEC1 / PKCS#8) keys are routed through a native, constant-time
+ *     {@link buildNodeCryptoProvider}; the pure-JS RSA/ECDSA math is used only
+ *     as a fallback (e.g. a bare P-256 scalar without its public point).
  */
 import {
     addSignaturePlaceholder,
@@ -29,6 +35,7 @@ import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { parseEcPrivateKeyDer } from '../ec-key.js';
 import { hasSignaturePlaceholder } from '../pdf-introspection.js';
+import { buildNodeCryptoProvider } from '../crypto-provider.js';
 
 export const SIGN_PDF_NAME = 'sign_pdf';
 
@@ -190,16 +197,27 @@ export async function signPdf(rawInput: unknown): Promise<OutputResult> {
     let options: PdfSignOptions;
     if (input.algorithm === 'rsa-sha256') {
         const rsaDer = decodeBase64(input.rsaKeyPkcs1DerBase64 as string, 'rsaKeyPkcs1DerBase64');
-        const rsaKey = parseRsaPrivateKey(rsaDer);
-        options = { ...baseOptions, rsaKey };
-    } else {
-        let d: bigint;
-        if (input.ecPrivateScalarHex !== undefined) {
-            d = hexToBigInt(input.ecPrivateScalarHex);
+        // Prefer the native constant-time signer; fall back to pdfnative's pure-JS path.
+        const provider = buildNodeCryptoProvider({ algorithm: 'rsa-sha256', der: rsaDer, keyType: 'pkcs1' });
+        if (provider !== null) {
+            options = { ...baseOptions, provider };
         } else {
-            const ecDer = decodeBase64(input.ecPrivateKeyDerBase64 as string, 'ecPrivateKeyDerBase64');
-            d = parseEcPrivateKeyDer(ecDer);
+            const rsaKey = parseRsaPrivateKey(rsaDer);
+            options = { ...baseOptions, rsaKey };
         }
+    } else if (input.ecPrivateKeyDerBase64 !== undefined) {
+        const ecDer = decodeBase64(input.ecPrivateKeyDerBase64, 'ecPrivateKeyDerBase64');
+        const provider = buildNodeCryptoProvider({ algorithm: 'ecdsa-sha256', der: ecDer, keyType: 'sec1' });
+        if (provider !== null) {
+            options = { ...baseOptions, provider };
+        } else {
+            const d = parseEcPrivateKeyDer(ecDer);
+            options = { ...baseOptions, ecKey: { d } };
+        }
+    } else {
+        // Raw P-256 scalar: node:crypto cannot import it without the public point,
+        // so use pdfnative's pure-JS ECDSA path.
+        const d = hexToBigInt(input.ecPrivateScalarHex as string);
         options = { ...baseOptions, ecKey: { d } };
     }
 

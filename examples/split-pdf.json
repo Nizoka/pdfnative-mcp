@@ -1,0 +1,27 @@
+{
+  "description": "Split one PDF into several documents — one per page range (pdfnative v1.4 page-tree API). split_pdf ranges are 0-based and inclusive; `end` defaults to `start`. In base64 mode each produced PDF comes back as its own embedded resource block; in file mode each is written to a 1-based indexed sibling of outputPath ('out.pdf' → 'out-1.pdf', 'out-2.pdf', …). Use extract_pages instead when you want a single PDF from an arbitrary page subset.",
+  "steps": [
+    {
+      "tool": "generate_basic_pdf",
+      "arguments": {
+        "title": "Four pages",
+        "blocks": [
+          { "type": "heading", "text": "Page 1", "level": 1 },
+          { "type": "pageBreak" },
+          { "type": "heading", "text": "Page 2", "level": 1 },
+          { "type": "pageBreak" },
+          { "type": "heading", "text": "Page 3", "level": 1 },
+          { "type": "pageBreak" },
+          { "type": "heading", "text": "Page 4", "level": 1 }
+        ]
+      }
+    },
+    {
+      "tool": "split_pdf",
+      "arguments": {
+        "pdfBase64": "<base64 from step 1>",
+        "ranges": [{ "start": 0 }, { "start": 1, "end": 3 }]
+      }
+    }
+  ]
+}

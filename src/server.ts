@@ -14,7 +14,7 @@ import { initCrypto, initNodeCompression } from 'pdfnative';
 
 import { ToolError } from './errors.js';
 import { getCached, setCached } from './cache.js';
-import { type OutputResult } from './output.js';
+import { type OutputResult, type MultiOutputResult } from './output.js';
 import { readFields, readVerbosity, selectFields } from './projection.js';
 import {
     GENERATE_BASIC_PDF_NAME,
@@ -96,11 +96,37 @@ import {
     extractAttachments,
     type ExtractAttachmentsResult,
 } from './tools/extract-attachments.js';
+import {
+    MERGE_PDFS_NAME,
+    MERGE_PDFS_INPUT_SCHEMA,
+    mergePdfsTool,
+} from './tools/merge-pdfs.js';
+import {
+    SPLIT_PDF_NAME,
+    SPLIT_PDF_INPUT_SCHEMA,
+    splitPdfTool,
+} from './tools/split-pdf.js';
+import {
+    EXTRACT_PAGES_NAME,
+    EXTRACT_PAGES_INPUT_SCHEMA,
+    extractPagesTool,
+} from './tools/extract-pages.js';
 
 // JSON import attribute (Node 22+, TS 5.3+) keeps version in lock-step with package.json.
 // Hardcoded here to keep the build rootDir limited to ./src; tests assert it stays in sync.
-const SERVER_VERSION = '1.2.0';
+const SERVER_VERSION = '1.3.0';
 const SERVER_NAME = 'pdfnative-mcp';
+
+/**
+ * Human-readable server identity surfaced in `serverInfo` (MCP `Implementation`).
+ * `title` is a display name; `description` mirrors `server.json` so hosts and the
+ * MCP registry present consistent metadata during initialization.
+ */
+const SERVER_TITLE = 'pdfnative MCP — PDF generation, signing & introspection';
+const SERVER_DESCRIPTION =
+    'Production-grade MCP server for PDF generation, PDF/A archival, PDF/UA structural validation, ' +
+    'digital signatures (PAdES sign + verify, constant-time node:crypto), page-tree ops (merge / split / extract), ' +
+    'Factur-X invoices, and PDF introspection. 17 tools, 24 scripts, zero runtime dependencies beyond pdfnative and the MCP SDK.';
 
 /**
  * Per-tool API version used by the opt-in cache key and by `_meta.apiVersion`.
@@ -108,7 +134,7 @@ const SERVER_NAME = 'pdfnative-mcp';
  * make a cached response unsafe to serve. Independent from SERVER_VERSION
  * (which tracks the npm package).
  */
-const TOOL_API_VERSION = '1.2.0';
+const TOOL_API_VERSION = '1.3.0';
 
 /** True when the call's input requests a file-mode output (filesystem side-effect). */
 function isFileOutput(input: unknown): boolean {
@@ -119,6 +145,9 @@ function isFileOutput(input: unknown): boolean {
 
 function dispatchOutput(output: unknown, name: string, input: unknown): CallToolResult {
     if (output !== null && typeof output === 'object') {
+        if ('parts' in output && 'count' in output) {
+            return buildMultiSuccessResult(output as MultiOutputResult, name);
+        }
         if ('mode' in output) {
             return buildSuccessResult(output as OutputResult, name);
         }
@@ -171,6 +200,33 @@ const PDF_OUTPUT_SCHEMA = {
     },
 } as const;
 
+/** Output schema for tools that return several PDFs at once (e.g. split_pdf). */
+const MULTI_PDF_OUTPUT_SCHEMA = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['mode', 'count', 'totalBytes', 'parts'],
+    description:
+        'Structured result of a tool producing several PDFs. In base64 mode each PDF is delivered out-of-band as its own embedded `resource` content block (data: URI); `parts[]` here carries only the per-PDF size (and `filePath` in file mode) to stay token-frugal.',
+    properties: {
+        mode: { type: 'string', enum: ['base64', 'file'] },
+        count: { type: 'integer', minimum: 0 },
+        totalBytes: { type: 'integer', minimum: 0 },
+        parts: {
+            type: 'array',
+            items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['index', 'sizeBytes'],
+                properties: {
+                    index: { type: 'integer', minimum: 0 },
+                    sizeBytes: { type: 'integer', minimum: 0 },
+                    filePath: { type: 'string', description: "Absolute sandboxed file path (when mode='file')." },
+                },
+            },
+        },
+    },
+} as const;
+
 interface ToolDefinition {
     name: string;
     title: string;
@@ -185,7 +241,7 @@ interface ToolDefinition {
     };
     /** Minimal MCP `_meta.examples` payload — each entry is a self-contained input. */
     examples?: ReadonlyArray<{ readonly title: string; readonly input: Record<string, unknown> }>;
-    handler: (args: unknown) => Promise<OutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult | ValidatePdfResult | ExtractAttachmentsResult>;
+    handler: (args: unknown) => Promise<OutputResult | MultiOutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult | ValidatePdfResult | ExtractAttachmentsResult>;
 }
 
 const TOOLS: readonly ToolDefinition[] = [
@@ -386,11 +442,50 @@ const TOOLS: readonly ToolDefinition[] = [
         ],
         handler: extractAttachments,
     },
+    {
+        name: MERGE_PDFS_NAME,
+        title: 'Merge PDFs',
+        description:
+            "Concatenate 2–50 source PDFs into a single document (pdfnative v1.4 page-tree API). Each kept page's object graph is deep-copied into a fresh, self-contained PDF. Signatures and AcroForms are dropped (a page-tree edit invalidates /ByteRange); self-contained URI link annotations are preserved unless dropAnnotations=true. Encrypted sources are rejected (ENCRYPTED_SOURCE) — decrypt first. A secure-by-default 256 MiB in-memory assembly guard (maxOutputSizeBytes) guards against memory exhaustion; the emitted PDF is separately capped at 50 MiB (OUTPUT_TOO_LARGE). Returns one PDF (base64 or sandboxed file).",
+        inputSchema: MERGE_PDFS_INPUT_SCHEMA,
+        outputSchema: PDF_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Merge two PDFs', input: { pdfsBase64: ['<pdf-a-base64>', '<pdf-b-base64>'] } },
+        ],
+        handler: mergePdfsTool,
+    },
+    {
+        name: SPLIT_PDF_NAME,
+        title: 'Split PDF into ranges',
+        description:
+            "Split one PDF into several documents — one per requested page range (pdfnative v1.4 page-tree API). Ranges are 0-based and inclusive; `end` defaults to `start` (a single page). Each output is a fresh, self-contained PDF (signatures/AcroForm dropped; URI links kept unless dropAnnotations=true). Encrypted sources are rejected (ENCRYPTED_SOURCE). In base64 mode every produced PDF is returned as its own embedded resource block; in file mode each is written to a 1-based indexed sibling of outputPath ('out.pdf' → 'out-1.pdf', 'out-2.pdf', …). Use extract_pages instead when you want a single PDF from an arbitrary page subset.",
+        inputSchema: SPLIT_PDF_INPUT_SCHEMA,
+        outputSchema: MULTI_PDF_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'First page and the rest', input: { pdfBase64: '<base64>', ranges: [{ start: 0 }, { start: 1, end: 9 }] } },
+        ],
+        handler: splitPdfTool,
+    },
+    {
+        name: EXTRACT_PAGES_NAME,
+        title: 'Extract pages into one PDF',
+        description:
+            "Extract an arbitrary subset of pages (0-based, in the order given) from a PDF into a SINGLE new document (pdfnative v1.4 page-tree API). The output is a fresh, self-contained PDF (signatures/AcroForm dropped; URI links kept unless dropAnnotations=true). Encrypted sources are rejected (ENCRYPTED_SOURCE). Use split_pdf instead when you need several output PDFs (one per range).",
+        inputSchema: EXTRACT_PAGES_INPUT_SCHEMA,
+        outputSchema: PDF_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Keep pages 0, 2 and 4', input: { pdfBase64: '<base64>', pages: [0, 2, 4] } },
+        ],
+        handler: extractPagesTool,
+    },
 ];
 
 const TOOL_INDEX: ReadonlyMap<string, ToolDefinition> = new Map(TOOLS.map((t) => [t.name, t]));
 
-const SERVER_INSTRUCTIONS = `pdfnative-mcp bridges the zero-dependency 'pdfnative' v1.3 library to MCP. API version: 1.2.0 (stable).
+const SERVER_INSTRUCTIONS = `pdfnative-mcp bridges the zero-dependency 'pdfnative' v1.4 library to MCP. API version: 1.3.0 (stable).
 
 DECISION TREE — pick the right tool in one step:
   • Plain document (headings, paragraphs, lists)             → ${GENERATE_BASIC_PDF_NAME}
@@ -402,6 +497,9 @@ DECISION TREE — pick the right tool in one step:
   • Sign any PDF (auto-injects placeholder)                  → ${SIGN_PDF_NAME}
   • Customize signature placeholder before signing           → ${PREPARE_SIGNATURE_PLACEHOLDER_NAME} → ${SIGN_PDF_NAME}
   • Factur-X / ZUGFeRD invoice or any PDF with attachments   → ${ADD_ATTACHMENT_NAME}   (NOT generate_basic_pdf)
+  • Concatenate several PDFs into one                        → ${MERGE_PDFS_NAME}
+  • Split a PDF into per-range PDFs                          → ${SPLIT_PDF_NAME}
+  • Pull a subset of pages into one PDF                      → ${EXTRACT_PAGES_NAME}
   • Inspect / assert PDF metadata in CI                      → ${INSPECT_PDF_NAME}
   • Verify all PAdES signatures                              → ${VERIFY_PDF_NAME}
   • Validate PDF/UA accessibility structure                  → ${VALIDATE_PDF_NAME}
@@ -413,18 +511,21 @@ COMMON PITFALLS (read these to avoid retry loops):
   • Barcode 'ecLevel' (L|M|Q|H) applies ONLY to format='qr' and is ignored elsewhere. Use 'H' for printed media.
   • EAN-13 'data' must be exactly 12 or 13 digits (the 13th check digit is auto-computed if you pass 12).
   • sign_pdf accepts ONLY DER-encoded inputs in base64. Convert from PEM with: openssl pkey -in key.pem -outform DER | base64 -w0  (and openssl x509 -in cert.pem -outform DER | base64 -w0 for the cert).
-  • sign_pdf RSA key must be PKCS#1 DER (field 'rsaKeyPkcs1DerBase64'). ECDSA key may be SEC1 or PKCS#8 DER (field 'ecPrivateKeyDerBase64') or the raw 32-byte scalar as 64 hex chars (field 'ecPrivateScalarHex').
+  • sign_pdf RSA key must be PKCS#1 DER (field 'rsaKeyPkcs1DerBase64'). ECDSA key may be SEC1 or PKCS#8 DER (field 'ecPrivateKeyDerBase64') or the raw 32-byte scalar as 64 hex chars (field 'ecPrivateScalarHex'). DER keys are signed with a native constant-time node:crypto provider; the raw scalar uses the pure-JS path.
   • sign_pdf auto-injects a placeholder when missing — call it directly on ANY PDF unless you specifically need to customize the placeholder.
+  • merge_pdfs / split_pdf / extract_pages reject ENCRYPTED PDFs (ENCRYPTED_SOURCE — decrypt first) and ALWAYS drop signatures + AcroForm (a page-tree edit invalidates them). They keep self-contained URI links unless dropAnnotations=true. Page indices/ranges are 0-based. split_pdf returns one PDF per range (file mode writes 'out-1.pdf', 'out-2.pdf', …); extract_pages returns a single PDF.
   • For Factur-X / ZUGFeRD invoices, use add_attachment (PDF/A-3) — generate_basic_pdf cannot embed files.
   • PDF/A: pass pdfA='pdfa2b' for the widest reader compatibility. PDF/A-3 is required when you have attachments.
   • PDF/A text is now robust: embedded newlines ('\\n') in paragraphs are auto-split into separate paragraphs; the Euro sign and other CP-1252 symbols extract correctly (pdfnative 1.3); wrapped table cells get unique per-line MCIDs. Write naturally — no manual workarounds needed.
+  • generate_basic_pdf supports nested lists (a list item may be { text, items: [...] }), a document 'outline' (bookmarks; pass 'auto' to derive from headings) and 'pageLabels' (e.g. roman front-matter then decimal body). All PDF/A-safe.
+  • add_table supports per-cell 'cellBorders' and 'cellVAlign' (top/middle/bottom) — both engage the document backend. generate_basic_pdf, add_table and add_international_text accept 'viewerPreferences' (reader presentation hints, /ViewerPreferences).
   • add_international_text covers 24 scripts and COLRv1 colour emoji; pass 'lang' as a single code or an array (e.g. ["ar","emoji"]) for multi-script runs. Input is NFC-normalised by default; override with normalize ('NFC'|'NFD'|'NFKC'|'NFKD'|false).
   • generate_basic_pdf and add_table accept an optional text 'watermark' (e.g. { text: 'DRAFT' }). Opacity < 1.0 is rejected under pdfA='pdfa1b' (ISO 19005-1 forbids transparency) — use pdfa2b/2u/3b instead.
   • Round-trip: build an invoice with add_attachment, confirm with inspect_pdf (check:['attachments']), then pull the XML back with extract_attachments (filename:'factur-x.xml').
   • outputMode='file' is only available when the host sets PDFNATIVE_MCP_OUTPUT_DIR; otherwise PDFs are returned as base64.
   • TOKEN-FRUGAL READS: the read-only tools (inspect_pdf, verify_pdf, validate_pdf, extract_text, extract_attachments) accept verbosity:'summary' for a compact scalar-only verdict (drops large arrays / full text) and fields:[...] for dot-path projection (e.g. fields:['allValid']). Defaults are unchanged (full output). Generated PDFs are returned as an embedded resource block, not duplicated in structuredContent.
 
-Every tool ships JSON-Schema-typed inputs/outputs, _meta.apiVersion = '1.2.0', and worked-example _meta.examples. See docs/AI_GUIDE.md for a longer walk-through.`;
+Every tool ships JSON-Schema-typed inputs/outputs, _meta.apiVersion = '1.3.0', and worked-example _meta.examples. See docs/AI_GUIDE.md for a longer walk-through.`;
 
 function buildInspectResult(output: InspectPdfResult, toolName: string, input: unknown): CallToolResult {
     const full = output as unknown as Record<string, unknown>;
@@ -556,6 +657,49 @@ function buildSuccessResult(output: OutputResult, toolName: string): CallToolRes
     };
 }
 
+function buildMultiSuccessResult(output: MultiOutputResult, toolName: string): CallToolResult {
+    if (output.mode === 'file') {
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: `${toolName}: wrote ${output.count} PDF(s) (${output.totalBytes} bytes total) to ${output.parts
+                        .map((p) => p.filePath)
+                        .join(', ')}`,
+                },
+            ],
+            structuredContent: {
+                mode: output.mode,
+                count: output.count,
+                totalBytes: output.totalBytes,
+                parts: output.parts.map((p) => ({ index: p.index, sizeBytes: p.sizeBytes, filePath: p.filePath })),
+            },
+        };
+    }
+    return {
+        content: [
+            {
+                type: 'text',
+                text: `${toolName}: produced ${output.count} PDF(s) (${output.totalBytes} bytes total), each delivered as an embedded resource below.`,
+            },
+            ...output.parts.map((p) => ({
+                type: 'resource' as const,
+                resource: {
+                    uri: `data:application/pdf;base64,${/* v8 ignore next */ p.base64 ?? ''}`,
+                    mimeType: 'application/pdf',
+                    blob: /* v8 ignore next */ p.base64 ?? '',
+                },
+            })),
+        ],
+        structuredContent: {
+            mode: output.mode,
+            count: output.count,
+            totalBytes: output.totalBytes,
+            parts: output.parts.map((p) => ({ index: p.index, sizeBytes: p.sizeBytes })),
+        },
+    };
+}
+
 function buildErrorResult(err: unknown, toolName: string): CallToolResult {
     if (err instanceof ToolError) {
         return {
@@ -572,7 +716,7 @@ function buildErrorResult(err: unknown, toolName: string): CallToolResult {
 
 export function createServer(): Server {
     const server = new Server(
-        { name: SERVER_NAME, version: SERVER_VERSION },
+        { name: SERVER_NAME, version: SERVER_VERSION, title: SERVER_TITLE, description: SERVER_DESCRIPTION },
         {
             capabilities: { tools: {} },
             instructions: SERVER_INSTRUCTIONS,
@@ -645,5 +789,5 @@ export function ensureCompressionReady(): Promise<void> {
     return _compressionInitPromise;
 }
 
-export const __serverMetadata = { name: SERVER_NAME, version: SERVER_VERSION } as const;
+export const __serverMetadata = { name: SERVER_NAME, version: SERVER_VERSION, title: SERVER_TITLE, description: SERVER_DESCRIPTION } as const;
 export const __serverInstructions = SERVER_INSTRUCTIONS;

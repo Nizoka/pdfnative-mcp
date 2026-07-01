@@ -18,6 +18,20 @@ import {
     toWatermarkOptions,
     assertWatermarkPdfACompatible,
 } from '../watermark.js';
+import {
+    LIST_ITEMS_INPUT_SCHEMA,
+    ListItemsSchema,
+    toListItems,
+    OUTLINE_INPUT_SCHEMA,
+    OutlineSchema,
+    toOutline,
+    PAGE_LABELS_INPUT_SCHEMA,
+    PageLabelsSchema,
+    toPageLabels,
+    VIEWER_PREFERENCES_INPUT_SCHEMA,
+    ViewerPreferencesSchema,
+    toViewerPreferences,
+} from '../doc-features.js';
 
 export const GENERATE_BASIC_PDF_NAME = 'generate_basic_pdf';
 
@@ -69,12 +83,7 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
                         properties: {
                             type: { const: 'list' },
                             style: { type: 'string', enum: ['bullet', 'numbered'], default: 'bullet' },
-                            items: {
-                                type: 'array',
-                                minItems: 1,
-                                maxItems: 1000,
-                                items: { type: 'string', minLength: 1, maxLength: 1000 },
-                            },
+                            items: LIST_ITEMS_INPUT_SCHEMA,
                         },
                     },
                     {
@@ -113,6 +122,9 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
             enum: [...NORMALIZE_ENUM],
             description: NORMALIZE_FIELD_DESCRIPTION,
         },
+        outline: OUTLINE_INPUT_SCHEMA,
+        pageLabels: PAGE_LABELS_INPUT_SCHEMA,
+        viewerPreferences: VIEWER_PREFERENCES_INPUT_SCHEMA,
         outputMode: {
             type: 'string',
             enum: ['base64', 'file'],
@@ -144,7 +156,7 @@ const InputSchema = z.object({
                 z.object({
                     type: z.literal('list'),
                     style: z.enum(['bullet', 'numbered']).default('bullet'),
-                    items: z.array(z.string().min(1).max(1000)).min(1).max(1000),
+                    items: ListItemsSchema,
                 }),
                 z.object({ type: z.literal('pageBreak') }),
                 z.object({
@@ -159,6 +171,9 @@ const InputSchema = z.object({
     pdfA: PdfASchema.optional(),
     watermark: WatermarkSchema.optional(),
     normalize: NormalizeSchema.optional(),
+    outline: OutlineSchema.optional(),
+    pageLabels: PageLabelsSchema.optional(),
+    viewerPreferences: ViewerPreferencesSchema.optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -168,7 +183,8 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, blocks, footerText, pdfA, watermark, normalize, outputMode, outputPath } = parsed.data;
+    const { title, blocks, footerText, pdfA, watermark, normalize, outline, pageLabels, viewerPreferences, outputMode, outputPath } =
+        parsed.data;
     assertWatermarkPdfACompatible(watermark, pdfA);
 
     const docBlocks: DocumentBlock[] = blocks.flatMap((block): DocumentBlock[] => {
@@ -178,7 +194,7 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
             case 'paragraph':
                 return splitParagraphSegments(block.text).map((text) => ({ type: 'paragraph', text }));
             case 'list':
-                return [{ type: 'list', items: block.items, style: block.style }];
+                return [{ type: 'list', items: toListItems(block.items), style: block.style }];
             case 'pageBreak':
                 return [{ type: 'pageBreak' }];
             case 'spacer':
@@ -194,11 +210,14 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
             title,
             blocks: docBlocks,
             ...(footerText !== undefined ? { footerText } : {}),
+            ...(outline !== undefined ? { outline: toOutline(outline) } : {}),
+            ...(pageLabels !== undefined ? { pageLabels: toPageLabels(pageLabels) } : {}),
         },
         {
             ...(pdfA !== undefined ? { tagged: pdfA } : {}),
             ...(watermark !== undefined ? { watermark: toWatermarkOptions(watermark) } : {}),
             ...(normalize !== undefined ? { normalize } : {}),
+            ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
         },
     );
 

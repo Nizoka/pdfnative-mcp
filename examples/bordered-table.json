@@ -1,0 +1,18 @@
+{
+  "description": "Table with per-cell vector borders and vertical alignment (pdfnative v1.4 via add_table). cellBorders draws light-grey edges on every cell; cellVAlign centres content vertically. Both opt-in fields engage the document backend. Self-contained and PDF/A-safe.",
+  "tool": "add_table",
+  "arguments": {
+    "title": "Q4 Regional Sales",
+    "headers": ["Region", "Units", "Revenue"],
+    "rows": [
+      ["EMEA", "1,240", "€1,860,000"],
+      ["AMER", "2,015", "€3,120,500"],
+      ["APAC", "1,780", "€2,540,750"]
+    ],
+    "caption": "Quarterly sales by region",
+    "zebra": true,
+    "repeatHeader": true,
+    "cellBorders": { "all": true, "color": "0.8 0.8 0.8", "width": 0.5, "style": "solid" },
+    "cellVAlign": "middle"
+  }
+}

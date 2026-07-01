@@ -41,7 +41,16 @@ async function main(): Promise<void> {
         const { StreamableHTTPServerTransport } = await import('@modelcontextprotocol/sdk/server/streamableHttp.js');
         const { createServer: createHttpServer } = await import('node:http');
 
-        const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+        // DNS-rebinding / Origin protection (MCP Security Best Practices): the endpoint
+        // binds to 127.0.0.1 only, so we pin the Host and Origin headers to the loopback
+        // authority. This makes a malicious web page unable to reach the local server via a
+        // rebound DNS name — the transport answers 403 to any foreign Host/Origin.
+        const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: undefined,
+            enableDnsRebindingProtection: true,
+            allowedHosts: [`127.0.0.1:${port}`, `localhost:${port}`],
+            allowedOrigins: [`http://127.0.0.1:${port}`, `http://localhost:${port}`],
+        });
 
         const shutdown = async (signal: string): Promise<void> => {
             process.stderr.write(`\n[pdfnative-mcp] received ${signal}, shutting down...\n`);

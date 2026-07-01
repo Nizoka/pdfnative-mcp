@@ -11,7 +11,7 @@
  *     `buildDocumentPDFBytes` + `TableBlock` since those props live on TableBlock
  *     in pdfnative v1.1.
  */
-import { buildDocumentPDFBytes, buildPDFBytes, type DocumentBlock, type TableBlock } from 'pdfnative';
+import { buildDocumentPDFBytes, buildPDFBytes, type CellBorders, type DocumentBlock, type TableBlock } from 'pdfnative';
 import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
@@ -22,6 +22,55 @@ import {
     toWatermarkOptions,
     assertWatermarkPdfACompatible,
 } from '../watermark.js';
+import {
+    VIEWER_PREFERENCES_INPUT_SCHEMA,
+    ViewerPreferencesSchema,
+    toViewerPreferences,
+} from '../doc-features.js';
+
+const CELL_BORDER_STYLES = ['solid', 'dashed', 'dotted'] as const;
+const CELL_VALIGNS = ['top', 'middle', 'bottom'] as const;
+
+const CELL_BORDERS_INPUT_SCHEMA = {
+    type: 'object',
+    additionalProperties: false,
+    description:
+        'Per-cell vector borders (pdfnative v1.4). Switches the backend to buildDocumentPDFBytes. Choose individual sides or `all`.',
+    properties: {
+        top: { type: 'boolean' },
+        right: { type: 'boolean' },
+        bottom: { type: 'boolean' },
+        left: { type: 'boolean' },
+        all: { type: 'boolean', description: 'Draw all four edges (overrides the individual side flags).' },
+        color: { type: 'string', description: "Stroke colour as a PDF operator string ('0.8 0.8 0.8') or hex. Default light grey." },
+        width: { type: 'number', minimum: 0, maximum: 10, description: 'Stroke width in points (default 0.5).' },
+        style: { type: 'string', enum: [...CELL_BORDER_STYLES], description: "Stroke style (default 'solid')." },
+    },
+} as const;
+
+const CellBordersSchema = z.object({
+    top: z.boolean().optional(),
+    right: z.boolean().optional(),
+    bottom: z.boolean().optional(),
+    left: z.boolean().optional(),
+    all: z.boolean().optional(),
+    color: z.string().min(1).max(64).optional(),
+    width: z.number().min(0).max(10).optional(),
+    style: z.enum(CELL_BORDER_STYLES).optional(),
+});
+
+function toCellBorders(value: z.infer<typeof CellBordersSchema>): CellBorders {
+    return {
+        ...(value.top !== undefined ? { top: value.top } : {}),
+        ...(value.right !== undefined ? { right: value.right } : {}),
+        ...(value.bottom !== undefined ? { bottom: value.bottom } : {}),
+        ...(value.left !== undefined ? { left: value.left } : {}),
+        ...(value.all !== undefined ? { all: value.all } : {}),
+        ...(value.color !== undefined ? { color: value.color } : {}),
+        ...(value.width !== undefined ? { width: value.width } : {}),
+        ...(value.style !== undefined ? { style: value.style } : {}),
+    };
+}
 
 export const ADD_TABLE_NAME = 'add_table';
 
@@ -113,12 +162,19 @@ export const ADD_TABLE_INPUT_SCHEMA = {
             maximum: 50,
             description: 'Horizontal cell padding in points applied to both insets (default 3). pdfnative v1.2.',
         },
+        cellBorders: CELL_BORDERS_INPUT_SCHEMA,
+        cellVAlign: {
+            type: 'string',
+            enum: [...CELL_VALIGNS],
+            description: 'Vertical alignment of cell content (pdfnative v1.4). Switches the backend to buildDocumentPDFBytes.',
+        },
         pdfA: {
             type: 'string',
             enum: [...PDF_A_ENUM],
             description: PDF_A_FIELD_DESCRIPTION,
         },
         watermark: WATERMARK_INPUT_SCHEMA,
+        viewerPreferences: VIEWER_PREFERENCES_INPUT_SCHEMA,
         outputMode: {
             type: 'string',
             enum: ['base64', 'file'],
@@ -156,8 +212,11 @@ const InputSchema = z.object({
     caption: z.string().max(200).optional(),
     minRowHeight: z.number().min(1).max(200).optional(),
     cellPadding: z.number().min(0).max(50).optional(),
+    cellBorders: CellBordersSchema.optional(),
+    cellVAlign: z.enum(CELL_VALIGNS).optional(),
     pdfA: PdfASchema.optional(),
     watermark: WatermarkSchema.optional(),
+    viewerPreferences: ViewerPreferencesSchema.optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -167,7 +226,7 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, headers, rows, infoItems, footerText, autoFitColumns, clipCells, wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, pdfA, watermark, outputMode, outputPath } = parsed.data;
+    const { title, headers, rows, infoItems, footerText, autoFitColumns, clipCells, wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, cellBorders, cellVAlign, pdfA, watermark, viewerPreferences, outputMode, outputPath } = parsed.data;
     assertWatermarkPdfACompatible(watermark, pdfA);
 
     // Validate column count consistency: every row must have the same length as headers
@@ -180,8 +239,12 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
         }
     }
 
-    const smartTableField = wrap !== undefined || repeatHeader !== undefined || zebra !== undefined || caption !== undefined || minRowHeight !== undefined || cellPadding !== undefined;
+    const smartTableField = wrap !== undefined || repeatHeader !== undefined || zebra !== undefined || caption !== undefined || minRowHeight !== undefined || cellPadding !== undefined || cellBorders !== undefined || cellVAlign !== undefined;
     const useDocumentBackend = autoFitColumns !== undefined || clipCells !== undefined || pdfA !== undefined || watermark !== undefined || smartTableField;
+
+    const layout = {
+        ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
+    };
 
     let bytes: Uint8Array;
     if (useDocumentBackend) {
@@ -197,6 +260,8 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
             ...(caption !== undefined ? { caption } : {}),
             ...(minRowHeight !== undefined ? { minRowHeight } : {}),
             ...(cellPadding !== undefined ? { cellPadding } : {}),
+            ...(cellBorders !== undefined ? { cellBorders: toCellBorders(cellBorders) } : {}),
+            ...(cellVAlign !== undefined ? { cellVAlign } : {}),
         };
         const blocks: DocumentBlock[] = [];
         if (infoItems !== undefined && infoItems.length > 0) {
@@ -210,18 +275,22 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
             {
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
                 ...(watermark !== undefined ? { watermark: toWatermarkOptions(watermark) } : {}),
+                ...layout,
             },
         );
     } else {
-        bytes = buildPDFBytes({
-            title,
-            infoItems: (infoItems ?? []).map((item) => ({ label: item.label, value: item.value })),
-            balanceText: '',
-            countText: '',
-            headers,
-            rows: rows.map((cells) => ({ cells, type: '', pointed: false })),
-            footerText: footerText ?? '',
-        });
+        bytes = buildPDFBytes(
+            {
+                title,
+                infoItems: (infoItems ?? []).map((item) => ({ label: item.label, value: item.value })),
+                balanceText: '',
+                countText: '',
+                headers,
+                rows: rows.map((cells) => ({ cells, type: '', pointed: false })),
+                footerText: footerText ?? '',
+            },
+            layout,
+        );
     }
 
     return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
