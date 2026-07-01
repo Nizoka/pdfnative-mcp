@@ -74,28 +74,35 @@ Priorities may shift based on community feedback and sponsorship.
 - [x] **Dependency** — upgraded to **zod 4**.
 - [x] **AGENTS.md** — root agent operations manual (catalogue, decision tree, recipes, error table).
 
+### v1.3.0 — page-tree tools, pdfnative 1.4 features, constant-time signing
+
+- [x] **pdfnative v1.4.0** — dependency bump `^1.3.0` → `^1.4.0` (additive, no breaking changes).
+- [x] **Tool `merge_pdfs`** — concatenate 2–50 PDFs into one via pdfnative's page-tree API; rejects encrypted sources. **15th tool.**
+- [x] **Tool `split_pdf`** — split one PDF into one document per page range (multi-output `{ count, totalSizeBytes, parts[] }`). **16th tool.**
+- [x] **Tool `extract_pages`** — pull an arbitrary page subset into a single PDF. **17th tool.**
+- [x] **Bookmarks & page labels** — `generate_basic_pdf` gains `outline` (`'auto'` or explicit tree), `pageLabels`, and nested multi-level `list` items.
+- [x] **Viewer preferences** — optional `viewerPreferences` on `generate_basic_pdf`, `add_table`, and `add_international_text`.
+- [x] **Table cell borders & alignment** — `add_table` gains `cellBorders` and `cellVAlign`.
+- [x] **Constant-time signing** — `sign_pdf` signs RSA and EC-DER keys through a `node:crypto` provider with a transparent pure-JS fallback; signatures stay interoperable.
+
 ---
 
 ## In Progress
 
-_v1.2.0 is the active release. Page-tree manipulation tools remain blocked on an upstream pdfnative page-tree export API (see Blocked below)._
+_v1.3.0 is the active release. `redact_pdf` and an encrypted-PDF round-trip remain blocked on upstream pdfnative APIs (see Blocked below)._
 
 ---
 
 ## Planned
 
-### Blocked upstream — Page-tree manipulation
+### Blocked upstream
 
-These tools were originally scoped for v1.1.0 but remain **blocked**: pdfnative
-v1.3.0 still exposes only incremental object-update primitives (`openPdf`,
-`createModifier`), not the page-tree export/merge/extract API required to build
-them safely. Implementing them on raw primitives would mean production-unsafe
-page-tree surgery (relocating `/Kids`, rewriting `/Parent` chains, merging
-resource pools), which contradicts this project's faithful, thin-wrapper
-philosophy. They will ship once pdfnative exports a page-tree manipulation API.
+`merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative
+v1.4.0's page-tree export API. The remaining items stay **blocked**: pdfnative
+does not yet export a content-redaction API or a Standard Security Handler writer,
+and implementing them on raw primitives would contradict this project's faithful,
+thin-wrapper philosophy. They will ship once pdfnative exports the required APIs.
 
-- [ ] **Tool `merge_pdfs`** — concatenate 2–50 PDFs, optionally drop signatures; blocked on pdfnative page-tree export.
-- [ ] **Tool `split_pdf`** — extract page ranges into individual PDFs; blocked on pdfnative page-tree export.
 - [ ] **Tool `redact_pdf`** — overlay-mode (annotation rectangles + replacement text); blocked on pdfnative annotation read/write API. Content-stream redaction tracked separately.
 - [ ] **Encrypted-PDF round-trip fixtures** — once pdfnative exposes a Standard Security Handler writer.
 - [ ] **Per-tool HTTP page-by-page streaming** — once MCP allows partial structuredContent envelopes.

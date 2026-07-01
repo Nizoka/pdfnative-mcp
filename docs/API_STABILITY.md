@@ -9,12 +9,20 @@
 
 Every tool emits `_meta.apiVersion` in the `ListTools` response.
 
-Current value: **`1.2.0`** (stable, since pdfnative-mcp 1.2.0).
+Current value: **`1.3.0`** (stable, since pdfnative-mcp 1.3.0).
 
 The tool API version is **independent of the npm release version**.
 Server releases that ship only documentation, refactoring, or non-breaking ergonomic improvements (richer descriptions, additional `_meta.examples`, new optional output fields) **do not** bump `_meta.apiVersion`.
 
 A bump of `_meta.apiVersion` happens **only** in the cases listed in §3.
+
+> **MCP protocol alignment.** The tool API version above is orthogonal to the MCP
+> wire-protocol revision. The server runs on `@modelcontextprotocol/sdk` ^1.29, which
+> negotiates the latest revision (**2025-11-25**, falling back to `2025-06-18` /
+> `2025-03-26`). Tool schemas are JSON Schema **2020-12** (the current default dialect),
+> `serverInfo` advertises `title` + `description`, and input-validation failures are
+> returned as tool-execution errors (`isError: true`) — none of which affect
+> `_meta.apiVersion`.
 
 ---
 
@@ -68,11 +76,24 @@ When a tool, field or error code is scheduled for removal:
 
 ## 5. Per-tool stability matrix
 
-All 14 tools shipped in pdfnative-mcp 1.2.0 are at `_meta.apiVersion = '1.2.0'` and are considered **stable**:
+All 17 tools shipped through pdfnative-mcp 1.3.0 are at `_meta.apiVersion = '1.3.0'` and are considered **stable**:
 
 `generate_basic_pdf`, `add_barcode`, `add_international_text`, `add_table`, `add_form`,
 `embed_image`, `prepare_signature_placeholder`, `sign_pdf`, `verify_pdf`, `validate_pdf`,
-`inspect_pdf`, `add_attachment`, `extract_attachments`, `extract_text`.
+`inspect_pdf`, `add_attachment`, `extract_attachments`, `extract_text`,
+`merge_pdfs`, `split_pdf`, `extract_pages`.
+
+> **v1.3.0 minor bump rationale:** three **new tools** (`merge_pdfs`, `split_pdf`,
+> `extract_pages`) were added on pdfnative v1.4.0's page-tree API, and several authoring
+> tools gained **optional** inputs with backward-compatible defaults — `generate_basic_pdf`
+> gained nested-list items, `outline`, `pageLabels`, `viewerPreferences`; `add_table` gained
+> `cellBorders`, `cellVAlign`, `viewerPreferences`; `add_international_text` gained
+> `viewerPreferences`. All are additive per §3 ("new tool" / "new optional input field with a
+> backward-compatible default"). `sign_pdf` now signs through a `node:crypto` provider for
+> RSA and EC-DER keys with a transparent pure-JS fallback — an internal hardening change that
+> leaves input/output shapes and produced signatures interoperable. Default responses for the
+> existing tools are byte-identical to v1.2.0. `split_pdf` introduces a new multi-output
+> response shape (`{ mode, count, totalSizeBytes, parts[] }`), documented in its `outputSchema`.
 
 > **v1.2.0 minor bump rationale:** the read-only tools (`inspect_pdf`, `verify_pdf`,
 > `validate_pdf`, `extract_text`, `extract_attachments`) gained two **optional** inputs —
@@ -95,7 +116,7 @@ All 14 tools shipped in pdfnative-mcp 1.2.0 are at `_meta.apiVersion = '1.2.0'` 
 > satisfy the full `outputSchema` (which describes the default `'full'` shape). This is an
 > opt-in token-saving feature; the `outputSchema` contract continues to describe full output.
 
-Page-tree tools (`merge_pdfs`, `split_pdf`, `redact_pdf`) remain **blocked upstream** — pdfnative does not yet export the required page-tree manipulation API. They will be added with the same stability guarantees once unblocked.
+Page-tree tools `merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative v1.4.0's page-tree API. `redact_pdf` and an encrypted-PDF round-trip remain **blocked upstream** — pdfnative does not yet export the required content-redaction / decryption API. They will be added with the same stability guarantees once unblocked.
 
 ---
 

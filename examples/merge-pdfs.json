@@ -1,0 +1,36 @@
+{
+  "description": "Merge several PDFs into one (pdfnative v1.4 page-tree API). merge_pdfs concatenates 2–50 source PDFs into a single self-contained document. Signatures and AcroForms are dropped (a page-tree edit invalidates them); self-contained URI links are kept unless dropAnnotations=true. Encrypted sources are rejected (ENCRYPTED_SOURCE) — decrypt first. Typical flow: generate the parts, then merge. Confirm the page count afterwards with inspect_pdf.",
+  "steps": [
+    {
+      "tool": "generate_basic_pdf",
+      "arguments": {
+        "title": "Cover",
+        "blocks": [{ "type": "heading", "text": "Cover page", "level": 1 }]
+      }
+    },
+    {
+      "tool": "generate_basic_pdf",
+      "arguments": {
+        "title": "Body",
+        "blocks": [
+          { "type": "heading", "text": "Body", "level": 1 },
+          { "type": "pageBreak" },
+          { "type": "paragraph", "text": "Second body page." }
+        ]
+      }
+    },
+    {
+      "tool": "merge_pdfs",
+      "arguments": {
+        "pdfsBase64": ["<base64 from step 1>", "<base64 from step 2>"]
+      }
+    },
+    {
+      "tool": "inspect_pdf",
+      "arguments": {
+        "pdfBase64": "<base64 from step 3>",
+        "verbosity": "summary"
+      }
+    }
+  ]
+}

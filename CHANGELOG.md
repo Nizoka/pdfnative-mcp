@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-07
+
+A minor, backward-compatible release that adds three page-tree tools
+(`merge_pdfs`, `split_pdf`, `extract_pages` — taking the catalogue to **17 tools**),
+threads the new [pdfnative v1.4.0](https://github.com/Nizoka/pdfnative) document
+features (bookmarks, page labels, nested lists, viewer preferences, table cell
+borders) into the authoring tools, and hardens `sign_pdf` with a constant-time
+`node:crypto` signature provider (transparent pure-JS fallback). Default tool calls
+return responses identical to v1.2.0 — all new behaviour is opt-in.
+
+### Added
+
+- **Tool `merge_pdfs`** (new): concatenate 2–50 PDFs (`pdfsBase64[]`) into one via pdfnative's page-tree API. Optional `dropAnnotations`/`maxOutputSizeBytes`. Encrypted sources → `ENCRYPTED_SOURCE`; oversize output → `OUTPUT_TOO_LARGE`.
+- **Tool `split_pdf`** (new): split one PDF into one document per page range (`ranges: [{ start, end? }]`, 0-based inclusive). Returns the new multi-output shape `{ mode, count, totalSizeBytes, parts[] }`; file mode writes indexed paths (`report-1.pdf`, …).
+- **Tool `extract_pages`** (new): pull an arbitrary page subset (`pages: number[]`, 0-based, max 5000) into a single PDF.
+- **`generate_basic_pdf`**: optional `outline` (`'auto'` or explicit `[{ title, pageIndex, children?, open? }]` tree), `pageLabels` (`[{ startPage, style?, prefix?, start? }]`), nested `list` items (`{ text, items?, style? }`), and `viewerPreferences`.
+- **`add_table`**: optional `cellBorders`, `cellVAlign` (`'top'|'middle'|'bottom'`), and `viewerPreferences` (any forces the document backend).
+- **`add_international_text`**: optional `viewerPreferences`.
+- **Signing:** new `src/crypto-provider.ts` constant-time `node:crypto` provider; new `emitPdfMulti()` + `MultiOutputResult`/`MultiOutputPart` in `src/output.ts`; new `src/pagetree.ts` error mapping; new `src/doc-features.ts` shared schemas/mappers.
+- **Security (HTTP transport):** the optional Streamable HTTP transport (`PDFNATIVE_MCP_PORT`) now enables DNS-rebinding protection — `Host`/`Origin` pinned to the loopback authority; foreign values are rejected with **403** (MCP Security Best Practices). stdio is unaffected.
+- **serverInfo metadata:** the server now advertises a human-readable `title` + `description` (MCP `Implementation`, mirroring `server.json`).
+- **Examples:** `merge-pdfs.json`, `split-pdf.json`, `extract-pages.json`, `bookmarked-report.json`, `bordered-table.json`.
+- **Tests:** `merge-pdfs.test.ts`, `split-pdf.test.ts`, `extract-pages.test.ts`, `crypto-provider.test.ts`, `sign-pdf-provider.test.ts`, `doc-features.test.ts`, `http-transport.test.ts` (DNS-rebinding 403), a JSON-Schema-2020-12 dialect guard + `serverInfo` metadata assertions, `_pagetree-fixtures.ts`.
+
+### Changed
+
+- **Dependency:** `pdfnative` bumped `^1.3.0` → `^1.4.0` (additive; new page-tree, outline, page-label, viewer-preference, nested-list, and cell-border APIs).
+- **Signing:** RSA and EC-DER keys now sign through a per-call `node:crypto` provider (constant-time) with a transparent pure-JS fallback; the raw-scalar `ecPrivateScalarHex` path stays pure-JS. Produced signatures are interoperable and verify identically.
+- **MCP `_meta.apiVersion`** bumped `1.2.0` → `1.3.0` on every tool; `SERVER_VERSION` and `server.json` versions → `1.3.0`.
+- **Server:** `SERVER_INSTRUCTIONS` decision tree extended to 17 tools; new `MULTI_PDF_OUTPUT_SCHEMA` advertised for `split_pdf`.
+- **MCP protocol alignment:** built on `@modelcontextprotocol/sdk` ^1.29, which negotiates the latest **2025-11-25** revision (fallback `2025-06-18`/`2025-03-26`); tool schemas are JSON Schema 2020-12 (dialect-agnostic); `merge_pdfs`' `maxOutputSizeBytes` documented as the in-memory assembly guard (distinct from the 50 MiB emit cap).
+- **Docs:** README, `AGENTS.md`, `docs/AI_GUIDE.md`, `docs/API_STABILITY.md`, `docs/KNOWLEDGE_BASE.md`, `docs/guides/LOCAL_TESTING.md`, `ROADMAP.md`, `llms.txt`, and `.github/copilot-instructions.md` refreshed for the v1.3.0 surface + protocol alignment.
+
+### Deferred (still blocked upstream)
+
+- **`redact_pdf`** and an **encrypted-PDF round-trip** — pdfnative does not yet export a content-redaction API or a Standard Security Handler writer. Remain on the roadmap. (`merge_pdfs`, `split_pdf`, `extract_pages` shipped in this release.)
+
 ## [1.2.0] - 2026-06-23
 
 A minor, backward-compatible release that adds a 14th tool (`extract_attachments`),
@@ -181,7 +218,8 @@ stability via the new per-tool `_meta.apiVersion` field. Built on top of
 - Strict JSON Schema + Zod validation at every tool boundary.
 - Vitest test suite with sandbox security checks.
 
-[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v0.3.0...v1.0.0

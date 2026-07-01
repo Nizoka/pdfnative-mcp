@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { emitPdf, resolveSandboxedPath, getOutputSandbox } from '../src/output.js';
+import { emitPdf, emitPdfMulti, resolveSandboxedPath, getOutputSandbox } from '../src/output.js';
 import { SecurityError, ToolError } from '../src/errors.js';
 
 const ENV_KEY = 'PDFNATIVE_MCP_OUTPUT_DIR';
@@ -56,6 +56,51 @@ describe('output sandbox', () => {
         delete process.env[ENV_KEY];
         expect(getOutputSandbox()).toBeNull();
         await expect(emitPdf(new Uint8Array([1]), { mode: 'file', outputPath: 'a.pdf' })).rejects.toThrow(SecurityError);
+    });
+});
+
+describe('emitPdfMulti', () => {
+    const ENV = 'PDFNATIVE_MCP_OUTPUT_DIR';
+    let sandboxDir: string;
+
+    beforeEach(async () => {
+        sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfnative-multi-'));
+    });
+
+    afterEach(() => {
+        delete process.env[ENV];
+    });
+
+    it('returns a base64 part per PDF with a size recap', async () => {
+        delete process.env[ENV];
+        const result = await emitPdfMulti([new Uint8Array([1, 2]), new Uint8Array([3, 4, 5])], { mode: 'base64' });
+        expect(result.mode).toBe('base64');
+        expect(result.count).toBe(2);
+        expect(result.totalBytes).toBe(5);
+        expect(result.parts.map((p) => p.index)).toEqual([0, 1]);
+        expect(typeof result.parts[0]?.base64).toBe('string');
+        expect(result.parts[1]?.sizeBytes).toBe(3);
+    });
+
+    it('writes 1-based indexed files inside the sandbox', async () => {
+        process.env[ENV] = sandboxDir;
+        const result = await emitPdfMulti([new Uint8Array([0x25]), new Uint8Array([0x50])], {
+            mode: 'file',
+            outputPath: 'doc.pdf',
+        });
+        expect(result.mode).toBe('file');
+        expect(result.parts[0]?.filePath?.endsWith('doc-1.pdf')).toBe(true);
+        expect(result.parts[1]?.filePath?.endsWith('doc-2.pdf')).toBe(true);
+        for (const part of result.parts) {
+            const written = await fs.readFile(part.filePath as string);
+            expect(written.length).toBe(1);
+        }
+    });
+
+    it('rejects when a part exceeds the per-PDF cap', async () => {
+        delete process.env[ENV];
+        const huge = new Uint8Array(51 * 1024 * 1024);
+        await expect(emitPdfMulti([huge], { mode: 'base64' })).rejects.toThrow(ToolError);
     });
 });
 

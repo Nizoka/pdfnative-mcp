@@ -1,0 +1,36 @@
+{
+  "description": "Bookmarked, page-labelled report (pdfnative v1.4 features via generate_basic_pdf). Demonstrates a derived outline (outline: 'auto' builds the bookmarks panel from headings), page labels (roman front-matter then decimal body), a nested list, and viewer preferences (open the bookmarks panel, show the document title). All PDF/A-safe and fully self-contained.",
+  "tool": "generate_basic_pdf",
+  "arguments": {
+    "title": "Annual Report 2026",
+    "outline": "auto",
+    "pageLabels": [
+      { "startPage": 0, "style": "roman" },
+      { "startPage": 1, "style": "decimal", "start": 1 }
+    ],
+    "viewerPreferences": {
+      "pageMode": "useOutlines",
+      "displayDocTitle": true,
+      "pageLayout": "singlePage"
+    },
+    "blocks": [
+      { "type": "heading", "text": "Preface", "level": 1 },
+      { "type": "paragraph", "text": "This front-matter page is numbered with roman numerals." },
+      { "type": "pageBreak" },
+      { "type": "heading", "text": "1. Overview", "level": 1 },
+      { "type": "paragraph", "text": "The body begins here, numbered with decimals." },
+      {
+        "type": "list",
+        "style": "bullet",
+        "items": [
+          "Headline figures",
+          { "text": "Segments", "items": ["Cloud", { "text": "Devices", "items": ["Wearables", "Tablets"] }] },
+          "Outlook"
+        ]
+      },
+      { "type": "pageBreak" },
+      { "type": "heading", "text": "2. Financials", "level": 1 },
+      { "type": "paragraph", "text": "Detailed results follow." }
+    ]
+  }
+}

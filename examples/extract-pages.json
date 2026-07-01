@@ -1,0 +1,29 @@
+{
+  "description": "Extract an arbitrary subset of pages into a SINGLE new PDF (pdfnative v1.4 page-tree API). extract_pages keeps the given 0-based page indices in order and returns one self-contained PDF (signatures/AcroForm dropped; URI links kept unless dropAnnotations=true). Encrypted sources are rejected (ENCRYPTED_SOURCE). Use split_pdf instead when you need several output PDFs (one per range).",
+  "steps": [
+    {
+      "tool": "generate_basic_pdf",
+      "arguments": {
+        "title": "Five pages",
+        "blocks": [
+          { "type": "heading", "text": "Page 1", "level": 1 },
+          { "type": "pageBreak" },
+          { "type": "heading", "text": "Page 2", "level": 1 },
+          { "type": "pageBreak" },
+          { "type": "heading", "text": "Page 3", "level": 1 },
+          { "type": "pageBreak" },
+          { "type": "heading", "text": "Page 4", "level": 1 },
+          { "type": "pageBreak" },
+          { "type": "heading", "text": "Page 5", "level": 1 }
+        ]
+      }
+    },
+    {
+      "tool": "extract_pages",
+      "arguments": {
+        "pdfBase64": "<base64 from step 1>",
+        "pages": [0, 2, 4]
+      }
+    }
+  ]
+}

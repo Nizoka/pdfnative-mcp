@@ -5,7 +5,7 @@
 
 ## Overview
 
-MCP server bridging pdfnative (v1.3.x) to AI clients over stdio. 13 tools.
+MCP server bridging pdfnative (v1.4.x) to AI clients over stdio. 17 tools.
 Quality bar: production-grade OSS (strict TypeScript, strong validation, secure
 file IO, deterministic releases).
 

@@ -14,11 +14,20 @@ describe('server', () => {
 
     it('exposes stable metadata', () => {
         expect(__serverMetadata.name).toBe('pdfnative-mcp');
-        expect(__serverMetadata.version).toBe('1.2.0');
+        expect(__serverMetadata.version).toBe('1.3.0');
+    });
+
+    it('advertises a human-readable title and description in serverInfo (MCP Implementation)', () => {
+        // 2025-11-25 added Implementation.description to mirror server.json; hosts and
+        // the MCP registry surface it during initialization.
+        expect(typeof __serverMetadata.title).toBe('string');
+        expect(__serverMetadata.title.length).toBeGreaterThan(0);
+        expect(__serverMetadata.description).toMatch(/MCP server/i);
+        expect(__serverMetadata.description).toMatch(/17 tools/);
     });
 
     it('SERVER_INSTRUCTIONS advertises decision tree and pitfalls for AI clients', () => {
-        expect(__serverInstructions).toMatch(/pdfnative.*v1\.3/);
+        expect(__serverInstructions).toMatch(/pdfnative.*v1\.4/);
         expect(__serverInstructions).toContain('DECISION TREE');
         expect(__serverInstructions).toContain('COMMON PITFALLS');
         // Cite each tool by name in the decision tree.
@@ -26,7 +35,7 @@ describe('server', () => {
             'generate_basic_pdf', 'add_barcode', 'add_international_text', 'add_table',
             'add_form', 'embed_image', 'prepare_signature_placeholder', 'sign_pdf',
             'verify_pdf', 'validate_pdf', 'inspect_pdf', 'add_attachment', 'extract_text',
-            'extract_attachments',
+            'extract_attachments', 'merge_pdfs', 'split_pdf', 'extract_pages',
         ]) {
             expect(__serverInstructions).toContain(t);
         }
@@ -50,20 +59,58 @@ describe('server', () => {
             'add_table',
             'embed_image',
             'extract_attachments',
+            'extract_pages',
             'extract_text',
             'generate_basic_pdf',
             'inspect_pdf',
+            'merge_pdfs',
             'prepare_signature_placeholder',
             'sign_pdf',
+            'split_pdf',
             'validate_pdf',
             'verify_pdf',
         ]);
 
         // Every tool advertises _meta.apiVersion and at least one example.
         for (const t of response.tools) {
-            expect(t._meta?.apiVersion).toBe('1.2.0');
+            expect(t._meta?.apiVersion).toBe('1.3.0');
             expect(Array.isArray(t._meta?.examples)).toBe(true);
             expect((t._meta?.examples ?? []).length).toBeGreaterThan(0);
+        }
+    });
+
+    it('tool input schemas are JSON Schema 2020-12 compatible (dialect-agnostic)', async () => {
+        // 2025-11-25 (SEP-1613) establishes JSON Schema 2020-12 as the default dialect
+        // when `$schema` is omitted. Our hand-written schemas stay dialect-agnostic by
+        // avoiding constructs whose meaning changed across drafts ($ref/$defs/definitions,
+        // draft-04 boolean exclusiveMinimum/Maximum, draft-07 dependencies). This guard
+        // fails if any tool reintroduces a dialect-sensitive keyword.
+        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
+        const listHandler = server._requestHandlers.get('tools/list');
+        const response = (await listHandler!({ method: 'tools/list', params: {} })) as {
+            tools: Array<{ name: string; inputSchema: Record<string, unknown>; outputSchema?: Record<string, unknown> }>;
+        };
+
+        const FORBIDDEN = new Set(['$ref', '$defs', 'definitions', 'dependencies']);
+        const scan = (node: unknown, toolName: string, at: string): void => {
+            if (Array.isArray(node)) {
+                node.forEach((v, i) => scan(v, toolName, `${at}[${i}]`));
+                return;
+            }
+            if (node === null || typeof node !== 'object') return;
+            for (const [key, value] of Object.entries(node)) {
+                expect(FORBIDDEN.has(key), `${toolName}${at}.${key} is dialect-sensitive`).toBe(false);
+                // Draft-04 allowed boolean exclusiveMinimum/Maximum; 2020-12 requires a number.
+                if ((key === 'exclusiveMinimum' || key === 'exclusiveMaximum') && typeof value === 'boolean') {
+                    throw new Error(`${toolName}${at}.${key} uses the draft-04 boolean form`);
+                }
+                scan(value, toolName, `${at}.${key}`);
+            }
+        };
+
+        for (const t of response.tools) {
+            scan(t.inputSchema, t.name, '.inputSchema');
+            if (t.outputSchema !== undefined) scan(t.outputSchema, t.name, '.outputSchema');
         }
     });
 

@@ -1,7 +1,7 @@
 # AI Agent Guide — pdfnative-mcp
 
 > **Read this first if you are an AI agent (Copilot, Claude, Cursor, Continue, Zed, Windsurf, Cline, Roo Code, …) about to call pdfnative-mcp.**
-> It tells you which of the 14 tools to pick and how to avoid the common retry loops.
+> It tells you which of the 17 tools to pick and how to avoid the common retry loops.
 
 The server also returns the same decision tree in `serverInfo.instructions`. The full reference lives in [`KNOWLEDGE_BASE.md`](KNOWLEDGE_BASE.md); the stability charter in [`API_STABILITY.md`](API_STABILITY.md). Worked invocations are in [`../examples/`](../examples).
 
@@ -25,6 +25,9 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 | Verify all PAdES signatures | `verify_pdf` |
 | Validate PDF/UA accessibility structure | `validate_pdf` |
 | Extract plain text | `extract_text` |
+| Join several PDFs into one | `merge_pdfs` |
+| Split one PDF into per-range documents | `split_pdf` |
+| Keep an arbitrary page subset (one PDF) | `extract_pages` |
 
 ---
 
@@ -44,6 +47,20 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
   - ECDSA key (PKCS#8 or SEC1): `openssl pkey -in key.pem -outform DER | base64 -w0` → `ecPrivateKeyDerBase64`
   - ECDSA scalar form: `ecPrivateScalarHex` = 64 hex chars (raw P-256 `d`)
 - After signing, call `verify_pdf` to confirm. Without `trustedRootsDerBase64`, `chainTrust` is `'self-signed'` or `'unverified'` — that is expected.
+- RSA and EC-DER keys sign through a constant-time `node:crypto` provider (with a transparent pure-JS fallback); the raw-scalar `ecPrivateScalarHex` path uses the pure-JS signer. Signatures are interoperable either way.
+
+### Combining / carving PDFs (page-tree)
+- `merge_pdfs` joins 2–50 PDFs (`pdfsBase64[]`) into one. `split_pdf` cuts one PDF into one document per `ranges[]` entry (`{ start, end? }`, 0-based inclusive). `extract_pages` keeps an arbitrary `pages[]` subset (0-based) in a single PDF.
+- `split_pdf` returns a **multi-output** result (`{ mode, count, totalSizeBytes, parts[] }`); in `file` mode each part is written to an indexed path (`report.pdf` → `report-1.pdf`, …).
+- **Encrypted sources are rejected** with `ENCRYPTED_SOURCE` — decrypt outside the server first. Oversize output throws `OUTPUT_TOO_LARGE`.
+
+### Bookmarks, page labels & nested lists
+- `generate_basic_pdf` accepts `outline: 'auto'` (derive bookmarks from headings) or an explicit `[{ title, pageIndex, children?, open? }]` tree, plus `pageLabels: [{ startPage, style?, prefix?, start? }]` for viewer page numbering.
+- `list` blocks accept nested `items` (`{ text, items?, style? }`, up to 6 levels) for multi-level lists.
+- Pair `outline` with `viewerPreferences: { pageMode: 'useOutlines' }` to open the bookmark pane on load.
+
+### Table cell borders & alignment
+- `add_table` accepts `cellBorders: { top?, right?, bottom?, left?, color?, width? }` and `cellVAlign: 'top' | 'middle' | 'bottom'`. Either forces the document backend (same as `watermark`).
 
 ### Attachments (Factur-X / ZUGFeRD)
 - Use `add_attachment`, **not** `generate_basic_pdf`. The latter cannot embed files.
@@ -117,12 +134,20 @@ Defaults are unchanged: omit both and you get the full v1.1.0-identical response
 1. `add_table` with `watermark: { text: 'CONFIDENTIAL', opacity: 0.2 }`.
 2. *(optional)* `inspect_pdf` to confirm the page count / metadata.
 
+### Bookmarked report
+1. `generate_basic_pdf` with `outline: 'auto'`, `pageLabels`, and `viewerPreferences: { pageMode: 'useOutlines' }`.
+2. *(optional)* `inspect_pdf` to confirm the page count.
+
+### Assemble / carve PDFs
+1. Generate the parts (any authoring tool), then `merge_pdfs` to join them — **or** `split_pdf` (per range) / `extract_pages` (one subset) on an existing PDF.
+2. `inspect_pdf` to confirm the resulting page count.
+
 ---
 
 ## 4. Self-documenting metadata
 
 Every tool ships:
-- `_meta.apiVersion` = `'1.2.0'` — see [`API_STABILITY.md`](API_STABILITY.md).
+- `_meta.apiVersion` = `'1.3.0'` — see [`API_STABILITY.md`](API_STABILITY.md).
 - `_meta.examples`   — at least one worked example per tool. Inspect the `ListTools` response to discover them.
 
 You can rely on these fields when negotiating capabilities before calling a tool.

@@ -1,19 +1,19 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.github.Nizoka/pdfnative-mcp",
-  "description": "Production-grade MCP server for PDF generation, PDF/A archival, PDF/UA structural validation, digital signatures (PAdES sign + verify), Factur-X invoices, and PDF introspection. 13 tools, 24 scripts, zero runtime dependencies beyond pdfnative and the MCP SDK.",
+  "description": "Production-grade MCP server for PDF generation, PDF/A archival, PDF/UA structural validation, digital signatures (PAdES sign + verify, constant-time node:crypto), page-tree ops (merge / split / extract), Factur-X invoices, and PDF introspection. 17 tools, 24 scripts, zero runtime dependencies beyond pdfnative and the MCP SDK.",
   "repository": {
     "url": "https://github.com/Nizoka/pdfnative-mcp",
     "source": "github"
   },
-  "version": "1.2.0",
+  "version": "1.3.0",
   "websiteUrl": "https://github.com/Nizoka/pdfnative-mcp#readme",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "pdfnative-mcp",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "transport": { "type": "stdio" },
       "runtimeHint": "npx",
       "runtimeArguments": [

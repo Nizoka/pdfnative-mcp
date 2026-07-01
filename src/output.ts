@@ -114,6 +114,44 @@ export interface OutputResult {
     base64?: string;
 }
 
+/** One PDF part of a {@link MultiOutputResult}. */
+export interface MultiOutputPart {
+    /** 0-based position of this PDF within the produced sequence. */
+    index: number;
+    /** Number of bytes in this PDF. */
+    sizeBytes: number;
+    /** Absolute file path (when `mode === 'file'`). */
+    filePath?: string;
+    /** Base64-encoded PDF (when `mode === 'base64'`). */
+    base64?: string;
+}
+
+/** Result of a tool that produces several PDFs at once (e.g. `split_pdf`). */
+export interface MultiOutputResult {
+    /** The output mode that was used. */
+    mode: OutputMode;
+    /** Number of PDFs produced. */
+    count: number;
+    /** Combined byte size of every produced PDF. */
+    totalBytes: number;
+    /** The individual PDFs, in order. */
+    parts: MultiOutputPart[];
+}
+
+/**
+ * Maximum combined byte size when producing several PDFs at once (200 MiB).
+ * Each individual PDF is additionally capped at {@link MAX_OUTPUT_BYTES}.
+ */
+const MAX_MULTI_OUTPUT_BYTES = 200 * 1024 * 1024;
+
+/**
+ * Derives an indexed sibling path from a base `.pdf` path by inserting a
+ * 1-based suffix before the extension: `report.pdf` → `report-1.pdf`.
+ */
+function indexedOutputPath(basePath: string, oneBasedIndex: number): string {
+    return basePath.replace(/\.pdf$/i, `-${oneBasedIndex}.pdf`);
+}
+
 /**
  * Produces the final tool output: either a base64 string (inline) or writes to a sandboxed file path.
  */
@@ -142,5 +180,64 @@ export async function emitPdf(
         mode: 'base64',
         sizeBytes: bytes.byteLength,
         base64: Buffer.from(bytes).toString('base64'),
+    };
+}
+
+/**
+ * Produces output for a tool that yields several PDFs at once (e.g. `split_pdf`).
+ *
+ * In `base64` mode every PDF is returned inline. In `file` mode each PDF is
+ * written to a 1-based indexed sibling of `outputPath` (`out.pdf` →
+ * `out-1.pdf`, `out-2.pdf`, …); every derived path is independently validated
+ * against the sandbox.
+ *
+ * @throws {ToolError} when any PDF — or the combined output — exceeds the size caps.
+ */
+export async function emitPdfMulti(
+    parts: readonly Uint8Array[],
+    options: { mode: OutputMode; outputPath?: string },
+): Promise<MultiOutputResult> {
+    let totalBytes = 0;
+    for (const bytes of parts) {
+        if (bytes.byteLength > MAX_OUTPUT_BYTES) {
+            throw new ToolError(
+                'OUTPUT_TOO_LARGE',
+                `A produced PDF (${bytes.byteLength} bytes) exceeds the maximum allowed size (${MAX_OUTPUT_BYTES} bytes).`,
+            );
+        }
+        totalBytes += bytes.byteLength;
+    }
+    if (totalBytes > MAX_MULTI_OUTPUT_BYTES) {
+        throw new ToolError(
+            'OUTPUT_TOO_LARGE',
+            `The combined output (${totalBytes} bytes) exceeds the maximum allowed size (${MAX_MULTI_OUTPUT_BYTES} bytes).`,
+        );
+    }
+
+    if (options.mode === 'file') {
+        if (options.outputPath === undefined) {
+            throw new ToolError('MISSING_OUTPUT_PATH', "outputPath is required when outputMode='file'.");
+        }
+        // Validate the base path up-front so a bad path fails before any write.
+        resolveSandboxedPath(options.outputPath);
+        const resultParts: MultiOutputPart[] = [];
+        for (let i = 0; i < parts.length; i++) {
+            const resolved = resolveSandboxedPath(indexedOutputPath(options.outputPath, i + 1));
+            await fs.mkdir(path.dirname(resolved), { recursive: true });
+            await fs.writeFile(resolved, parts[i] as Uint8Array, { flag: 'wx' });
+            resultParts.push({ index: i, sizeBytes: (parts[i] as Uint8Array).byteLength, filePath: resolved });
+        }
+        return { mode: 'file', count: parts.length, totalBytes, parts: resultParts };
+    }
+
+    return {
+        mode: 'base64',
+        count: parts.length,
+        totalBytes,
+        parts: parts.map((bytes, i) => ({
+            index: i,
+            sizeBytes: bytes.byteLength,
+            base64: Buffer.from(bytes).toString('base64'),
+        })),
     };
 }
