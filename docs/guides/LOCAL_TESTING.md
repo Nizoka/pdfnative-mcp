@@ -143,7 +143,7 @@ The cleanest way to drive it interactively is the official
 npx @modelcontextprotocol/inspector node dist/cli.js
 ```
 
-From the Inspector you can list the 17 tools, inspect each schema and the
+From the Inspector you can list the 19 tools, inspect each schema and the
 `_meta.examples`, and issue `tools/call` requests — a fast way to confirm a new or
 changed tool behaves before writing assertions.
 

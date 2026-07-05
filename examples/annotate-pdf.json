@@ -1,0 +1,26 @@
+{
+  "description": "Add markup annotations to an existing PDF (pdfnative v1.5 annotation writer via annotate_pdf). Non-destructive incremental update: the original content is preserved byte-for-byte and each annotation is appended to the target page's /Annots. Types shown: highlight (text-markup), a sticky note (/Text) and a red square. NOTE: annotations are VISUAL OVERLAYS — they do NOT remove or redact the underlying content (the covered text stays extractable). Typical flow: generate the PDF, then annotate it. Replace <base64-of-a-pdf> with real bytes.",
+  "steps": [
+    {
+      "tool": "generate_basic_pdf",
+      "arguments": {
+        "title": "Draft for review",
+        "blocks": [
+          { "type": "heading", "text": "Quarterly figures", "level": 1 },
+          { "type": "paragraph", "text": "Revenue grew 12% quarter over quarter." }
+        ]
+      }
+    },
+    {
+      "tool": "annotate_pdf",
+      "arguments": {
+        "pdfBase64": "<base64-of-the-generated-pdf>",
+        "annotations": [
+          { "page": 0, "type": "highlight", "rect": [72, 700, 320, 720], "color": "#ffe600", "contents": "Confirm this number" },
+          { "page": 0, "type": "text", "rect": [520, 700, 540, 720], "contents": "Reviewer note: verify source", "icon": "Note", "open": false },
+          { "page": 0, "type": "square", "rect": [70, 690, 322, 724], "color": "#d00000", "borderWidth": 2 }
+        ]
+      }
+    }
+  ]
+}

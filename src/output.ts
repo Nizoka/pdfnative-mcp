@@ -63,13 +63,16 @@ export function getOutputSandbox(): string | null {
 /**
  * Resolves a user-supplied file path against the sandbox and ensures it stays within it.
  *
+ * @param userPath  Relative path supplied by the caller.
+ * @param extension Required lower-case file extension including the dot
+ *                  (default `.pdf`; `draft_governance_issue` passes `.md`).
  * @throws {SecurityError} when file output is disabled or the path escapes the sandbox.
  */
-export function resolveSandboxedPath(userPath: string): string {
+export function resolveSandboxedPath(userPath: string, extension = '.pdf'): string {
     const sandbox = getOutputSandbox();
     if (sandbox === null) {
         throw new SecurityError(
-            `File output is disabled. Set ${OUTPUT_DIR_ENV} to an allow-listed directory to enable saving PDFs to disk, or use outputMode='base64'.`,
+            `File output is disabled. Set ${OUTPUT_DIR_ENV} to an allow-listed directory to enable saving files to disk, or use outputMode='base64'.`,
         );
     }
 
@@ -91,8 +94,8 @@ export function resolveSandboxedPath(userPath: string): string {
         throw new SecurityError(`outputPath '${userPath}' escapes the sandbox directory.`);
     }
 
-    if (!resolved.toLowerCase().endsWith('.pdf')) {
-        throw new ToolError('INVALID_EXTENSION', 'outputPath must end with the .pdf extension.');
+    if (!resolved.toLowerCase().endsWith(extension)) {
+        throw new ToolError('INVALID_EXTENSION', `outputPath must end with the ${extension} extension.`);
     }
 
     return resolved;
@@ -240,4 +243,32 @@ export async function emitPdfMulti(
             base64: Buffer.from(bytes).toString('base64'),
         })),
     };
+}
+
+/**
+ * Writes a UTF-8 text artifact (e.g. a Markdown governance draft) to a
+ * sandboxed path. Reuses {@link resolveSandboxedPath} — including its NUL /
+ * absolute-path / traversal / extension guards — so text output enjoys the same
+ * defence-in-depth as PDF output. The write uses the exclusive `wx` flag so an
+ * existing file is never clobbered.
+ *
+ * @throws {ToolError}     `OUTPUT_TOO_LARGE` when the text exceeds the size cap.
+ * @throws {SecurityError} when file output is disabled or the path escapes the sandbox.
+ */
+export async function writeSandboxedText(
+    text: string,
+    outputPath: string,
+    extension = '.md',
+): Promise<{ filePath: string; sizeBytes: number }> {
+    const bytes = Buffer.from(text, 'utf8');
+    if (bytes.byteLength > MAX_OUTPUT_BYTES) {
+        throw new ToolError(
+            'OUTPUT_TOO_LARGE',
+            `The text artifact (${bytes.byteLength} bytes) exceeds the maximum allowed size (${MAX_OUTPUT_BYTES} bytes).`,
+        );
+    }
+    const resolved = resolveSandboxedPath(outputPath, extension);
+    await fs.mkdir(path.dirname(resolved), { recursive: true });
+    await fs.writeFile(resolved, bytes, { flag: 'wx' });
+    return { filePath: resolved, sizeBytes: bytes.byteLength };
 }

@@ -122,6 +122,22 @@ export const INSPECT_PDF_OUTPUT_SCHEMA = {
                 },
             },
         },
+        pageLabels: {
+            type: 'array',
+            description:
+                'Logical page-numbering ranges from the /PageLabels number tree (ISO 32000-1 §12.4.2), or absent when the document has none. Each range gives the 0-based first page, numbering style, optional prefix and start value.',
+            items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['startPage'],
+                properties: {
+                    startPage: { type: 'integer', minimum: 0 },
+                    style: { type: 'string', enum: ['decimal', 'roman', 'Roman', 'alpha', 'Alpha', 'none'] },
+                    prefix: { type: 'string' },
+                    start: { type: 'integer' },
+                },
+            },
+        },
         checks: {
             type: 'object',
             additionalProperties: { type: 'boolean' },
@@ -156,6 +172,12 @@ export interface InspectPdfResult {
     readonly attachments: readonly AttachmentSummary[];
     readonly info: Readonly<Record<string, string>>;
     readonly perPage?: ReadonlyArray<{ readonly index: number; readonly width: number; readonly height: number }>;
+    readonly pageLabels?: ReadonlyArray<{
+        readonly startPage: number;
+        readonly style?: 'decimal' | 'roman' | 'Roman' | 'alpha' | 'Alpha' | 'none';
+        readonly prefix?: string;
+        readonly start?: number;
+    }>;
     readonly checks?: Readonly<Record<CheckValue, boolean>>;
     readonly checksPassed?: boolean;
 }
@@ -301,6 +323,18 @@ function detectPdfAClaim(reader: PdfReader): string | null {
     return `${part}${conf}`;
 }
 
+/** Read the /PageLabels number tree (pdfnative v1.5.0), or undefined when absent. */
+function readPageLabels(reader: PdfReader): InspectPdfResult['pageLabels'] {
+    const labels = reader.getPageLabels();
+    if (labels === null || labels.length === 0) return undefined;
+    return labels.map((r) => ({
+        startPage: r.startPage,
+        ...(r.style !== undefined ? { style: r.style } : {}),
+        ...(r.prefix !== undefined ? { prefix: r.prefix } : {}),
+        ...(r.start !== undefined ? { start: r.start } : {}),
+    }));
+}
+
 function readPerPage(reader: PdfReader): InspectPdfResult['perPage'] {
     const pages = reader.getPages();
     return pages.map((page, index) => {
@@ -343,6 +377,7 @@ export async function inspectPdf(rawInput: unknown): Promise<InspectPdfResult> {
     const info = readInfoDict(reader);
     const { count: signatureCount, hasPlaceholder } = inspectSignatures(reader);
     const attachments = readAttachments(reader);
+    const pageLabels = readPageLabels(reader);
 
     const result: {
         -readonly [K in keyof InspectPdfResult]: InspectPdfResult[K];
@@ -356,6 +391,10 @@ export async function inspectPdf(rawInput: unknown): Promise<InspectPdfResult> {
         attachments,
         info,
     };
+
+    if (pageLabels !== undefined) {
+        result.pageLabels = pageLabels;
+    }
 
     if (includePages) {
         result.perPage = readPerPage(reader);

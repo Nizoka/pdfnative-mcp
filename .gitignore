@@ -9,3 +9,11 @@ coverage/
 .idea/
 out/
 *.tsbuildinfo
+
+# AI-governance issue drafts are local work-in-progress; never commit ad-hoc
+# tool output. Curated release artifacts (pr-*.md / issue-*.md) and the
+# staging-area README stay tracked.
+.github/drafts/*
+!.github/drafts/README.md
+!.github/drafts/pr-*.md
+!.github/drafts/issue-*.md

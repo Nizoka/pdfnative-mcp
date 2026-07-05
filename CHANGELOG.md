@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-14
+
+A minor, backward-compatible release that brings the pdfnative AI-governance /
+Human-In-The-Loop (HITL) system to the MCP surface, adds markup annotations and a
+local, network-free GitHub-issue drafter (taking the catalogue to **19 tools**),
+surfaces page labels in `inspect_pdf`, adds an explicit `math` script to
+`add_international_text`, advertises the MCP `prompts` capability, and upgrades to
+[pdfnative v1.5.0](https://github.com/Nizoka/pdfnative). Default tool calls return
+responses identical to v1.3.0 — all new behaviour is opt-in.
+
+### Added
+
+- **Tool `draft_governance_issue`** (19th tool): assembles a governance-compliant GitHub issue draft plus a structured `compliance` report and returns them — never submits, no network call. Rejects contract breaches (runtime dependency, missing reproduction, `duplicateSearchPerformed:false`) with the new `GOVERNANCE_VIOLATION` error.
+- **Tool `annotate_pdf`** (18th tool): overlay markup annotations (`text`, `highlight`, `underline`, `strikeout`, `squiggly`, `square`, `circle`, `line`, `freetext`) on an existing PDF via pdfnative v1.5.0's incremental-update annotation writer. Visual overlay only — not a redaction. Encrypted sources → `ENCRYPTED_SOURCE`.
+- **`inspect_pdf`**: optional `pageLabels[]` output field (`{ startPage, style?, prefix?, start? }`), present only when the PDF declares `/PageLabels`.
+- **`add_international_text`**: explicit `math` lang code (Noto Sans Math), embedded on demand only when requested (no global auto-routing).
+- **MCP prompts:** the server now advertises the `prompts` capability with `governance_contract` and `draft_issue_workflow`.
+- **Governance:** new `src/governance.ts`, `src/version.ts`, `src/fonts.ts`, `GovernanceError` in `src/errors.ts`, `writeSandboxedText()` in `src/output.ts`; contract files `.github/ai-governance.json`, `.github/AGENT_RULES.md`, `.github/drafts/README.md`; `scripts/verify-issue.mjs` CLI (`npm run verify:issue`).
+- **Docs:** new `docs/guides/AI_GOVERNANCE.md` (HITL contract + workflow).
+- **Examples:** `annotate-pdf.json`, `draft-governance-issue.json`, `math-symbols.json`, `page-labels-inspect.json`.
+- **Tests:** `annotate-pdf.test.ts`, `draft-governance-issue.test.ts`, `governance.test.ts`, `fonts.test.ts`; extended `server.test.ts` (prompts + 19 tools), `inspect-pdf.test.ts` (`pageLabels`), `output.test.ts` (`.md` writer).
+
+### Changed
+
+- **Dependency:** `pdfnative` bumped `^1.4.0` → `^1.5.0` (additive; new annotation writer + page-label reader).
+- **MCP `_meta.apiVersion`** bumped `1.3.0` → `1.4.0` on every tool; `SERVER_VERSION`, `server.json` versions, and `package.json` version → `1.4.0`.
+- **Server:** `SERVER_DESCRIPTION` and `SERVER_INSTRUCTIONS` extended to **19 tools** (governance decision branch + corrected math note — explicit lang, not global auto-routing).
+- **Docs:** README, `AGENTS.md`, `docs/AI_GUIDE.md`, `docs/API_STABILITY.md`, `docs/KNOWLEDGE_BASE.md`, `ROADMAP.md`, `llms.txt`, and `.github/copilot-instructions.md` refreshed for the v1.4.0 surface.
+
+### Deferred by design
+
+- **`redact_pdf`** stays deferred. pdfnative v1.5.0's annotation writer can only *overlay* content; an overlay-only "redaction" would leave the original bytes intact and create false security, which fails this project's honesty bar. Tracked as an upstream content-removal feature request. An **encrypted-PDF round-trip** likewise remains blocked on a Standard Security Handler writer.
+
 ## [1.3.0] - 2026-07-07
 
 A minor, backward-compatible release that adds three page-tree tools
@@ -218,7 +251,8 @@ stability via the new per-tool `_meta.apiVersion` field. Built on top of
 - Strict JSON Schema + Zod validation at every tool boundary.
 - Vitest test suite with sandbox security checks.
 
-[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.0.0...v1.1.0

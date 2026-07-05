@@ -1,7 +1,7 @@
 {
     "name": "pdfnative-mcp",
-    "version": "1.3.0",
-    "description": "Model Context Protocol (MCP) server bridging the zero-dependency pdfnative v1.4 library — generate PDFs (PDF/A-1b/2b/2u/3b) with bookmarks/outline, page labels & viewer preferences, merge / split / extract pages, validate PDF/UA structure, embed barcodes & QR codes, sign (constant-time node:crypto) and **verify** PAdES documents (RSA / ECDSA P-256 CMS), render 24 scripts including colour emoji, build smart tables (cell borders + vertical alignment) and AcroForms, embed images, embed files (Factur-X / ZUGFeRD PDF/A-3), extract text, and inspect existing PDFs — from any MCP-compatible AI client (Claude, Cursor, ChatGPT, Continue, Zed, Windsurf, Cline, Roo Code, …).",
+    "version": "1.4.0",
+    "description": "Model Context Protocol (MCP) server bridging the zero-dependency pdfnative v1.5 library — generate PDFs (PDF/A-1b/2b/2u/3b) with bookmarks/outline, page labels & viewer preferences, add markup annotations, merge / split / extract pages, validate PDF/UA structure, embed barcodes & QR codes, sign (constant-time node:crypto) and **verify** PAdES documents (RSA / ECDSA P-256 CMS), render 24 scripts including colour emoji and math symbols, build smart tables (cell borders + vertical alignment) and AcroForms, embed images, embed files (Factur-X / ZUGFeRD PDF/A-3), extract text, inspect existing PDFs, and draft human-in-the-loop GitHub issues under an AI-governance contract — from any MCP-compatible AI client (Claude, Cursor, ChatGPT, Continue, Zed, Windsurf, Cline, Roo Code, …).",
     "mcpName": "io.github.Nizoka/pdfnative-mcp",
     "keywords": [
         "mcp",
@@ -148,12 +148,13 @@
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",
         "examples:check": "vitest run tests/examples.test.ts",
+        "verify:issue": "node scripts/verify-issue.mjs",
         "prepare": "npm run build",
         "prepublishOnly": "npm run clean && npm run lint && npm run typecheck && npm run test && npm run build"
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",
-        "pdfnative": "^1.4.0",
+        "pdfnative": "^1.5.0",
         "zod": "^4.0.0"
     },
     "devDependencies": {

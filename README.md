@@ -16,7 +16,7 @@
 
 ## ✨ Features
 
-`pdfnative-mcp` exposes **17 production-grade tools** to any MCP host:
+`pdfnative-mcp` exposes **19 production-grade tools** to any MCP host:
 
 | Tool                               | Purpose                                                                                          |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
@@ -37,6 +37,17 @@
 | `merge_pdfs` *(new in v1.3.0)*     | Concatenate 2–50 PDFs into one via pdfnative's page-tree API.                                  |
 | `split_pdf` *(new in v1.3.0)*      | Split one PDF into one document per page range (multi-output).                                  |
 | `extract_pages` *(new in v1.3.0)*  | Pull an arbitrary page subset into a single PDF.                                               |
+| `annotate_pdf` *(new in v1.4.0)*   | Add markup annotations (highlight, note, square/circle, line, freetext) as a visual overlay — **not** a redaction. |
+| `draft_governance_issue` *(new in v1.4.0)* | Draft a governance-compliant GitHub issue locally for **human** review; never submits, no network. |
+
+**New in v1.4.0:**
+
+- 🤝 **AI governance + human-in-the-loop** — `draft_governance_issue` lets an agent draft a fully compliant GitHub issue **locally** (draft `.md` + machine-readable compliance report). The agent is a *draftsman, never an autonomous submitter*: a human is the only gate, and the server makes **zero** GitHub writes and no outbound network calls. Backed by the `governance_contract` and `draft_issue_workflow` MCP prompts.
+- ✏️ **Markup annotations** — `annotate_pdf` overlays highlight, sticky-note, underline, strikeout, squiggly, square, circle, line, and freetext annotations on an existing PDF via incremental update. It is a *visual review layer, not a redaction* — underlying bytes remain.
+- 🔢 **Page labels in `inspect_pdf`** — read-only surfacing of `/PageLabels` ranges (roman, decimal, prefixed).
+- ∑ **Math / scientific script** — `add_international_text` accepts `lang: 'math'` (explicit, like `emoji`) to embed the Noto Sans Math face on demand.
+- 🧩 **MCP prompts** — the server now advertises the `prompts` capability with `governance_contract` and `draft_issue_workflow`.
+- ⬆ **Engine upgrade** — pdfnative **v1.5.0**.
 
 **New in v1.3.0:**
 
@@ -74,7 +85,7 @@
 - 🆕 **AI agent guide:** [`docs/AI_GUIDE.md`](docs/AI_GUIDE.md) — decision tree + common pitfalls. See also the root [`AGENTS.md`](AGENTS.md) operations manual.
 - 🆕 **PDF/A authoring guide:** [`docs/guides/PDFA.md`](docs/guides/PDFA.md).
 - 🛠 **Env-var rename:** `PDFNATIVE_MCP_OUTPUT_DIR` (was `PDFNATIVE_MPC_OUTPUT_DIR`; old name still works with a one-shot deprecation warning).
-- ✅ **Now shipped (v1.3.0):** `merge_pdfs`, `split_pdf`, `extract_pages` — built on pdfnative v1.4.0's page-tree API. `redact_pdf` remains blocked upstream.
+- ✅ **Now shipped:** `merge_pdfs`, `split_pdf`, `extract_pages` (v1.3.0) and `annotate_pdf` (v1.4.0). `redact_pdf` stays **deferred** — pdfnative can only overlay content, and an overlay-only "redaction" would create false security, so it is intentionally not shipped (tracked as an upstream content-removal request).
 
 All tools support two output modes:
 
@@ -221,7 +232,7 @@ Supported formats: `qr`, `code128`, `ean13`, `datamatrix`, `pdf417`.
 }
 ```
 
-Supported `lang` codes: `ar`, `he`, `th`, `ja`, `zh`, `ko`, `el`, `hi`, `bn`, `ta`, `ru`, `ka`, `hy`, `tr`, `vi`, `pl`, `latin`, `emoji`.
+Supported `lang` codes: `ar`, `he`, `th`, `ja`, `zh`, `ko`, `el`, `hi`, `bn`, `ta`, `ru`, `ka`, `hy`, `tr`, `vi`, `pl`, `latin`, `emoji`, `math`.
 
 Multi-script documents — pass an array or comma-separated list:
 
@@ -380,6 +391,39 @@ Returns:
 ```
 
 It verifies catalog `/MarkInfo /Marked true`, `/StructTreeRoot` (+ `/ParentTree`), `/Metadata` (XMP), `/Lang`, and per-page MCID uniqueness. This is a fast developer-time gate — **not** a substitute for a full reference validator (veraPDF), which additionally checks fonts, colour, and rendering.
+
+### `annotate_pdf`
+
+Overlay markup annotations on an existing PDF via incremental update. This is a **visual review layer, not a redaction** — the underlying content is untouched.
+
+```jsonc
+{
+  "pdfBase64": "<base64 PDF>",
+  "annotations": [
+    { "type": "highlight", "page": 0, "rect": [72, 700, 520, 715], "color": [1, 1, 0], "contents": "Check this figure" },
+    { "type": "text", "page": 0, "rect": [540, 700, 560, 720], "contents": "Reviewer note" }
+  ]
+}
+```
+
+Types: `text`, `highlight`, `underline`, `strikeout`, `squiggly`, `square`, `circle`, `line`, `freetext`. Encrypted sources are rejected (`ENCRYPTED_SOURCE`).
+
+### `draft_governance_issue`
+
+Draft a governance-compliant GitHub issue **locally** for a human to review and submit. The server never contacts GitHub and makes no outbound network calls; it returns the draft Markdown plus a machine-readable compliance report.
+
+```jsonc
+{
+  "title": "add_table drops the caption on the second page",
+  "issueType": "bug",
+  "summary": "The table caption is only rendered on page 1 when repeatHeader is true.",
+  "reproduction": { "command": "node examples/run.mjs add-table-caption.json", "result": "Page 2 has no caption row." },
+  "expectedBehavior": "The caption repeats with the header on every page.",
+  "duplicateSearchPerformed": true
+}
+```
+
+A draft that proposes a runtime dependency, omits a reproduction, or sets `duplicateSearchPerformed: false` is rejected with `GOVERNANCE_VIOLATION`. See [`docs/guides/AI_GOVERNANCE.md`](docs/guides/AI_GOVERNANCE.md) for the full human-in-the-loop contract.
 
 ### `verify_pdf`, `add_attachment`, `extract_text`
 

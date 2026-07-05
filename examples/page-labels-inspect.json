@@ -1,0 +1,28 @@
+{
+  "description": "Round-trip logical page numbering: author page labels then read them back (pdfnative v1.5 getPageLabels surfaced by inspect_pdf). generate_basic_pdf writes a /PageLabels number tree (roman front-matter then decimal body); inspect_pdf now returns those ranges as a 'pageLabels' array so an agent can confirm the numbering it just authored. Replace <base64-of-the-generated-pdf> with the bytes from step 1.",
+  "steps": [
+    {
+      "tool": "generate_basic_pdf",
+      "arguments": {
+        "title": "Report with logical page numbers",
+        "pageLabels": [
+          { "startPage": 0, "style": "roman" },
+          { "startPage": 2, "style": "decimal", "start": 1 }
+        ],
+        "blocks": [
+          { "type": "heading", "text": "Preface", "level": 1 },
+          { "type": "pageBreak" },
+          { "type": "paragraph", "text": "Front matter, numbered i, ii." },
+          { "type": "pageBreak" },
+          { "type": "heading", "text": "1. Body", "level": 1 }
+        ]
+      }
+    },
+    {
+      "tool": "inspect_pdf",
+      "arguments": {
+        "pdfBase64": "<base64-of-the-generated-pdf>"
+      }
+    }
+  ]
+}

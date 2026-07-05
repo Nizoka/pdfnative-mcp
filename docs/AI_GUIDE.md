@@ -1,7 +1,7 @@
 # AI Agent Guide — pdfnative-mcp
 
 > **Read this first if you are an AI agent (Copilot, Claude, Cursor, Continue, Zed, Windsurf, Cline, Roo Code, …) about to call pdfnative-mcp.**
-> It tells you which of the 17 tools to pick and how to avoid the common retry loops.
+> It tells you which of the 19 tools to pick and how to avoid the common retry loops.
 
 The server also returns the same decision tree in `serverInfo.instructions`. The full reference lives in [`KNOWLEDGE_BASE.md`](KNOWLEDGE_BASE.md); the stability charter in [`API_STABILITY.md`](API_STABILITY.md). Worked invocations are in [`../examples/`](../examples).
 
@@ -28,6 +28,8 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 | Join several PDFs into one | `merge_pdfs` |
 | Split one PDF into per-range documents | `split_pdf` |
 | Keep an arbitrary page subset (one PDF) | `extract_pages` |
+| Overlay markup annotations on a PDF (review layer) | `annotate_pdf` |
+| Draft a GitHub issue for a human to submit | `draft_governance_issue` |
 
 ---
 
@@ -87,7 +89,18 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 
 ### International text
 - `add_international_text` covers **24 scripts** (incl. Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic) and COLRv1 colour emoji. Pass `lang` as a single code, a comma-separated string, or an array (e.g. `["ar", "emoji"]`) for multi-script runs.
+- For mathematical / scientific symbols, add the **explicit** `math` script, e.g. `lang: ["latin", "math"]`. It embeds the Noto Sans Math face **only when requested** — there is no global auto-routing, so plain `latin` text will not pick up math glyphs on its own.
 - Input is NFC-normalised automatically; you do not need to pre-compose decomposed sequences.
+
+### Annotating an existing PDF (review overlay)
+- `annotate_pdf` overlays markup annotations via an incremental update. Types: `text` (sticky note), `highlight`, `underline`, `strikeout`, `squiggly`, `square`, `circle`, `line`, `freetext`. Each entry needs a 0-based `page`, a `rect: [x1, y1, x2, y2]`, and optional `color` / `contents`.
+- This is a **visual review layer, NOT a redaction** — the underlying page content is untouched, so never use it to hide sensitive data.
+- Encrypted sources are rejected with `ENCRYPTED_SOURCE`; out-of-range `page` indices are rejected by validation.
+
+### Drafting a GitHub issue (human-in-the-loop)
+- `draft_governance_issue` produces a **local** draft `.md` + a machine-readable compliance report. It **never** submits to GitHub and makes **no** outbound network call — you are a draftsman; a human is the only gate that submits.
+- Always set `duplicateSearchPerformed: true` (after actually searching) and include a `reproduction: { command, result }`. Proposing a runtime dependency, omitting the reproduction, or `duplicateSearchPerformed: false` is rejected with `GOVERNANCE_VIOLATION`.
+- Read the `governance_contract` and `draft_issue_workflow` MCP prompts first; the full contract is in [`guides/AI_GOVERNANCE.md`](guides/AI_GOVERNANCE.md).
 
 ### Text extraction
 - `extract_text` returning `extractable: false` is **not an error**. The PDF uses subset fonts without `/ToUnicode` CMaps; the `extractableReason` field explains. The file is not corrupt.
@@ -142,12 +155,20 @@ Defaults are unchanged: omit both and you get the full v1.1.0-identical response
 1. Generate the parts (any authoring tool), then `merge_pdfs` to join them — **or** `split_pdf` (per range) / `extract_pages` (one subset) on an existing PDF.
 2. `inspect_pdf` to confirm the resulting page count.
 
+### Annotate a PDF for review
+1. `annotate_pdf` with `{ type: 'highlight', page, rect, contents }` and/or `{ type: 'text', … }` entries.
+2. *(optional)* `inspect_pdf` to confirm the document still opens and page count is unchanged. Remember: annotations overlay, they do **not** redact.
+
+### Propose an upstream change (human submits)
+1. Search existing issues, then `draft_governance_issue` with a reproduction and `duplicateSearchPerformed: true`.
+2. Review the returned `draftMarkdown` + `complianceReport`; a **human** copies the draft into GitHub and submits it. The server never does.
+
 ---
 
 ## 4. Self-documenting metadata
 
 Every tool ships:
-- `_meta.apiVersion` = `'1.3.0'` — see [`API_STABILITY.md`](API_STABILITY.md).
+- `_meta.apiVersion` = `'1.4.0'` — see [`API_STABILITY.md`](API_STABILITY.md).
 - `_meta.examples`   — at least one worked example per tool. Inspect the `ListTools` response to discover them.
 
 You can rely on these fields when negotiating capabilities before calling a tool.

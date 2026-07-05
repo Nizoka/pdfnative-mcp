@@ -21,3 +21,21 @@ export class SecurityError extends ToolError {
         super('SECURITY_VIOLATION', message);
     }
 }
+
+/**
+ * Custom error for AI-governance / human-in-the-loop policy violations raised
+ * by `draft_governance_issue` (code `GOVERNANCE_VIOLATION`).
+ *
+ * The server never opens GitHub issues; it only produces a local, compliant
+ * draft. This error fires when a would-be draft breaks the non-negotiable
+ * governance contract (proposing a runtime dependency, missing a local
+ * reproduction, or skipping the duplicate search) so the human reviewer is
+ * forced to fix the draft before they submit it under their own identity.
+ */
+export class GovernanceError extends ToolError {
+    public override readonly name: string = 'GovernanceError';
+
+    public constructor(message: string) {
+        super('GOVERNANCE_VIOLATION', message);
+    }
+}

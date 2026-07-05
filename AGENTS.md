@@ -13,7 +13,7 @@ invocations live under [examples/](examples/).
 
 ---
 
-## 1. Tool catalogue (17 tools)
+## 1. Tool catalogue (19 tools)
 
 | # | Tool | Use it for | Read-only |
 |---|------|-----------|:---:|
@@ -34,6 +34,8 @@ invocations live under [examples/](examples/).
 | 15 | `merge_pdfs` | Concatenate 2–50 PDFs into one (page-tree API). | |
 | 16 | `split_pdf` | Split a PDF into one document per page range (multi-output). | |
 | 17 | `extract_pages` | Pull an arbitrary page subset into a single PDF. | ✓¹ |
+| 18 | `annotate_pdf` | Add markup annotations (highlight, sticky note, square/circle, line, freetext). Visual overlay only — does **not** redact underlying content. | |
+| 19 | `draft_governance_issue` | Draft a governance-compliant GitHub issue for **human** review. Produces a local draft + compliance report; **never submits**, no network. | ✓ |
 
 ¹ `extract_pages` only reads the source, but it produces a new PDF, so it is not annotated `readOnlyHint`.
 
@@ -48,6 +50,7 @@ Need a NEW PDF?
  ├─ an image?                              → embed_image
  ├─ an interactive form?                   → add_form
  └─ otherwise                              → generate_basic_pdf
+Annotate an existing PDF (overlay)?       → annotate_pdf
 Combine / carve existing PDFs?
  ├─ join several into one?                 → merge_pdfs
  ├─ split into per-range documents?        → split_pdf
@@ -59,6 +62,7 @@ Need to READ a PDF?
  ├─ PDF/UA conformant?   → validate_pdf
  ├─ embedded files?      → extract_attachments
  └─ plain text?          → extract_text
+Propose a bug/feature to GitHub? → draft_governance_issue (local draft; a human reviews & submits)
 ```
 
 ## 3. Token-frugal responses
@@ -99,6 +103,9 @@ attachments in the caller.
 - **Watermarked report:** `add_table` with `watermark: { text: 'CONFIDENTIAL', opacity: 0.2 }`.
 - **Bookmarked report:** `generate_basic_pdf` with `outline: 'auto'` + `pageLabels` + `viewerPreferences: { pageMode: 'useOutlines' }`.
 - **Assemble / carve:** generate parts → `merge_pdfs`; or `split_pdf` (per range) / `extract_pages` (one subset) → `inspect_pdf` to confirm the page count.
+- **Annotate for review:** `annotate_pdf` with `{ type: 'highlight' }` / `{ type: 'text' }` overlays — a visual review layer, **not** a redaction (underlying bytes remain).
+- **Math / scientific text:** `add_international_text` with `lang: ['latin', 'math']` — `math` is an **explicit** script, embedded only when requested (no global auto-routing).
+- **Propose an upstream change:** `draft_governance_issue` → review the local `.md` draft + compliance report → a **human** submits it to GitHub (the server never does).
 
 ## 6. Error reference
 
@@ -117,6 +124,7 @@ attachments in the caller.
 | `FONT_LOAD_FAILED` | Bundled font module failed to load | Retry; reinstall `pdfnative` if persistent. |
 | `SIGNING_FAILED` · `CMS_PARSE_FAILED` · `EC_KEY_PARSE_FAILED` · `EC_CURVE_UNSUPPORTED` | Signing / key-cert problem | Check DER encodings; ECDSA must be P-256. |
 | `SECURITY_VIOLATION` | Sandbox / path-traversal rejection | Set `PDFNATIVE_MCP_OUTPUT_DIR`; use a relative `.pdf` path. |
+| `GOVERNANCE_VIOLATION` | `draft_governance_issue` draft breaks the AI-governance contract (proposes a runtime dependency, missing reproduction, or `duplicateSearchPerformed:false`) | Remove the dependency proposal, include a reproduction, confirm the duplicate search. |
 
 ## 7. Contributing to this repo
 

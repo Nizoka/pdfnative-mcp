@@ -9,7 +9,7 @@
 
 Every tool emits `_meta.apiVersion` in the `ListTools` response.
 
-Current value: **`1.3.0`** (stable, since pdfnative-mcp 1.3.0).
+Current value: **`1.4.0`** (stable, since pdfnative-mcp 1.4.0).
 
 The tool API version is **independent of the npm release version**.
 Server releases that ship only documentation, refactoring, or non-breaking ergonomic improvements (richer descriptions, additional `_meta.examples`, new optional output fields) **do not** bump `_meta.apiVersion`.
@@ -76,12 +76,23 @@ When a tool, field or error code is scheduled for removal:
 
 ## 5. Per-tool stability matrix
 
-All 17 tools shipped through pdfnative-mcp 1.3.0 are at `_meta.apiVersion = '1.3.0'` and are considered **stable**:
+All 19 tools shipped through pdfnative-mcp 1.4.0 are at `_meta.apiVersion = '1.4.0'` and are considered **stable**:
 
 `generate_basic_pdf`, `add_barcode`, `add_international_text`, `add_table`, `add_form`,
 `embed_image`, `prepare_signature_placeholder`, `sign_pdf`, `verify_pdf`, `validate_pdf`,
 `inspect_pdf`, `add_attachment`, `extract_attachments`, `extract_text`,
-`merge_pdfs`, `split_pdf`, `extract_pages`.
+`merge_pdfs`, `split_pdf`, `extract_pages`, `annotate_pdf`, `draft_governance_issue`.
+
+> **v1.4.0 minor bump rationale:** two **new tools** were added — `annotate_pdf`
+> (markup-overlay annotations on pdfnative v1.5.0's incremental-update annotation writer)
+> and `draft_governance_issue` (local, network-free GitHub-issue drafter with a compliance
+> report). `inspect_pdf` gained an **optional** `pageLabels[]` output field (additive, only
+> present when the PDF declares `/PageLabels`); `add_international_text` gained the explicit
+> `math` lang code (a new accepted enum value that older callers can ignore). A new
+> `GOVERNANCE_VIOLATION` error code is introduced for `draft_governance_issue` only. The
+> server also newly advertises the MCP `prompts` capability (`governance_contract`,
+> `draft_issue_workflow`). All changes are additive per §3; default responses for existing
+> tools are byte-identical to v1.3.0.
 
 > **v1.3.0 minor bump rationale:** three **new tools** (`merge_pdfs`, `split_pdf`,
 > `extract_pages`) were added on pdfnative v1.4.0's page-tree API, and several authoring
@@ -116,7 +127,7 @@ All 17 tools shipped through pdfnative-mcp 1.3.0 are at `_meta.apiVersion = '1.3
 > satisfy the full `outputSchema` (which describes the default `'full'` shape). This is an
 > opt-in token-saving feature; the `outputSchema` contract continues to describe full output.
 
-Page-tree tools `merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative v1.4.0's page-tree API. `redact_pdf` and an encrypted-PDF round-trip remain **blocked upstream** — pdfnative does not yet export the required content-redaction / decryption API. They will be added with the same stability guarantees once unblocked.
+Page-tree tools `merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative v1.4.0's page-tree API; `annotate_pdf` shipped in v1.4.0 on pdfnative v1.5.0's annotation writer. `redact_pdf` stays **deferred by design** (pdfnative can only overlay, not remove, content — an overlay-only redaction would create false security) and an encrypted-PDF round-trip remains **blocked upstream** (no Standard Security Handler writer). Both will be added with the same stability guarantees once pdfnative exports the required APIs.
 
 ---
 

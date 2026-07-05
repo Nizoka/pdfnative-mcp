@@ -1,0 +1,13 @@
+{
+  "description": "Render mathematical / technical symbols (pdfnative v1.5 math font, Noto Sans Math OFL-1.1). Pass 'math' alongside a base script (here lang: ['latin','math']) so add_international_text routes math codepoints (∀ ∃ √ ∑ ∫ ∞ ± ÷ ×) to the bundled math font while Latin prose uses Noto Sans. Fully self-contained.",
+  "tool": "add_international_text",
+  "arguments": {
+    "title": "Math notation demo",
+    "lang": ["latin", "math"],
+    "paragraphs": [
+      "For all x ∈ ℝ, we have √(x²) = |x| and ∑ i = n(n+1)/2.",
+      "The definite integral ∫ f dx converges, with error ± ε and ratio a ÷ b × c.",
+      "As n → ∞, the sequence approaches its supremum."
+    ]
+  }
+}

@@ -7,13 +7,22 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
+    ListPromptsRequestSchema,
+    GetPromptRequestSchema,
     type CallToolRequest,
     type CallToolResult,
+    type GetPromptRequest,
+    type GetPromptResult,
 } from '@modelcontextprotocol/sdk/types.js';
 import { initCrypto, initNodeCompression } from 'pdfnative';
 
 import { ToolError } from './errors.js';
 import { getCached, setCached } from './cache.js';
+import { PDFNATIVE_MCP_VERSION } from './version.js';
+import {
+    GOVERNANCE_CONTRACT_SUMMARY,
+    DRAFT_ISSUE_WORKFLOW,
+} from './governance.js';
 import { type OutputResult, type MultiOutputResult } from './output.js';
 import { readFields, readVerbosity, selectFields } from './projection.js';
 import {
@@ -111,10 +120,22 @@ import {
     EXTRACT_PAGES_INPUT_SCHEMA,
     extractPagesTool,
 } from './tools/extract-pages.js';
+import {
+    ANNOTATE_PDF_NAME,
+    ANNOTATE_PDF_INPUT_SCHEMA,
+    annotatePdf,
+} from './tools/annotate-pdf.js';
+import {
+    DRAFT_GOVERNANCE_ISSUE_NAME,
+    DRAFT_GOVERNANCE_ISSUE_INPUT_SCHEMA,
+    DRAFT_GOVERNANCE_ISSUE_OUTPUT_SCHEMA,
+    draftGovernanceIssue,
+    type DraftGovernanceIssueResult,
+} from './tools/draft-governance-issue.js';
 
 // JSON import attribute (Node 22+, TS 5.3+) keeps version in lock-step with package.json.
 // Hardcoded here to keep the build rootDir limited to ./src; tests assert it stays in sync.
-const SERVER_VERSION = '1.3.0';
+const SERVER_VERSION = PDFNATIVE_MCP_VERSION;
 const SERVER_NAME = 'pdfnative-mcp';
 
 /**
@@ -126,7 +147,8 @@ const SERVER_TITLE = 'pdfnative MCP — PDF generation, signing & introspection'
 const SERVER_DESCRIPTION =
     'Production-grade MCP server for PDF generation, PDF/A archival, PDF/UA structural validation, ' +
     'digital signatures (PAdES sign + verify, constant-time node:crypto), page-tree ops (merge / split / extract), ' +
-    'Factur-X invoices, and PDF introspection. 17 tools, 24 scripts, zero runtime dependencies beyond pdfnative and the MCP SDK.';
+    'markup annotations, Factur-X invoices, PDF introspection, and human-in-the-loop AI-governance issue drafting. ' +
+    '19 tools, 24 scripts, zero runtime dependencies beyond pdfnative and the MCP SDK.';
 
 /**
  * Per-tool API version used by the opt-in cache key and by `_meta.apiVersion`.
@@ -134,7 +156,7 @@ const SERVER_DESCRIPTION =
  * make a cached response unsafe to serve. Independent from SERVER_VERSION
  * (which tracks the npm package).
  */
-const TOOL_API_VERSION = '1.3.0';
+const TOOL_API_VERSION = '1.4.0';
 
 /** True when the call's input requests a file-mode output (filesystem side-effect). */
 function isFileOutput(input: unknown): boolean {
@@ -145,6 +167,9 @@ function isFileOutput(input: unknown): boolean {
 
 function dispatchOutput(output: unknown, name: string, input: unknown): CallToolResult {
     if (output !== null && typeof output === 'object') {
+        if ('draftMarkdown' in output && 'compliance' in output) {
+            return buildDraftGovernanceIssueResult(output as DraftGovernanceIssueResult, name);
+        }
         if ('parts' in output && 'count' in output) {
             return buildMultiSuccessResult(output as MultiOutputResult, name);
         }
@@ -241,7 +266,7 @@ interface ToolDefinition {
     };
     /** Minimal MCP `_meta.examples` payload — each entry is a self-contained input. */
     examples?: ReadonlyArray<{ readonly title: string; readonly input: Record<string, unknown> }>;
-    handler: (args: unknown) => Promise<OutputResult | MultiOutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult | ValidatePdfResult | ExtractAttachmentsResult>;
+    handler: (args: unknown) => Promise<OutputResult | MultiOutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult | ValidatePdfResult | ExtractAttachmentsResult | DraftGovernanceIssueResult>;
 }
 
 const TOOLS: readonly ToolDefinition[] = [
@@ -293,12 +318,13 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ADD_INTERNATIONAL_TEXT_NAME,
         title: 'Add international text',
         description:
-            'Generate a PDF rendering text in any of 24 scripts (Arabic, Hebrew, Thai, CJK, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Vietnamese, Turkish, Polish, Latin fallback) with optional COLRv1 colour emoji. BiDi reordering (incl. UAX#9 isolates), Arabic harakat positioning, and complex-script OpenType shaping are handled automatically by the embedded Noto fonts; input is NFC-normalised for maximal glyph coverage and embedded newlines auto-split into paragraphs. Pass `lang` as a single code or an array (e.g. ["ar","emoji"]) for multi-script runs.',
+            'Generate a PDF rendering text in any of 24 scripts (Arabic, Hebrew, Thai, CJK, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Vietnamese, Turkish, Polish, Latin fallback) with optional COLRv1 colour emoji and mathematical / technical symbols (the "math" font — Noto Sans Math, ∀ ∃ √ ∑ ∫ ∞ ± ÷ ×). BiDi reordering (incl. UAX#9 isolates), Arabic harakat positioning, and complex-script OpenType shaping are handled automatically by the embedded Noto fonts; input is NFC-normalised for maximal glyph coverage and embedded newlines auto-split into paragraphs. Pass `lang` as a single code or an array (e.g. ["ar","emoji"] or ["latin","math"]) for multi-script / symbol runs.',
         inputSchema: ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
             { title: 'Arabic', input: { text: 'مرحبا', lang: 'ar', title: 'Hello in Arabic' } },
+            { title: 'Latin + math symbols', input: { title: 'Math', lang: ['latin', 'math'], paragraphs: ['For all x ∈ ℝ, √(x²) = |x| and ∑ i = n(n+1)/2.'] } },
         ],
         handler: addInternationalText,
     },
@@ -481,11 +507,39 @@ const TOOLS: readonly ToolDefinition[] = [
         ],
         handler: extractPagesTool,
     },
+    {
+        name: ANNOTATE_PDF_NAME,
+        title: 'Annotate PDF (markup / drawing)',
+        description:
+            "Add markup / drawing annotations (ISO 32000-1 §12.5) to an existing PDF via pdfnative v1.5's annotation writer. Non-destructive incremental update: original content is preserved byte-for-byte and each annotation is appended to the target page's /Annots. Types: text (sticky note), highlight | underline | strikeout | squiggly (text-markup), square | circle (shapes), line, freetext. Each annotation needs a 0-based `page` and a `rect` [x1,y1,x2,y2]; line also needs `start`/`end`. Optional per-annotation: contents, color, opacity, title, plus type-specific fields (open/icon, quadPoints, interiorColor/borderWidth, fontSize). Encrypted sources are rejected (ENCRYPTED_SOURCE). NOTE: annotations are visual overlays — they do NOT remove or redact the underlying content.",
+        inputSchema: ANNOTATE_PDF_INPUT_SCHEMA,
+        outputSchema: PDF_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Highlight a region on page 1', input: { pdfBase64: '<base64>', annotations: [{ page: 0, type: 'highlight', rect: [72, 700, 300, 720], color: '#ffe600', contents: 'Review this' }] } },
+            { title: 'Sticky note + red square', input: { pdfBase64: '<base64>', annotations: [{ page: 0, type: 'text', rect: [520, 700, 540, 720], contents: 'Check figures', icon: 'Note' }, { page: 0, type: 'square', rect: [72, 500, 300, 560], color: '#d00000', borderWidth: 2 }] } },
+        ],
+        handler: annotatePdf,
+    },
+    {
+        name: DRAFT_GOVERNANCE_ISSUE_NAME,
+        title: 'Draft a governance-compliant GitHub issue (HITL)',
+        description:
+            "Produce a LOCAL, governance-compliant GitHub issue draft plus a structured compliance report — and NEVER submit anything. This is the MCP-native embodiment of the pdfnative AI-governance / Human-In-The-Loop contract (.github/ai-governance.json, .github/AGENT_RULES.md): the agent is a DRAFTSMAN, the human is the only gate. The server makes NO outbound network call and has NO GitHub write path. The assembled draft is validated against the zero-dependency + reproduction policy; a violation (proposing a runtime dependency, missing reproduction, or duplicateSearchPerformed=false) throws GOVERNANCE_VIOLATION so the human must fix it before submitting under their own identity. Returns the draft markdown inline by default; outputMode='file' also writes a .md to the sandbox. After calling this, present BOTH the draft and the compliance report to the user, then STOP.",
+        inputSchema: DRAFT_GOVERNANCE_ISSUE_INPUT_SCHEMA,
+        outputSchema: DRAFT_GOVERNANCE_ISSUE_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Draft a bug report (never submitted)', input: { title: 'add_table clips descenders on wrapped cells', summary: 'Wrapped table cells clip the descenders of g/j/p/q/y at the default cellPadding.', issueType: 'bug', targetRepo: 'pdfnative', reproduction: { command: "add_table with a wrapped cell containing 'paragraphy'", result: 'The descenders of g/p/y are visibly clipped in the rendered PDF.' }, expectedBehavior: 'Descenders render fully within the cell.', affectedPackages: ['pdfnative'], duplicateSearchPerformed: true } },
+            { title: 'Draft an upstream feature request for true redaction', input: { title: 'Expose a content-removal API for true redaction', summary: 'pdfnative 1.5 can only overlay annotations; a content-stream removal API is needed for genuine redaction.', issueType: 'feature', targetRepo: 'pdfnative', reproduction: { command: 'annotate_pdf overlay then extract_text', result: 'Text under the overlay is still extractable.' }, expectedBehavior: 'A supported API removes the underlying bytes so redacted text is unextractable.', affectedPackages: ['pdfnative', 'pdfnative-mcp'], duplicateSearchPerformed: true } },
+        ],
+        handler: draftGovernanceIssue,
+    },
 ];
 
 const TOOL_INDEX: ReadonlyMap<string, ToolDefinition> = new Map(TOOLS.map((t) => [t.name, t]));
 
-const SERVER_INSTRUCTIONS = `pdfnative-mcp bridges the zero-dependency 'pdfnative' v1.4 library to MCP. API version: 1.3.0 (stable).
+const SERVER_INSTRUCTIONS = `pdfnative-mcp bridges the zero-dependency 'pdfnative' v1.5 library to MCP. API version: 1.4.0 (stable).
 
 DECISION TREE — pick the right tool in one step:
   • Plain document (headings, paragraphs, lists)             → ${GENERATE_BASIC_PDF_NAME}
@@ -494,6 +548,7 @@ DECISION TREE — pick the right tool in one step:
   • Tabular / report data                                    → ${ADD_TABLE_NAME}
   • Interactive form (text fields, checkboxes, dropdowns)    → ${ADD_FORM_NAME}
   • Embed a JPEG/PNG into a PDF                              → ${EMBED_IMAGE_NAME}
+  • Add markup annotations (highlight, note, shapes, line)   → ${ANNOTATE_PDF_NAME}
   • Sign any PDF (auto-injects placeholder)                  → ${SIGN_PDF_NAME}
   • Customize signature placeholder before signing           → ${PREPARE_SIGNATURE_PLACEHOLDER_NAME} → ${SIGN_PDF_NAME}
   • Factur-X / ZUGFeRD invoice or any PDF with attachments   → ${ADD_ATTACHMENT_NAME}   (NOT generate_basic_pdf)
@@ -505,6 +560,12 @@ DECISION TREE — pick the right tool in one step:
   • Validate PDF/UA accessibility structure                  → ${VALIDATE_PDF_NAME}
   • Pull plain text from a PDF                               → ${EXTRACT_TEXT_NAME}
   • Pull embedded files back out (Factur-X XML, side-cars)   → ${EXTRACT_ATTACHMENTS_NAME}
+  • Draft a GitHub issue for human review (never submits)    → ${DRAFT_GOVERNANCE_ISSUE_NAME}
+
+AI-GOVERNANCE & HUMAN-IN-THE-LOOP (non-negotiable):
+  • This server is a DRAFTSMAN, never an autonomous submitter. It makes NO outbound network call and has NO GitHub write path.
+  • To propose a bug/feature/issue, call ${DRAFT_GOVERNANCE_ISSUE_NAME}: it returns a local, policy-checked draft + a compliance report. Present BOTH to the user, then STOP. The user reviews and submits manually under their own GitHub identity.
+  • Never propose adding a runtime dependency (hard blocker, GOVERNANCE_VIOLATION). Search open AND closed issues first (duplicateSearchPerformed must be true). Include a minimal, locally-executed reproduction.
 
 COMMON PITFALLS (read these to avoid retry loops):
   • Barcode 'data' is the RAW payload — do NOT URL-encode URLs. For a QR pointing to https://google.com just pass data: 'https://google.com'.
@@ -514,18 +575,47 @@ COMMON PITFALLS (read these to avoid retry loops):
   • sign_pdf RSA key must be PKCS#1 DER (field 'rsaKeyPkcs1DerBase64'). ECDSA key may be SEC1 or PKCS#8 DER (field 'ecPrivateKeyDerBase64') or the raw 32-byte scalar as 64 hex chars (field 'ecPrivateScalarHex'). DER keys are signed with a native constant-time node:crypto provider; the raw scalar uses the pure-JS path.
   • sign_pdf auto-injects a placeholder when missing — call it directly on ANY PDF unless you specifically need to customize the placeholder.
   • merge_pdfs / split_pdf / extract_pages reject ENCRYPTED PDFs (ENCRYPTED_SOURCE — decrypt first) and ALWAYS drop signatures + AcroForm (a page-tree edit invalidates them). They keep self-contained URI links unless dropAnnotations=true. Page indices/ranges are 0-based. split_pdf returns one PDF per range (file mode writes 'out-1.pdf', 'out-2.pdf', …); extract_pages returns a single PDF.
+  • annotate_pdf adds VISUAL OVERLAY markup only (highlight, sticky note, square/circle, line, freetext) via a non-destructive incremental update; it does NOT remove/redact underlying content (the covered text stays extractable). Encrypted sources are rejected (ENCRYPTED_SOURCE). Each annotation needs a 0-based 'page' and a 'rect' [x1,y1,x2,y2]; 'line' also needs 'start'/'end'.
   • For Factur-X / ZUGFeRD invoices, use add_attachment (PDF/A-3) — generate_basic_pdf cannot embed files.
   • PDF/A: pass pdfA='pdfa2b' for the widest reader compatibility. PDF/A-3 is required when you have attachments.
   • PDF/A text is now robust: embedded newlines ('\\n') in paragraphs are auto-split into separate paragraphs; the Euro sign and other CP-1252 symbols extract correctly (pdfnative 1.3); wrapped table cells get unique per-line MCIDs. Write naturally — no manual workarounds needed.
-  • generate_basic_pdf supports nested lists (a list item may be { text, items: [...] }), a document 'outline' (bookmarks; pass 'auto' to derive from headings) and 'pageLabels' (e.g. roman front-matter then decimal body). All PDF/A-safe.
+  • Math / technical symbols (∀ ∃ √ ∑ ∫ ∞ ± ÷ ×) render via add_international_text with the 'math' font: pass lang:['latin','math'] (or add 'math' to any script list) to route math codepoints to the bundled Noto Sans Math (OFL-1.1).
+  • generate_basic_pdf supports nested lists (a list item may be { text, items: [...] }), a document 'outline' (bookmarks; pass 'auto' to derive from headings) and 'pageLabels' (e.g. roman front-matter then decimal body). All PDF/A-safe. inspect_pdf now surfaces those page labels back as a 'pageLabels' array.
   • add_table supports per-cell 'cellBorders' and 'cellVAlign' (top/middle/bottom) — both engage the document backend. generate_basic_pdf, add_table and add_international_text accept 'viewerPreferences' (reader presentation hints, /ViewerPreferences).
   • add_international_text covers 24 scripts and COLRv1 colour emoji; pass 'lang' as a single code or an array (e.g. ["ar","emoji"]) for multi-script runs. Input is NFC-normalised by default; override with normalize ('NFC'|'NFD'|'NFKC'|'NFKD'|false).
   • generate_basic_pdf and add_table accept an optional text 'watermark' (e.g. { text: 'DRAFT' }). Opacity < 1.0 is rejected under pdfA='pdfa1b' (ISO 19005-1 forbids transparency) — use pdfa2b/2u/3b instead.
   • Round-trip: build an invoice with add_attachment, confirm with inspect_pdf (check:['attachments']), then pull the XML back with extract_attachments (filename:'factur-x.xml').
-  • outputMode='file' is only available when the host sets PDFNATIVE_MCP_OUTPUT_DIR; otherwise PDFs are returned as base64.
+  • outputMode='file' is only available when the host sets PDFNATIVE_MCP_OUTPUT_DIR; otherwise PDFs are returned as base64. draft_governance_issue writes a .md there when outputMode='file'.
   • TOKEN-FRUGAL READS: the read-only tools (inspect_pdf, verify_pdf, validate_pdf, extract_text, extract_attachments) accept verbosity:'summary' for a compact scalar-only verdict (drops large arrays / full text) and fields:[...] for dot-path projection (e.g. fields:['allValid']). Defaults are unchanged (full output). Generated PDFs are returned as an embedded resource block, not duplicated in structuredContent.
 
-Every tool ships JSON-Schema-typed inputs/outputs, _meta.apiVersion = '1.3.0', and worked-example _meta.examples. See docs/AI_GUIDE.md for a longer walk-through.`;
+Every tool ships JSON-Schema-typed inputs/outputs, _meta.apiVersion = '1.4.0', and worked-example _meta.examples. The server also exposes MCP prompts ('governance_contract', 'draft_issue_workflow'). See docs/AI_GUIDE.md for a longer walk-through and docs/guides/AI_GOVERNANCE.md for the HITL contract.`;
+
+function buildDraftGovernanceIssueResult(output: DraftGovernanceIssueResult, toolName: string): CallToolResult {
+    const where = output.outputMode === 'file' ? ` and written to ${output.filePath}` : '';
+    return {
+        content: [
+            {
+                type: 'text',
+                text:
+                    `${toolName}: DRAFT ONLY — not submitted${where}. ` +
+                    `${output.compliance.humanGate} Present the draft and compliance report below to the user; ` +
+                    `they must review and submit it themselves under their own GitHub identity.`,
+            },
+            { type: 'text', text: output.draftMarkdown },
+        ],
+        structuredContent: {
+            title: output.title,
+            issueType: output.issueType,
+            targetRepo: output.targetRepo,
+            outputMode: output.outputMode,
+            ...(output.filePath !== undefined ? { filePath: output.filePath } : {}),
+            sizeBytes: output.sizeBytes,
+            draftMarkdown: output.draftMarkdown,
+            warnings: output.warnings,
+            compliance: output.compliance,
+        },
+    };
+}
 
 function buildInspectResult(output: InspectPdfResult, toolName: string, input: unknown): CallToolResult {
     const full = output as unknown as Record<string, unknown>;
@@ -714,14 +804,65 @@ function buildErrorResult(err: unknown, toolName: string): CallToolResult {
     };
 }
 
+interface PromptDefinition {
+    readonly name: string;
+    readonly title: string;
+    readonly description: string;
+    readonly text: string;
+}
+
+/**
+ * MCP prompts surfacing the AI-governance / Human-In-The-Loop contract so any
+ * client can load the rules and the draft workflow directly. Read-only text;
+ * no arguments, no side effects.
+ */
+const PROMPTS: readonly PromptDefinition[] = [
+    {
+        name: 'governance_contract',
+        title: 'AI-governance & HITL contract',
+        description:
+            'The non-negotiable AI-governance / Human-In-The-Loop contract for pdfnative-mcp: the agent is a draftsman, the human is the only gate, zero runtime dependencies, no autonomous GitHub writes.',
+        text: GOVERNANCE_CONTRACT_SUMMARY,
+    },
+    {
+        name: 'draft_issue_workflow',
+        title: 'Human-in-the-loop issue workflow',
+        description:
+            'Step-by-step workflow for drafting a GitHub issue with the draft_governance_issue tool and handing it to a human for review and submission.',
+        text: DRAFT_ISSUE_WORKFLOW,
+    },
+];
+
+const PROMPT_INDEX: ReadonlyMap<string, PromptDefinition> = new Map(PROMPTS.map((p) => [p.name, p]));
+
 export function createServer(): Server {
     const server = new Server(
         { name: SERVER_NAME, version: SERVER_VERSION, title: SERVER_TITLE, description: SERVER_DESCRIPTION },
         {
-            capabilities: { tools: {} },
+            capabilities: { tools: {}, prompts: {} },
             instructions: SERVER_INSTRUCTIONS,
         },
     );
+
+    server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+        prompts: PROMPTS.map((p) => ({ name: p.name, title: p.title, description: p.description })),
+    }));
+
+    server.setRequestHandler(GetPromptRequestSchema, async (request: GetPromptRequest): Promise<GetPromptResult> => {
+        const prompt = PROMPT_INDEX.get(request.params.name);
+        if (prompt === undefined) {
+            throw new ToolError('UNKNOWN_PROMPT', `Unknown prompt: ${request.params.name}`);
+        }
+        return {
+            description: prompt.description,
+            messages: [
+                {
+                    role: 'user',
+                    content: { type: 'text', text: prompt.text },
+                },
+            ],
+        };
+    });
 
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
         tools: TOOLS.map((t) => ({
