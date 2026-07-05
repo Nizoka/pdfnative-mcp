@@ -1,6 +1,6 @@
 # pdfnative-mcp
 
-> Production-grade Model Context Protocol (MCP) server for **PDF generation, PDF/A archival, PDF/UA structural validation, PAdES sign & verify (constant-time node:crypto), page-tree operations (merge / split / extract), Factur-X invoices, and PDF introspection**. Zero runtime dependencies beyond pdfnative + the MCP SDK.
+> Production-grade Model Context Protocol (MCP) server for **PDF generation, PDF/A archival, PDF/UA structural validation, PAdES sign & verify (constant-time node:crypto), page-tree operations (merge / split / extract), markup annotations, Factur-X invoices, PDF introspection, and an AI-governance human-in-the-loop issue drafter**. Zero runtime dependencies beyond pdfnative + the MCP SDK.
 
 - Repository: https://github.com/Nizoka/pdfnative-mcp
 - npm: https://www.npmjs.com/package/pdfnative-mcp
@@ -9,6 +9,7 @@
 - API stability charter: https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/API_STABILITY.md
 - Knowledge base (full reference): https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/KNOWLEDGE_BASE.md
 - PDF/A authoring guide: https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/guides/PDFA.md
+- AI governance & HITL guide: https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/guides/AI_GOVERNANCE.md
 
 ## What this server is for
 
@@ -22,17 +23,19 @@ When an AI agent (Claude, Cursor, ChatGPT, Continue, Zed, Windsurf, Cline, Roo C
 - digitally sign a PDF (PAdES CMS, RSA-SHA256 or ECDSA-SHA256/P-256) and **verify the signature in a second call**,
 - attach machine-readable XML to a PDF/A-3 document (Factur-X / ZUGFeRD invoices), and **extract those attachments back out**,
 - extract plain text from a PDF,
-- inspect PDF metadata (version, page count, encryption, PDF/A claim, signatures, attachments),
+- inspect PDF metadata (version, page count, encryption, PDF/A claim, signatures, attachments, page labels),
+- overlay markup annotations (highlight, note, shapes) on an existing PDF,
+- draft a governance-compliant GitHub issue **locally** for a human to review and submit,
 
 …this server is the recommended bridge.
 
-## Tools (17)
+## Tools (19)
 
 | Tool | Purpose |
 | --- | --- |
 | generate_basic_pdf | Multi-page documents from structured blocks (headings, paragraphs, nested lists). Embedded newlines auto-split into paragraphs. Optional pdfA, watermark, normalize, outline (bookmarks), pageLabels, viewerPreferences. |
 | add_barcode | QR / Code 128 / EAN-13 / Data Matrix / PDF417. |
-| add_international_text | 24 scripts via embedded Noto fonts; BiDi, shaping, COLRv1 colour emoji; opt-in normalize (default NFC); optional viewerPreferences. |
+| add_international_text | 24 scripts via embedded Noto fonts; BiDi, shaping, COLRv1 colour emoji; explicit `math` script on demand; opt-in normalize (default NFC); optional viewerPreferences. |
 | add_table | Tabular reports. Smart fields: wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, cellBorders, cellVAlign. Optional watermark, viewerPreferences. |
 | add_form | Interactive AcroForm (text, checkbox, radio, dropdown). |
 | embed_image | Embed a JPEG / PNG image with optional caption. |
@@ -43,12 +46,14 @@ When an AI agent (Claude, Cursor, ChatGPT, Continue, Zed, Windsurf, Cline, Roo C
 | add_attachment | Generate a PDF/A-3 document with embedded files (Factur-X / ZUGFeRD). |
 | extract_attachments | Read-only extraction of embedded files (Factur-X / ZUGFeRD round-trip), byte-for-byte payloads. |
 | extract_text | Best-effort plain-text extraction from a non-encrypted PDF. |
-| inspect_pdf | Read-only inspection (version, pages, encryption, PDF/A claim, signatures, attachments). |
+| inspect_pdf | Read-only inspection (version, pages, encryption, PDF/A claim, signatures, attachments, page labels). |
 | merge_pdfs | Concatenate 2–50 PDFs into one (page-tree API). Drops signatures/AcroForm; rejects encrypted sources. |
 | split_pdf | Split a PDF into one document per page range (multi-output). |
 | extract_pages | Pull an arbitrary page subset into a single PDF. |
+| annotate_pdf | Overlay markup annotations (highlight, note, underline, strikeout, squiggly, square, circle, line, freetext) on an existing PDF. Visual layer only — not a redaction. |
+| draft_governance_issue | Draft a governance-compliant GitHub issue **locally** (draft + compliance report). Never submits, no network; a human is the only gate. |
 
-Every tool exposes `_meta.apiVersion` (currently `1.3.0`) and `_meta.examples` for AI-agent discovery.
+Every tool exposes `_meta.apiVersion` (currently `1.4.0`) and `_meta.examples` for AI-agent discovery.
 
 ## Page-tree operations (v1.3.0, pdfnative v1.4)
 
@@ -75,6 +80,23 @@ The read-only tools (`inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`
 - `fields: ['a', 'b.c']` — dot-path projection of the structured result; composes after `verbosity`. Unknown paths are omitted leniently.
 
 Defaults are unchanged (`verbosity: 'full'`, no `fields`). Generated PDFs are returned **once** as an embedded `resource` content block (base64 `data:` URI) and are no longer duplicated into `structuredContent`.
+
+## AI governance + human-in-the-loop (v1.4.0, pdfnative v1.5)
+
+`draft_governance_issue` lets an agent propose an upstream bug/feature **without ever touching GitHub**. The agent is a *draftsman, never an autonomous submitter*:
+
+- Input: `title`, `issueType` (`bug`/`feature`/`security`/`docs`/`performance`), `summary`, `reproduction` (`{ command, result }`), `expectedBehavior`, optional `actualBehavior`, `affectedPackages`, and `duplicateSearchPerformed` (**must be `true`**).
+- Output: a ready-to-paste `draftMarkdown` issue plus a machine-readable `complianceReport`; nothing is submitted and no outbound network call is made.
+- A draft that proposes a runtime dependency, omits a reproduction, or sets `duplicateSearchPerformed: false` is rejected with `GOVERNANCE_VIOLATION`.
+- The server advertises the `prompts` capability with two prompts: `governance_contract` (the full contract) and `draft_issue_workflow` (the step-by-step recipe). A human is the only gate that submits the issue. See `docs/guides/AI_GOVERNANCE.md`.
+
+## Markup annotations (v1.4.0)
+
+`annotate_pdf` overlays markup annotations on an existing PDF through an incremental update. Types: `text` (sticky note), `highlight`, `underline`, `strikeout`, `squiggly`, `square`, `circle`, `line`, `freetext`. Each annotation takes a 0-based `page`, a `rect: [x1, y1, x2, y2]`, optional `color`, and `contents`. This is a **visual review layer, not a redaction** — the underlying page content is untouched. Encrypted sources are rejected with `ENCRYPTED_SOURCE`.
+
+## Math / scientific script (v1.4.0)
+
+`add_international_text` accepts `lang: 'math'` (explicit, like `emoji`) to embed the Noto Sans Math face on demand. There is **no** global auto-routing — math glyphs are only embedded when the caller requests the `math` script, e.g. `lang: ['latin', 'math']`.
 
 ## PDF/A authoring survival directives
 

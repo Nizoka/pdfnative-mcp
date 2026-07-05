@@ -1,0 +1,18 @@
+{
+  "description": "Draft a governance-compliant GitHub issue for HUMAN review — never submitted (pdfnative-mcp v1.4 AI-governance / Human-In-The-Loop). draft_governance_issue assembles a local Markdown draft plus a structured compliance report and validates it against the zero-dependency + reproduction policy. The server makes NO outbound network call and has NO GitHub write path: present the returned draft and compliance report to the user, then STOP — they review and submit it manually under their own GitHub identity. Fully self-contained (no PDF needed).",
+  "tool": "draft_governance_issue",
+  "arguments": {
+    "title": "add_table clips descenders on wrapped cells at default padding",
+    "summary": "When a table cell wraps onto multiple lines, the descenders of g/j/p/q/y in the last line are clipped at the default cellPadding. Increasing cellPadding works around it but should not be required.",
+    "issueType": "bug",
+    "targetRepo": "pdfnative",
+    "reproduction": {
+      "command": "add_table with headers ['Note'] and a wrapped cell containing 'paragraphy typography'",
+      "result": "The descenders of g/p/y in the wrapped line are visibly clipped in the rendered PDF."
+    },
+    "expectedBehavior": "Descenders render fully within the cell at the default padding.",
+    "actualBehavior": "The bottom ~1pt of g/j/p/q/y is clipped on wrapped lines.",
+    "affectedPackages": ["pdfnative", "pdfnative-mcp"],
+    "duplicateSearchPerformed": true
+  }
+}

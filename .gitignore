@@ -9,3 +9,8 @@ coverage/
 .idea/
 out/
 *.tsbuildinfo
+
+# AI-governance issue drafts are local work-in-progress; never commit them
+# (the staging-area README is force-added and stays tracked).
+.github/drafts/*
+!.github/drafts/README.md

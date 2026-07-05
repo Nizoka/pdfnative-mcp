@@ -13,9 +13,6 @@
  * transparently by pdfnative. Input is NFC-normalised so decomposed sequences
  * map to the widest possible glyph coverage.
  */
-import { createRequire } from 'node:module';
-import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import {
     buildDocumentPDFBytes,
     registerFont,
@@ -26,6 +23,7 @@ import {
 import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { importFontModule } from '../fonts.js';
 import { splitParagraphSegments } from '../text.js';
 import { PDF_A_ENUM, PdfASchema } from '../pdfa.js';
 import { NORMALIZE_ENUM, NormalizeSchema } from '../normalize.js';
@@ -67,26 +65,12 @@ const LANG_TO_FONT_FILE: Readonly<Record<string, string>> = {
     // COLRv1 colour emoji (pdfnative v1.3.0). Falls back to monochrome glyphs
     // automatically inside pdfnative when a colour table is unavailable.
     emoji: 'noto-color-emoji-data.js',
+    // Mathematical / technical symbols (pdfnative v1.5.0, Noto Sans Math OFL-1.1).
+    // Combine with a base script (e.g. lang: ['latin','math']) to render ∀ ∃ √ ∑ ∫ ∞ ± ÷ ×.
+    math: 'noto-sans-math-data.js',
 };
 
 const SUPPORTED_LANGS = Object.keys(LANG_TO_FONT_FILE) as ReadonlyArray<keyof typeof LANG_TO_FONT_FILE>;
-
-/** Resolve pdfnative's bundled fonts directory in a way that bypasses the package's
- *  `exports` map (the font modules are listed in `files` but not in `exports`). */
-function getFontsDir(): string {
-    const requireFn = createRequire(import.meta.url);
-    // Resolve the package entrypoint (dist/index.*) and walk up to package root.
-    // This avoids resolving a non-exported subpath like `pdfnative/package.json`.
-    const entryPath = requireFn.resolve('pdfnative');
-    return path.resolve(path.dirname(entryPath), '..', 'fonts');
-}
-
-/** Lazily import a Noto font data module from disk and unwrap a default export if present. */
-async function importFontModule(fontFile: string): Promise<unknown> {
-    const fileUrl = pathToFileURL(path.join(getFontsDir(), fontFile)).href;
-    const mod = (await import(fileUrl)) as Record<string, unknown>;
-    return 'default' in mod ? mod['default'] : mod;
-}
 
 const _registered = new Set<string>();
 function ensureFontRegistered(lang: string): void {

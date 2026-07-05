@@ -85,11 +85,17 @@ Priorities may shift based on community feedback and sponsorship.
 - [x] **Table cell borders & alignment** — `add_table` gains `cellBorders` and `cellVAlign`.
 - [x] **Constant-time signing** — `sign_pdf` signs RSA and EC-DER keys through a `node:crypto` provider with a transparent pure-JS fallback; signatures stay interoperable.
 
----
+### v1.4.0 — AI governance + HITL, annotations, pdfnative 1.5
 
-## In Progress
+- [x] **pdfnative v1.5.0** — dependency bump `^1.4.0` → `^1.5.0` (additive, no breaking changes).
+- [x] **Tool `annotate_pdf`** — overlay markup annotations (highlight, note, underline, strikeout, squiggly, square, circle, line, freetext) on an existing PDF via incremental update. Visual review layer, **not** a redaction. **18th tool.**
+- [x] **Tool `draft_governance_issue`** — draft a governance-compliant GitHub issue **locally** (draft `.md` + machine-readable compliance report) for human review; never submits, no outbound network; rejects contract breaches with `GOVERNANCE_VIOLATION`. **19th tool.**
+- [x] **AI governance + human-in-the-loop** — the agent is a *draftsman, never an autonomous submitter*; contract files under `.github/` (`ai-governance.json`, `AGENT_RULES.md`), a `verify:issue` CLI gate, and the `docs/guides/AI_GOVERNANCE.md` guide.
+- [x] **MCP prompts** — the server advertises the `prompts` capability with `governance_contract` and `draft_issue_workflow`.
+- [x] **Page labels in `inspect_pdf`** — read-only surfacing of `/PageLabels` ranges.
+- [x] **Math / scientific script** — `add_international_text` accepts the explicit `math` lang (Noto Sans Math), embedded on demand only (no global auto-routing).
 
-_v1.3.0 is the active release. `redact_pdf` and an encrypted-PDF round-trip remain blocked on upstream pdfnative APIs (see Blocked below)._
+_v1.4.0 is the active release. `redact_pdf` stays **deferred** and an encrypted-PDF round-trip remains blocked on upstream pdfnative APIs (see Blocked below)._
 
 ---
 
@@ -98,12 +104,14 @@ _v1.3.0 is the active release. `redact_pdf` and an encrypted-PDF round-trip rema
 ### Blocked upstream
 
 `merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative
-v1.4.0's page-tree export API. The remaining items stay **blocked**: pdfnative
-does not yet export a content-redaction API or a Standard Security Handler writer,
-and implementing them on raw primitives would contradict this project's faithful,
-thin-wrapper philosophy. They will ship once pdfnative exports the required APIs.
+v1.4.0's page-tree export API; `annotate_pdf` shipped in v1.4.0 on pdfnative
+v1.5.0's annotation writer. The remaining items stay **blocked/deferred**:
+pdfnative does not yet export a content-*removal* API or a Standard Security
+Handler writer, and implementing them on raw primitives would contradict this
+project's faithful, thin-wrapper philosophy. They will ship once pdfnative
+exports the required APIs.
 
-- [ ] **Tool `redact_pdf`** — overlay-mode (annotation rectangles + replacement text); blocked on pdfnative annotation read/write API. Content-stream redaction tracked separately.
+- [ ] **Tool `redact_pdf`** — **deferred by design.** pdfnative 1.5's annotation writer can only *overlay* content; an overlay-only "redaction" would leave the original bytes intact and create false security, which fails this project's honesty bar. Blocked on an upstream true content-removal API (tracked as a `draft_governance_issue` feature request).
 - [ ] **Encrypted-PDF round-trip fixtures** — once pdfnative exposes a Standard Security Handler writer.
 - [ ] **Per-tool HTTP page-by-page streaming** — once MCP allows partial structuredContent envelopes.
 

@@ -2,7 +2,7 @@
 
 > Reference for AI assistants (GitHub Copilot, Claude, Cursor, Continue, Zed, Windsurf, Cline, Roo Code)
 > and human contributors. Captures the full context needed to understand, extend, and debug
-> pdfnative-mcp **v1.3.0** without reading every source file.
+> pdfnative-mcp **v1.4.0** without reading every source file.
 
 > If you are an AI agent calling pdfnative-mcp from a chat session, also read
 > [`AI_GUIDE.md`](AI_GUIDE.md) — the short, action-oriented decision tree.
@@ -13,17 +13,18 @@
 
 **What is pdfnative-mcp?**
 An MCP (Model Context Protocol) server that bridges the zero-dependency
-[`pdfnative`](https://github.com/Nizoka/pdfnative) library (v1.4.x) to AI clients
+[`pdfnative`](https://github.com/Nizoka/pdfnative) library (v1.5.x) to AI clients
 (Claude Desktop, ChatGPT, Cursor, Continue, Zed, Windsurf, Cline, Roo Code, …).
-It exposes **17** PDF tools over a stdio transport so AI agents can generate, sign,
-verify, validate, attach, inspect, extract, merge, split and carve PDF files.
+It exposes **19** PDF tools over a stdio transport so AI agents can generate, sign,
+verify, validate, attach, inspect, extract, merge, split, carve, annotate PDF files,
+and draft governance-compliant GitHub issues for human review.
 
 **Philosophy:**
 - `pdfnative` is the only runtime dependency — all PDF logic lives there.
 - The MCP server is a thin, secure dispatch layer: validate inputs with Zod → call pdfnative → emit PDF as base64 or to a sandboxed file.
 - Every tool is fully self-contained (its own file in [src/tools/](../src/tools)).
 - Security at every boundary: Zod validation on all inputs, path traversal prevention on file output, no key-material echo in logs or errors.
-- Every tool ships `_meta.apiVersion = '1.3.0'` and worked-example `_meta.examples` so AI clients can introspect supported behavior — see [`API_STABILITY.md`](API_STABILITY.md).
+- Every tool ships `_meta.apiVersion = '1.4.0'` and worked-example `_meta.examples` so AI clients can introspect supported behavior — see [`API_STABILITY.md`](API_STABILITY.md).
 
 **Runtime:** Node.js ≥ 22 (ESM, strict TypeScript). Transport: stdio.
 
@@ -48,8 +49,11 @@ src/
 ├── normalize.ts      # shared Unicode-normalization schema
 ├── doc-features.ts   # shared schemas/mappers: nested lists, outline, page labels, viewer prefs
 ├── pagetree.ts       # shared page-tree error mapping (merge/split/extract)
+├── fonts.ts          # shared font-module directory + loader helpers
+├── governance.ts     # AI-governance contract: issue validation + prompt copy
+├── version.ts        # single source of truth for PDFNATIVE_MCP_VERSION
 ├── crypto-provider.ts# node:crypto constant-time signature provider
-├── errors.ts         # ToolError + SecurityError
+├── errors.ts         # ToolError + SecurityError + GovernanceError
 └── tools/
     ├── generate-basic-pdf.ts          # generate_basic_pdf
     ├── add-barcode.ts                 # add_barcode
@@ -67,7 +71,9 @@ src/
     ├── extract-text.ts                # extract_text
     ├── merge-pdfs.ts                  # merge_pdfs (page-tree)
     ├── split-pdf.ts                   # split_pdf (page-tree, multi-output)
-    └── extract-pages.ts               # extract_pages (page-tree)
+    ├── extract-pages.ts               # extract_pages (page-tree)
+    ├── annotate-pdf.ts                # annotate_pdf (markup overlay)
+    └── draft-governance-issue.ts      # draft_governance_issue (local HITL draft)
 ```
 
 ### Request Dispatch Flow
@@ -85,6 +91,8 @@ src/cli.ts
 src/server.ts  (createServer)
   ListToolsRequest  → TOOLS registry → JSON schemas + _meta (apiVersion + examples)
   CallToolRequest   → TOOL_INDEX.get(name) → handler(args)
+  ListPromptsRequest→ PROMPTS registry (governance_contract, draft_issue_workflow)
+  GetPromptRequest  → prompt copy from src/governance.ts
     │
     ▼
 src/tools/<tool>.ts
@@ -123,19 +131,19 @@ interface ToolDefinition {
         openWorldHint?: boolean;
     };
     examples?: ReadonlyArray<{ title: string; input: Record<string, unknown> }>;
-    handler: (args: unknown) => Promise<OutputResult | MultiOutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult | ValidatePdfResult | ExtractAttachmentsResult>;
+    handler: (args: unknown) => Promise<OutputResult | MultiOutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult | ValidatePdfResult | ExtractAttachmentsResult | DraftGovernanceIssueResult>;
 }
 ```
 
 A `TOOL_INDEX: ReadonlyMap<string, ToolDefinition>` is derived from the array for O(1) lookup on `CallToolRequest`.
 
 **`_meta` per tool** — emitted in the `ListTools` response so AI clients can introspect:
-- `_meta.apiVersion` = `'1.3.0'` (see [`API_STABILITY.md`](API_STABILITY.md) for the bump policy)
+- `_meta.apiVersion` = `'1.4.0'` (see [`API_STABILITY.md`](API_STABILITY.md) for the bump policy)
 - `_meta.examples`   = at least one worked example per tool
 
 **Server metadata:**
 - `SERVER_NAME = 'pdfnative-mcp'`
-- `SERVER_VERSION = '1.3.0'`
+- `SERVER_VERSION = '1.4.0'`
 - `serverInfo._meta.mcpName = 'io.github.Nizoka/pdfnative-mcp'` (registry ID in `package.json` `mcpName` / `server.json` `name`; uses the canonical GitHub login casing `Nizoka` so the MCP registry's case-sensitive validation accepts the lowercase npm package `pdfnative-mcp`)
 - `SERVER_INSTRUCTIONS` — high-level decision tree + common-pitfall guide returned to the client in `serverInfo.instructions`
 
@@ -193,7 +201,7 @@ For Factur-X / ZUGFeRD invoices use [`add_attachment`](#add_attachment) instead 
 
 ### `add_international_text`
 
-24 scripts via embedded Noto fonts (Arabic, Hebrew, Thai, Japanese/Chinese/Korean, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Turkish, Polish, Vietnamese, Latin, …). BiDi isolates + Arabic harakat + complex-script shaping + COLRv1 colour emoji handled automatically. Input is NFC-normalised by default (`normalize` defaults to `'NFC'`; override with `'NFD'`/`'NFKC'`/`'NFKD'`) for maximal glyph coverage, and embedded newlines auto-split into paragraphs. Lang codes added in v1.1.0: `te` (Telugu), `si` (Sinhala), `bo` (Tibetan), `km` (Khmer), `my` (Myanmar), `am` (Ethiopic); the `emoji` code now maps to `noto-color-emoji-data.js` (COLRv1, monochrome fallback).
+24 scripts via embedded Noto fonts (Arabic, Hebrew, Thai, Japanese/Chinese/Korean, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Turkish, Polish, Vietnamese, Latin, …). BiDi isolates + Arabic harakat + complex-script shaping + COLRv1 colour emoji handled automatically. Input is NFC-normalised by default (`normalize` defaults to `'NFC'`; override with `'NFD'`/`'NFKC'`/`'NFKD'`) for maximal glyph coverage, and embedded newlines auto-split into paragraphs. Lang codes added in v1.1.0: `te` (Telugu), `si` (Sinhala), `bo` (Tibetan), `km` (Khmer), `my` (Myanmar), `am` (Ethiopic); the `emoji` code now maps to `noto-color-emoji-data.js` (COLRv1, monochrome fallback). **v1.4.0:** the explicit `math` code maps to `noto-sans-math-data.js` (Noto Sans Math), embedded on demand only when requested (e.g. `lang: ['latin', 'math']`) — there is no global auto-routing.
 
 ### `add_table`
 
@@ -260,6 +268,7 @@ Response shape:
 Structural / security inspection.
 - `version`, `pageCount`, `encryption` (`none|aes-128|aes-256|rc4|unknown`), `pdfA` (`1B|2B|2U|3B|null`)
 - `signatureCount`, `hasSignaturePlaceholder`, `attachments[]`
+- `pageLabels[]` — `/PageLabels` ranges (`{ startPage, style?, prefix?, start? }`) when present, else omitted (v1.4.0)
 - `/Info` dictionary + optional `perPage` sizes
 - Optional `check[]` for CI-style assertions: `'pdfa' | 'signed' | 'encrypted' | 'placeholder' | 'attachments'`. `checksPassed` is the AND of all requested checks.
 
@@ -290,6 +299,20 @@ Splits one PDF into one document per page range (`src/tools/split-pdf.ts`). Inpu
 ### `extract_pages`
 
 Pulls an arbitrary page subset into a single PDF (`src/tools/extract-pages.ts`). Inputs: `pdfBase64`, `pages: number[]` (0-based, max 5000, order preserved), optional `dropAnnotations`, optional `maxOutputSizeBytes`. Returns a single `OutputResult`. Out-of-range indices and encrypted sources are rejected (`PDF_PARSE_FAILED` / `ENCRYPTED_SOURCE`).
+
+### `annotate_pdf`
+
+Overlays markup annotations on an existing PDF via pdfnative's incremental-update annotation writer (`src/tools/annotate-pdf.ts`). Inputs: `pdfBase64`, `annotations: [{ type, page, rect, color?, contents?, … }]`, plus the shared `outputMode`/`outputPath`. Types: `text` (sticky note), `highlight`, `underline`, `strikeout`, `squiggly`, `square`, `circle`, `line`, `freetext` — each mapped to a typed `MarkupAnnotation` union by `toMarkupAnnotation()`. `page` is 0-based and bounds-checked; `rect` is `[x1, y1, x2, y2]` in PDF points. This is a **visual overlay, not a redaction** — the underlying content bytes are untouched. Encrypted sources are rejected with `ENCRYPTED_SOURCE`.
+
+### `draft_governance_issue`
+
+Drafts a governance-compliant GitHub issue **locally** for human review (`src/tools/draft-governance-issue.ts`). It performs **no** network I/O and never submits — the agent is a draftsman, a human is the only gate. Inputs: `title`, `issueType` (`bug|feature|security|docs|performance`), `summary`, `reproduction: { command, result }`, `expectedBehavior`, optional `actualBehavior`, `targetRepo` (default `pdfnative-mcp`), `affectedPackages` (default `['pdfnative-mcp']`), `duplicateSearchPerformed` (**must be `true`**), plus `outputMode` (`'inline'|'file'`) / `outputPath`. Returns `{ draftMarkdown, complianceReport, … }`. Contract enforcement lives in `src/governance.ts` (`validateIssueMarkdown`): proposing a runtime dependency, omitting the reproduction, or `duplicateSearchPerformed: false` throws `GovernanceError('GOVERNANCE_VIOLATION')`. In `file` mode the draft `.md` is written through `writeSandboxedText()` (same sandbox guards as PDF output, `.md` extension). The contract source of truth is under `.github/` (`ai-governance.json`, `AGENT_RULES.md`); the narrative guide is [`guides/AI_GOVERNANCE.md`](guides/AI_GOVERNANCE.md).
+
+### MCP prompts
+
+The server advertises the `prompts` capability (`ListPrompts` / `GetPrompt`). Two prompts, sourced from `src/governance.ts`:
+- `governance_contract` — the full AI-governance contract the agent must honour.
+- `draft_issue_workflow` — the step-by-step recipe for using `draft_governance_issue`.
 
 ---
 
@@ -335,6 +358,10 @@ interface MultiOutputResult {
 
 Each part is capped at 50 MiB and the aggregate at 200 MiB (`MAX_MULTI_OUTPUT_BYTES`); `emitPdfMulti()` writes indexed sandbox files or returns one base64 part per range.
 
+### Text output (`writeSandboxedText`)
+
+`draft_governance_issue` in `file` mode writes its `.md` draft through `writeSandboxedText(text, outputPath, '.md')`, which reuses `resolveSandboxedPath()` (now parameterised on the allowed extension) so the draft is subject to the exact same sandbox guards as PDF output (relative path, no traversal, no NUL, enforced extension).
+
 ---
 
 ## 6. Caching ([src/cache.ts](../src/cache.ts))
@@ -352,6 +379,9 @@ class ToolError extends Error {
 }
 class SecurityError extends ToolError {
     code = 'SECURITY_VIOLATION';
+}
+class GovernanceError extends ToolError {
+    code = 'GOVERNANCE_VIOLATION';   // draft_governance_issue contract breach
 }
 ```
 

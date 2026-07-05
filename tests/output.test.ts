@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { emitPdf, emitPdfMulti, resolveSandboxedPath, getOutputSandbox } from '../src/output.js';
+import { emitPdf, emitPdfMulti, resolveSandboxedPath, getOutputSandbox, writeSandboxedText } from '../src/output.js';
 import { SecurityError, ToolError } from '../src/errors.js';
 
 const ENV_KEY = 'PDFNATIVE_MCP_OUTPUT_DIR';
@@ -50,6 +50,28 @@ describe('output sandbox', () => {
 
     it('rejects non-pdf extension', () => {
         expect(() => resolveSandboxedPath('foo.exe')).toThrow(ToolError);
+    });
+
+    it('accepts a custom extension for text artifacts', () => {
+        const resolved = resolveSandboxedPath('drafts/issue.md', '.md');
+        expect(resolved.startsWith(sandboxDir)).toBe(true);
+        expect(resolved.toLowerCase().endsWith('.md')).toBe(true);
+    });
+
+    it('writes a sandboxed .md text artifact', async () => {
+        const { filePath, sizeBytes } = await writeSandboxedText('# Draft\n\nbody', 'drafts/issue.md', '.md');
+        expect(filePath.startsWith(sandboxDir)).toBe(true);
+        const written = await fs.readFile(filePath, 'utf8');
+        expect(written).toBe('# Draft\n\nbody');
+        expect(sizeBytes).toBe(Buffer.byteLength('# Draft\n\nbody', 'utf8'));
+    });
+
+    it('rejects a text artifact whose extension does not match', async () => {
+        await expect(writeSandboxedText('x', 'issue.txt', '.md')).rejects.toThrow(ToolError);
+    });
+
+    it('rejects a traversal path for a text artifact', async () => {
+        await expect(writeSandboxedText('x', '../escape.md', '.md')).rejects.toThrow(SecurityError);
     });
 
     it('refuses file output when sandbox is unset', async () => {

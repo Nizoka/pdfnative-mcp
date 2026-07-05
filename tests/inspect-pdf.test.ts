@@ -39,6 +39,33 @@ describe('inspect_pdf', () => {
         expect(out.perPage![0].height).toBeGreaterThan(0);
     });
 
+    it('surfaces authored page labels via getPageLabels (pdfnative v1.5)', async () => {
+        const gen = await generateBasicPdf({
+            title: 'Labelled',
+            pageLabels: [
+                { startPage: 0, style: 'roman' },
+                { startPage: 1, style: 'decimal', start: 1 },
+            ],
+            blocks: [
+                { type: 'heading', text: 'Front', level: 1 },
+                { type: 'pageBreak' },
+                { type: 'heading', text: 'Body', level: 1 },
+            ],
+        });
+        const out = await inspectPdf({ pdfBase64: gen.base64 as string });
+        expect(Array.isArray(out.pageLabels)).toBe(true);
+        expect(out.pageLabels!.length).toBe(2);
+        expect(out.pageLabels![0].startPage).toBe(0);
+        expect(out.pageLabels![0].style).toBe('roman');
+        expect(out.pageLabels![1].style).toBe('decimal');
+    });
+
+    it('omits pageLabels for a document without a /PageLabels tree', async () => {
+        const pdfBase64 = await buildSamplePdf();
+        const out = await inspectPdf({ pdfBase64 });
+        expect(out.pageLabels).toBeUndefined();
+    });
+
     it('counts signature placeholder fields', async () => {
         const placeholder = await prepareSignaturePlaceholder({
             title: 'Needs sig',

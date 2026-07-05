@@ -14,7 +14,7 @@ describe('server', () => {
 
     it('exposes stable metadata', () => {
         expect(__serverMetadata.name).toBe('pdfnative-mcp');
-        expect(__serverMetadata.version).toBe('1.3.0');
+        expect(__serverMetadata.version).toBe('1.4.0');
     });
 
     it('advertises a human-readable title and description in serverInfo (MCP Implementation)', () => {
@@ -23,11 +23,11 @@ describe('server', () => {
         expect(typeof __serverMetadata.title).toBe('string');
         expect(__serverMetadata.title.length).toBeGreaterThan(0);
         expect(__serverMetadata.description).toMatch(/MCP server/i);
-        expect(__serverMetadata.description).toMatch(/17 tools/);
+        expect(__serverMetadata.description).toMatch(/19 tools/);
     });
 
     it('SERVER_INSTRUCTIONS advertises decision tree and pitfalls for AI clients', () => {
-        expect(__serverInstructions).toMatch(/pdfnative.*v1\.4/);
+        expect(__serverInstructions).toMatch(/pdfnative.*v1\.5/);
         expect(__serverInstructions).toContain('DECISION TREE');
         expect(__serverInstructions).toContain('COMMON PITFALLS');
         // Cite each tool by name in the decision tree.
@@ -36,9 +36,36 @@ describe('server', () => {
             'add_form', 'embed_image', 'prepare_signature_placeholder', 'sign_pdf',
             'verify_pdf', 'validate_pdf', 'inspect_pdf', 'add_attachment', 'extract_text',
             'extract_attachments', 'merge_pdfs', 'split_pdf', 'extract_pages',
+            'annotate_pdf', 'draft_governance_issue',
         ]) {
             expect(__serverInstructions).toContain(t);
         }
+    });
+
+    it('exposes MCP prompts for the AI-governance contract and issue workflow', async () => {
+        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
+
+        const listPrompts = server._requestHandlers.get('prompts/list');
+        expect(listPrompts).toBeDefined();
+        const promptList = (await listPrompts!({ method: 'prompts/list', params: {} })) as {
+            prompts: Array<{ name: string; title?: string; description?: string }>;
+        };
+        const promptNames = promptList.prompts.map((p) => p.name).sort();
+        expect(promptNames).toEqual(['draft_issue_workflow', 'governance_contract']);
+
+        const getPrompt = server._requestHandlers.get('prompts/get');
+        expect(getPrompt).toBeDefined();
+        const got = (await getPrompt!({
+            method: 'prompts/get',
+            params: { name: 'governance_contract' },
+        })) as { messages: Array<{ role: string; content: { type: string; text: string } }> };
+        expect(got.messages[0]?.role).toBe('user');
+        expect(got.messages[0]?.content.text).toMatch(/DRAFTSMAN/);
+
+        // Unknown prompt names are rejected.
+        await expect(
+            getPrompt!({ method: 'prompts/get', params: { name: 'nope' } }),
+        ).rejects.toThrow();
     });
 
     it('lists all tools', async () => {
@@ -57,6 +84,8 @@ describe('server', () => {
             'add_form',
             'add_international_text',
             'add_table',
+            'annotate_pdf',
+            'draft_governance_issue',
             'embed_image',
             'extract_attachments',
             'extract_pages',
@@ -73,7 +102,7 @@ describe('server', () => {
 
         // Every tool advertises _meta.apiVersion and at least one example.
         for (const t of response.tools) {
-            expect(t._meta?.apiVersion).toBe('1.3.0');
+            expect(t._meta?.apiVersion).toBe('1.4.0');
             expect(Array.isArray(t._meta?.examples)).toBe(true);
             expect((t._meta?.examples ?? []).length).toBeGreaterThan(0);
         }
