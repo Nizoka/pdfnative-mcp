@@ -41,10 +41,20 @@ const REQUIRED_FIELDS = [
 ];
 
 /**
+ * The outcome of validating a draft issue against the governance policy.
+ * Mirrors the `IssueValidationResult` interface in src/governance.ts.
+ *
+ * @typedef {Object} IssueValidationResult
+ * @property {boolean}  ok       True when no blocking policy errors were found.
+ * @property {string[]} errors   Blocking policy violations (empty when `ok`).
+ * @property {string[]} warnings Non-blocking advisories (e.g. missing fields).
+ */
+
+/**
  * Validate the text of a draft issue.
  *
  * @param {string} content Raw markdown.
- * @returns {{ ok: boolean, errors: string[], warnings: string[] }}
+ * @returns {IssueValidationResult}
  */
 export function validateIssueMarkdown(content) {
     const errors = [];

@@ -117,7 +117,7 @@ export const DRAFT_GOVERNANCE_ISSUE_INPUT_SCHEMA = {
 export const DRAFT_GOVERNANCE_ISSUE_OUTPUT_SCHEMA = {
     type: 'object',
     additionalProperties: false,
-    required: ['title', 'issueType', 'targetRepo', 'outputMode', 'sizeBytes', 'draftMarkdown', 'compliance'],
+    required: ['title', 'issueType', 'targetRepo', 'outputMode', 'sizeBytes', 'draftMarkdown', 'warnings', 'compliance'],
     description:
         'A local, unsubmitted issue draft plus its compliance report. The server NEVER opens the issue — a human must review and submit it.',
     properties: {
