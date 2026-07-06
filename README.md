@@ -175,6 +175,14 @@ Any MCP-compatible client that supports stdio servers will work. Use the same `c
 
 **Windsurf / Cline / Roo Code** use the same shape inside their respective MCP config files.
 
+### 🌐 Supported AI Ecosystem & Clients
+
+`pdfnative-mcp` is designed for MCP-native environments and works with clients that support MCP over stdio.
+
+Community-verified compatibility includes:
+
+- **[Ontheia](https://ontheia.ai)** — a self-hosted, open-source AI agent platform (privacy-first). Reported as working out of the box in [issue #41](https://github.com/Nizoka/pdfnative-mcp/issues/41) and listed on Ontheia's [compatible MCP servers page](https://docs.ontheia.ai/en/getting-started/03_compatible-mcp-servers/).
+
 ### Environment variables
 
 | Variable                      | Purpose                                                                            |
