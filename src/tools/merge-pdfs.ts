@@ -23,6 +23,13 @@ import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { mapPageTreeError } from '../pagetree.js';
+import {
+    ENCRYPT_INPUT_SCHEMA,
+    EncryptSchema,
+    PASSWORD_INPUT_SCHEMA,
+    PasswordSchema,
+    toEncryptionOptions,
+} from '../encryption.js';
 
 export const MERGE_PDFS_NAME = 'merge_pdfs';
 
@@ -39,6 +46,12 @@ export const MERGE_PDFS_INPUT_SCHEMA = {
             maxItems: 50,
             items: { type: 'string', minLength: 4 },
         },
+        password: {
+            ...PASSWORD_INPUT_SCHEMA,
+            description:
+                'Password applied to every encrypted source (pdfnative v1.6.0). Sources with an empty user password open without it. The merged output is unencrypted unless `encrypt` is set.',
+        },
+        encrypt: ENCRYPT_INPUT_SCHEMA,
         dropAnnotations: {
             type: 'boolean',
             default: false,
@@ -58,6 +71,8 @@ export const MERGE_PDFS_INPUT_SCHEMA = {
 
 const InputSchema = z.object({
     pdfsBase64: z.array(z.string().min(4)).min(2).max(50),
+    password: PasswordSchema.optional(),
+    encrypt: EncryptSchema.optional(),
     dropAnnotations: z.boolean().default(false),
     maxOutputSizeBytes: z.number().int().positive().optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
@@ -84,13 +99,15 @@ export async function mergePdfsTool(rawInput: unknown): Promise<OutputResult> {
     const opts: MergeOptions = {
         dropAnnotations: input.dropAnnotations,
         ...(input.maxOutputSizeBytes !== undefined ? { maxOutputSize: input.maxOutputSizeBytes } : {}),
+        ...(input.password !== undefined ? { password: input.password } : {}),
+        ...(input.encrypt !== undefined ? { encrypt: toEncryptionOptions(input.encrypt) } : {}),
     };
 
     let merged: Uint8Array;
     try {
         merged = mergePdfs(sources, opts);
     } catch (err) {
-        mapPageTreeError(err);
+        mapPageTreeError(err, input.password !== undefined);
     }
 
     return emitPdf(merged, {

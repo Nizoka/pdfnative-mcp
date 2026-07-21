@@ -56,7 +56,7 @@ describe('draft_governance_issue', () => {
         expect(compliance.affectedPackages).toEqual(['pdfnative']);
         expect(compliance.humanGate).toMatch(/never opens/i);
         expect(compliance.environment.node).toBe(process.version);
-        expect(compliance.environment.pdfnativeMcp).toBe('1.4.0');
+        expect(compliance.environment.pdfnativeMcp).toBe('1.5.0');
         expect(typeof compliance.environment.os).toBe('string');
     });
 

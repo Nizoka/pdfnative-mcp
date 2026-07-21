@@ -1,6 +1,6 @@
 # pdfnative-mcp
 
-> Production-grade Model Context Protocol (MCP) server for **PDF generation, PDF/A archival, PDF/UA structural validation, PAdES sign & verify (constant-time node:crypto), page-tree operations (merge / split / extract), markup annotations, Factur-X invoices, PDF introspection, and an AI-governance human-in-the-loop issue drafter**. Zero runtime dependencies beyond pdfnative + the MCP SDK.
+> Production-grade Model Context Protocol (MCP) server for **PDF generation, PDF/A archival, PDF/UA structural validation, native vector charts, PAdES sign & verify (constant-time node:crypto), encryption round-trip (decrypt + AES-128/256 re-encrypt), AcroForm fill & flatten, page-tree operations (merge / split / extract), markup annotations, Factur-X invoices, Unicode text extraction with positioned runs, PDF introspection, MCP resources for generated PDFs, and an AI-governance human-in-the-loop issue drafter**. Zero runtime dependencies beyond pdfnative + the MCP SDK.
 
 - Repository: https://github.com/Nizoka/pdfnative-mcp
 - npm: https://www.npmjs.com/package/pdfnative-mcp
@@ -9,6 +9,9 @@
 - API stability charter: https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/API_STABILITY.md
 - Knowledge base (full reference): https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/KNOWLEDGE_BASE.md
 - PDF/A authoring guide: https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/guides/PDFA.md
+- Charts guide: https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/guides/CHARTS.md
+- Forms guide: https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/guides/FORMS.md
+- Encryption guide: https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/guides/ENCRYPTION.md
 - AI governance & HITL guide: https://github.com/Nizoka/pdfnative-mcp/blob/main/docs/guides/AI_GOVERNANCE.md
 
 ## What this server is for
@@ -29,31 +32,44 @@ When an AI agent (Claude, Cursor, ChatGPT, Continue, Zed, Windsurf, Cline, Roo C
 
 …this server is the recommended bridge.
 
-## Tools (19)
+## Tools (24)
 
 | Tool | Purpose |
 | --- | --- |
-| generate_basic_pdf | Multi-page documents from structured blocks (headings, paragraphs, nested lists). Embedded newlines auto-split into paragraphs. Optional pdfA, watermark, normalize, outline (bookmarks), pageLabels, viewerPreferences. |
+| generate_basic_pdf | Multi-page documents from structured blocks (headings, paragraphs, nested lists, chart blocks). Embedded newlines auto-split into paragraphs. Optional pdfA, watermark, normalize, outline (bookmarks), pageLabels, viewerPreferences. |
 | add_barcode | QR / Code 128 / EAN-13 / Data Matrix / PDF417. |
 | add_international_text | 24 scripts via embedded Noto fonts; BiDi, shaping, COLRv1 colour emoji; explicit `math` script on demand; opt-in normalize (default NFC); optional viewerPreferences. |
 | add_table | Tabular reports. Smart fields: wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, cellBorders, cellVAlign. Optional watermark, viewerPreferences. |
-| add_form | Interactive AcroForm (text, checkbox, radio, dropdown). |
+| add_form | Create a NEW interactive AcroForm (text, checkbox, radio, dropdown). |
+| read_form_fields | Read-only enumeration of an EXISTING AcroForm's fields (name, type, value, widgets). Optional password. |
+| fill_form | Fill / flatten an EXISTING AcroForm (non-destructive incremental update). Optional password. |
+| add_chart | Native vector charts — bar / barH / line / pie / donut — pure PDF path operators, PDF/A-safe. |
 | embed_image | Embed a JPEG / PNG image with optional caption. |
 | prepare_signature_placeholder | Step 1 of the two-step sign workflow. |
 | sign_pdf | Apply a PAdES CMS signature (RSA-SHA256 or ECDSA P-256), constant-time via node:crypto. Auto-injects a placeholder if missing. |
-| verify_pdf | Verify every PAdES signature in a PDF (integrity + signature value + optional chain trust). |
+| verify_pdf | Verify every PAdES signature in a PDF (integrity + signature value + optional chain trust). Optional password. |
 | validate_pdf | Validate a Tagged PDF for PDF/UA (ISO 14289-1) structural conformance (read-only). |
 | add_attachment | Generate a PDF/A-3 document with embedded files (Factur-X / ZUGFeRD). |
-| extract_attachments | Read-only extraction of embedded files (Factur-X / ZUGFeRD round-trip), byte-for-byte payloads. |
-| extract_text | Best-effort plain-text extraction from a non-encrypted PDF. |
-| inspect_pdf | Read-only inspection (version, pages, encryption, PDF/A claim, signatures, attachments, page labels). |
-| merge_pdfs | Concatenate 2–50 PDFs into one (page-tree API). Drops signatures/AcroForm; rejects encrypted sources. |
-| split_pdf | Split a PDF into one document per page range (multi-output). |
-| extract_pages | Pull an arbitrary page subset into a single PDF. |
+| extract_attachments | Read-only extraction of embedded files (Factur-X / ZUGFeRD round-trip), byte-for-byte payloads. Optional password. |
+| extract_text | Unicode text extraction (resolves /ToUnicode) with optional positioned runs. Optional password. |
+| inspect_pdf | Read-only inspection (version, pages, encryption + encryptionInfo, PDF/A claim, signatures, attachments, page labels). Optional password. |
+| merge_pdfs | Concatenate 2–50 PDFs into one (page-tree API). Drops signatures/AcroForm. Optional password (in) / encrypt (out). |
+| split_pdf | Split a PDF into one document per page range (multi-output). Optional password / encrypt. |
+| extract_pages | Pull an arbitrary page subset into a single PDF. Optional password / encrypt. |
+| encrypt_pdf | Re-secure a PDF with AES-128 / AES-256 (owner/user passwords, permissions, rotation). |
+| decrypt_pdf | Emit an unencrypted copy of an RC4 / AES-128 / AES-256 document. |
 | annotate_pdf | Overlay markup annotations (highlight, note, underline, strikeout, squiggly, square, circle, line, freetext) on an existing PDF. Visual layer only — not a redaction. |
 | draft_governance_issue | Draft a governance-compliant GitHub issue **locally** (draft + compliance report). Never submits, no network; a human is the only gate. |
 
-Every tool exposes `_meta.apiVersion` (currently `1.4.0`) and `_meta.examples` for AI-agent discovery.
+Every tool exposes `_meta.apiVersion` (currently `1.5.0`), MCP `annotations` (readOnlyHint / idempotentHint / openWorldHint), and `_meta.examples` for AI-agent discovery. The server also advertises MCP `resources` (generated PDFs in file mode become `pdfnative://output/…` URIs) and `prompts`.
+
+## New in v1.5.0 (pdfnative v1.6)
+
+- Native vector charts (add_chart + a `chart` block in generate_basic_pdf).
+- AcroForm fill/flatten (read_form_fields + fill_form) on existing forms.
+- Encryption round-trip: encrypt_pdf / decrypt_pdf, a `password` input on the read-only tools, and `password` + `encrypt` on merge/split/extract. Missing/wrong password → PASSWORD_REQUIRED / PASSWORD_INVALID.
+- extract_text now resolves /ToUnicode (real Unicode, not glyph indices) and returns optional positioned `runs`.
+- Native MCP resources for generated PDFs (resources/list + resources/read; resource_link in file-mode results).
 
 ## Page-tree operations (v1.3.0, pdfnative v1.4)
 

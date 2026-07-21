@@ -1,0 +1,25 @@
+{
+  "description": "Merge encrypted sources and re-secure the result in one call (pdfnative v1.6 encrypted round-trip). merge_pdfs now ingests encrypted sources via `password` and re-encrypts the assembled document via `encrypt`. Here two password-protected PDFs (same password) are concatenated and the output is re-encrypted with a fresh AES-128 owner/user password. Signatures and AcroForms are always dropped by a page-tree edit. Replace the <base64…> placeholders with real encrypted PDF bytes.",
+  "steps": [
+    {
+      "tool": "merge_pdfs",
+      "arguments": {
+        "pdfsBase64": ["<base64 of encrypted PDF A>", "<base64 of encrypted PDF B>"],
+        "password": "shared-open-password",
+        "encrypt": {
+          "ownerPassword": "new-owner",
+          "userPassword": "new-open",
+          "algorithm": "aes128"
+        }
+      }
+    },
+    {
+      "tool": "inspect_pdf",
+      "arguments": {
+        "pdfBase64": "<base64 from step 1>",
+        "password": "new-open",
+        "verbosity": "summary"
+      }
+    }
+  ]
+}

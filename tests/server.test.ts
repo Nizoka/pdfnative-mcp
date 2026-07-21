@@ -14,7 +14,7 @@ describe('server', () => {
 
     it('exposes stable metadata', () => {
         expect(__serverMetadata.name).toBe('pdfnative-mcp');
-        expect(__serverMetadata.version).toBe('1.4.0');
+        expect(__serverMetadata.version).toBe('1.5.0');
     });
 
     it('advertises a human-readable title and description in serverInfo (MCP Implementation)', () => {
@@ -23,11 +23,11 @@ describe('server', () => {
         expect(typeof __serverMetadata.title).toBe('string');
         expect(__serverMetadata.title.length).toBeGreaterThan(0);
         expect(__serverMetadata.description).toMatch(/MCP server/i);
-        expect(__serverMetadata.description).toMatch(/19 tools/);
+        expect(__serverMetadata.description).toMatch(/24 tools/);
     });
 
     it('SERVER_INSTRUCTIONS advertises decision tree and pitfalls for AI clients', () => {
-        expect(__serverInstructions).toMatch(/pdfnative.*v1\.5/);
+        expect(__serverInstructions).toMatch(/pdfnative.*v1\.6/);
         expect(__serverInstructions).toContain('DECISION TREE');
         expect(__serverInstructions).toContain('COMMON PITFALLS');
         // Cite each tool by name in the decision tree.
@@ -37,6 +37,7 @@ describe('server', () => {
             'verify_pdf', 'validate_pdf', 'inspect_pdf', 'add_attachment', 'extract_text',
             'extract_attachments', 'merge_pdfs', 'split_pdf', 'extract_pages',
             'annotate_pdf', 'draft_governance_issue',
+            'read_form_fields', 'fill_form', 'add_chart', 'encrypt_pdf', 'decrypt_pdf',
         ]) {
             expect(__serverInstructions).toContain(t);
         }
@@ -81,19 +82,24 @@ describe('server', () => {
         expect(names).toEqual([
             'add_attachment',
             'add_barcode',
+            'add_chart',
             'add_form',
             'add_international_text',
             'add_table',
             'annotate_pdf',
+            'decrypt_pdf',
             'draft_governance_issue',
             'embed_image',
+            'encrypt_pdf',
             'extract_attachments',
             'extract_pages',
             'extract_text',
+            'fill_form',
             'generate_basic_pdf',
             'inspect_pdf',
             'merge_pdfs',
             'prepare_signature_placeholder',
+            'read_form_fields',
             'sign_pdf',
             'split_pdf',
             'validate_pdf',
@@ -102,7 +108,7 @@ describe('server', () => {
 
         // Every tool advertises _meta.apiVersion and at least one example.
         for (const t of response.tools) {
-            expect(t._meta?.apiVersion).toBe('1.4.0');
+            expect(t._meta?.apiVersion).toBe('1.5.0');
             expect(Array.isArray(t._meta?.examples)).toBe(true);
             expect((t._meta?.examples ?? []).length).toBeGreaterThan(0);
         }
@@ -281,6 +287,18 @@ describe('server', () => {
         })) as { isError?: boolean; content: Array<{ text?: string }>; structuredContent?: Record<string, unknown> };
         expect(response.isError).not.toBe(true);
         expect(response.structuredContent?.['pageCount']).toBeGreaterThanOrEqual(1);
+    });
+
+    it('advertises the MCP resources capability with list, read and templates handlers', async () => {
+        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
+        for (const method of ['resources/list', 'resources/read', 'resources/templates/list']) {
+            expect(server._requestHandlers.get(method), `${method} handler`).toBeDefined();
+        }
+        // With no sandbox configured, listing is empty (stateless, safe default).
+        delete process.env[OUTPUT_ENV];
+        const listResources = server._requestHandlers.get('resources/list')!;
+        const res = (await listResources({ method: 'resources/list', params: {} })) as { resources: unknown[] };
+        expect(res.resources).toEqual([]);
     });
 
     it('includes outputSchema for every tool', async () => {

@@ -35,6 +35,7 @@ import {
 import { z } from 'zod';
 
 import { ToolError } from '../errors.js';
+import { mapDecryptError, PASSWORD_INPUT_SCHEMA, PasswordSchema } from '../encryption.js';
 import {
     decodeEcdsaSignature,
     parseCmsSignedData,
@@ -58,6 +59,7 @@ export const VERIFY_PDF_INPUT_SCHEMA = {
             minLength: 4,
             description: 'Base64-encoded PDF bytes to verify.',
         },
+        password: PASSWORD_INPUT_SCHEMA,
         trustedRootsDerBase64: {
             type: 'array',
             description:
@@ -119,6 +121,7 @@ export const VERIFY_PDF_OUTPUT_SCHEMA = {
 
 const InputSchema = z.object({
     pdfBase64: z.string().min(4),
+    password: PasswordSchema.optional(),
     trustedRootsDerBase64: z.array(z.string().min(4)).max(16).optional(),
     verbosity: z.enum(['summary', 'full']).optional(),
     fields: z.array(z.string().min(1)).max(16).optional(),
@@ -484,7 +487,7 @@ export async function verifyPdf(rawInput: unknown): Promise<VerifyPdfResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { pdfBase64, trustedRootsDerBase64 } = parsed.data;
+    const { pdfBase64, password, trustedRootsDerBase64 } = parsed.data;
 
     const pdf = decodeBase64(pdfBase64, 'pdfBase64');
 
@@ -505,12 +508,9 @@ export async function verifyPdf(rawInput: unknown): Promise<VerifyPdfResult> {
 
     let reader;
     try {
-        reader = openPdf(pdf);
+        reader = openPdf(pdf, password !== undefined ? { password } : undefined);
     } catch (err) {
-        throw new ToolError(
-            'PDF_PARSE_FAILED',
-            `Failed to parse PDF: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        mapDecryptError(err, password !== undefined);
     }
 
     const widgets = collectSignatureWidgets(reader);

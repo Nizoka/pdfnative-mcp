@@ -1,7 +1,7 @@
 # AI Agent Guide — pdfnative-mcp
 
 > **Read this first if you are an AI agent (Copilot, Claude, Cursor, Continue, Zed, Windsurf, Cline, Roo Code, …) about to call pdfnative-mcp.**
-> It tells you which of the 19 tools to pick and how to avoid the common retry loops.
+> It tells you which of the 24 tools to pick and how to avoid the common retry loops.
 
 The server also returns the same decision tree in `serverInfo.instructions`. The full reference lives in [`KNOWLEDGE_BASE.md`](KNOWLEDGE_BASE.md); the stability charter in [`API_STABILITY.md`](API_STABILITY.md). Worked invocations are in [`../examples/`](../examples).
 
@@ -168,7 +168,7 @@ Defaults are unchanged: omit both and you get the full v1.1.0-identical response
 ## 4. Self-documenting metadata
 
 Every tool ships:
-- `_meta.apiVersion` = `'1.4.0'` — see [`API_STABILITY.md`](API_STABILITY.md).
+- `_meta.apiVersion` = `'1.5.0'` — see [`API_STABILITY.md`](API_STABILITY.md).
 - `_meta.examples`   — at least one worked example per tool. Inspect the `ListTools` response to discover them.
 
 You can rely on these fields when negotiating capabilities before calling a tool.

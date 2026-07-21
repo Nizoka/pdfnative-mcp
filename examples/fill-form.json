@@ -1,0 +1,30 @@
+{
+  "description": "Fill and flatten an existing AcroForm (pdfnative v1.6 via fill_form). Flow: create a fillable form with add_form, discover the field names with read_form_fields, fill the values, then flatten so the result is final and non-editable. Non-destructive incremental update — a prior signature stays valid for its revision. Replace the <base64…> placeholders with the bytes returned by each prior step.",
+  "steps": [
+    {
+      "tool": "add_form",
+      "arguments": {
+        "title": "Registration",
+        "fields": [
+          { "fieldType": "text", "name": "fullName", "label": "Full name" },
+          { "fieldType": "checkbox", "name": "subscribe", "label": "Subscribe to updates" },
+          { "fieldType": "dropdown", "name": "country", "label": "Country", "options": ["FR", "DE", "ES"] }
+        ]
+      }
+    },
+    {
+      "tool": "read_form_fields",
+      "arguments": {
+        "pdfBase64": "<base64 from step 1>"
+      }
+    },
+    {
+      "tool": "fill_form",
+      "arguments": {
+        "pdfBase64": "<base64 from step 1>",
+        "values": { "fullName": "Alice Martin", "subscribe": true, "country": "FR" },
+        "flatten": true
+      }
+    }
+  ]
+}

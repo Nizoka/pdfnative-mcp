@@ -2,7 +2,7 @@
 
 > Reference for AI assistants (GitHub Copilot, Claude, Cursor, Continue, Zed, Windsurf, Cline, Roo Code)
 > and human contributors. Captures the full context needed to understand, extend, and debug
-> pdfnative-mcp **v1.4.0** without reading every source file.
+> pdfnative-mcp **v1.5.0** without reading every source file.
 
 > If you are an AI agent calling pdfnative-mcp from a chat session, also read
 > [`AI_GUIDE.md`](AI_GUIDE.md) — the short, action-oriented decision tree.
@@ -13,18 +13,20 @@
 
 **What is pdfnative-mcp?**
 An MCP (Model Context Protocol) server that bridges the zero-dependency
-[`pdfnative`](https://github.com/Nizoka/pdfnative) library (v1.5.x) to AI clients
+[`pdfnative`](https://github.com/Nizoka/pdfnative) library (v1.6.x) to AI clients
 (Claude Desktop, ChatGPT, Cursor, Continue, Zed, Windsurf, Cline, Roo Code, …).
-It exposes **19** PDF tools over a stdio transport so AI agents can generate, sign,
-verify, validate, attach, inspect, extract, merge, split, carve, annotate PDF files,
-and draft governance-compliant GitHub issues for human review.
+It exposes **24** PDF tools over a stdio (or Streamable HTTP) transport so AI agents
+can generate, sign, verify, validate, attach, inspect, extract (Unicode text with
+positioned runs), merge, split, carve, annotate, **chart**, **fill/flatten forms**,
+and **encrypt/decrypt** PDF files, and draft governance-compliant GitHub issues for
+human review. Generated PDFs (file mode) are also exposed as native MCP resources.
 
 **Philosophy:**
 - `pdfnative` is the only runtime dependency — all PDF logic lives there.
 - The MCP server is a thin, secure dispatch layer: validate inputs with Zod → call pdfnative → emit PDF as base64 or to a sandboxed file.
 - Every tool is fully self-contained (its own file in [src/tools/](../src/tools)).
 - Security at every boundary: Zod validation on all inputs, path traversal prevention on file output, no key-material echo in logs or errors.
-- Every tool ships `_meta.apiVersion = '1.4.0'` and worked-example `_meta.examples` so AI clients can introspect supported behavior — see [`API_STABILITY.md`](API_STABILITY.md).
+- Every tool ships `_meta.apiVersion = '1.5.0'` and worked-example `_meta.examples` so AI clients can introspect supported behavior — see [`API_STABILITY.md`](API_STABILITY.md).
 
 **Runtime:** Node.js ≥ 22 (ESM, strict TypeScript). Transport: stdio.
 
@@ -138,12 +140,12 @@ interface ToolDefinition {
 A `TOOL_INDEX: ReadonlyMap<string, ToolDefinition>` is derived from the array for O(1) lookup on `CallToolRequest`.
 
 **`_meta` per tool** — emitted in the `ListTools` response so AI clients can introspect:
-- `_meta.apiVersion` = `'1.4.0'` (see [`API_STABILITY.md`](API_STABILITY.md) for the bump policy)
+- `_meta.apiVersion` = `'1.5.0'` (see [`API_STABILITY.md`](API_STABILITY.md) for the bump policy)
 - `_meta.examples`   = at least one worked example per tool
 
 **Server metadata:**
 - `SERVER_NAME = 'pdfnative-mcp'`
-- `SERVER_VERSION = '1.4.0'`
+- `SERVER_VERSION = '1.5.0'`
 - `serverInfo._meta.mcpName = 'io.github.Nizoka/pdfnative-mcp'` (registry ID in `package.json` `mcpName` / `server.json` `name`; uses the canonical GitHub login casing `Nizoka` so the MCP registry's case-sensitive validation accepts the lowercase npm package `pdfnative-mcp`)
 - `SERVER_INSTRUCTIONS` — high-level decision tree + common-pitfall guide returned to the client in `serverInfo.instructions`
 
@@ -211,7 +213,7 @@ Tabular reports with v1.2 smart-table fields: `wrap` (`auto`/`always`/`never`), 
 
 ### `add_form`
 
-Interactive AcroForm with `text`, `textarea`, `checkbox`, `radio`, `dropdown` fields. Optional `blocks[]` rendered before the field group.
+Creates a **new** interactive AcroForm with `text`, `textarea`, `checkbox`, `radio`, `dropdown` fields. Optional `blocks[]` rendered before the field group. To read or fill an **existing** form, use `read_form_fields` / `fill_form` (v1.5.0).
 
 ### `add_international_text` viewer preferences
 
@@ -245,7 +247,7 @@ Never logs key material. Since v1.3.0 the RSA and EC-DER paths sign through a pe
 
 ### `verify_pdf`
 
-Read-only verification of every PAdES Baseline / `adbe.pkcs7.detached` signature. For each `/Sig`: recomputes ByteRange SHA-256, validates CMS `messageDigest` (integrity) and `signatureValue`. Optional `trustedRootsDerBase64[]` enables chain trust (otherwise per-signature `chainTrust` is `'self-signed'` or `'unverified'`).
+Read-only verification of every PAdES Baseline / `adbe.pkcs7.detached` signature. For each `/Sig`: recomputes ByteRange SHA-256, validates CMS `messageDigest` (integrity) and `signatureValue`. Optional `trustedRootsDerBase64[]` enables chain trust (otherwise per-signature `chainTrust` is `'self-signed'` or `'unverified'`). Optional `password` (v1.5.0) opens an encrypted source. Note pdfnative does not export `ecdsaVerifyHash`, so P-256 ECDSA verification is a local reimplementation in `src/tools/verify-pdf.ts`.
 
 Response shape:
 ```jsonc
@@ -267,9 +269,11 @@ Response shape:
 
 Structural / security inspection.
 - `version`, `pageCount`, `encryption` (`none|aes-128|aes-256|rc4|unknown`), `pdfA` (`1B|2B|2U|3B|null`)
+- `encryptionInfo` — precise `{ algorithm, revision, authenticatedAs }` from `reader.encryption` when encrypted, else omitted (v1.5.0)
 - `signatureCount`, `hasSignaturePlaceholder`, `attachments[]`
 - `pageLabels[]` — `/PageLabels` ranges (`{ startPage, style?, prefix?, start? }`) when present, else omitted (v1.4.0)
 - `/Info` dictionary + optional `perPage` sizes
+- Optional `password` (v1.5.0) opens an encrypted source transparently; a missing/wrong password → `PASSWORD_REQUIRED`/`PASSWORD_INVALID`.
 - Optional `check[]` for CI-style assertions: `'pdfa' | 'signed' | 'encrypted' | 'placeholder' | 'attachments'`. `checksPassed` is the AND of all requested checks.
 
 ### `add_attachment`
@@ -278,7 +282,7 @@ PDF/A-3 (ISO 19005-3) with one or more embedded files. **Primary use case: Factu
 
 ### `extract_attachments`
 
-Read-only counterpart to `add_attachment` — walks the catalog name tree (`/Names → /EmbeddedFiles → Names[]`) via the shared `collectEmbeddedFiles()` collector (same metadata as `inspect_pdf`) and returns `{ attachmentCount, attachments: [{ name, sizeBytes?, mimeType?, relationship?, description?, dataBase64? }] }`. `includeData` (default `true`) toggles payload bytes; `filename` filters to one file (`ATTACHMENT_NOT_FOUND` when nothing matches). Payloads are capped at 16 MiB/file and 32 MiB aggregate (`OUTPUT_TOO_LARGE`); encrypted PDFs are rejected with `EXTRACTION_UNSUPPORTED`. Completes the Factur-X round-trip.
+Read-only counterpart to `add_attachment` — walks the catalog name tree (`/Names → /EmbeddedFiles → Names[]`) via the shared `collectEmbeddedFiles()` collector (same metadata as `inspect_pdf`) and returns `{ attachmentCount, attachments: [{ name, sizeBytes?, mimeType?, relationship?, description?, dataBase64? }] }`. `includeData` (default `true`) toggles payload bytes; `filename` filters to one file (`ATTACHMENT_NOT_FOUND` when nothing matches). Payloads are capped at 16 MiB/file and 32 MiB aggregate (`OUTPUT_TOO_LARGE`). Since v1.5.0 encrypted PDFs are read with an optional `password` (missing/wrong → `PASSWORD_REQUIRED`/`PASSWORD_INVALID`). Completes the Factur-X round-trip.
 
 ### `validate_pdf`
 
@@ -286,19 +290,19 @@ Read-only **PDF/UA (ISO 14289-1)** structural conformance check wrapping pdfnati
 
 ### `extract_text`
 
-Best-effort plain-text extraction (Tj / ' / " / TJ). Returns `{ pageCount, extractedPageCount, extractable, extractableReason?, pages: [{ index, text }], fullText }`. `extractable: false` is **not an error** — it means the PDF uses subset fonts without `/ToUnicode` CMaps; `extractableReason` explains the situation. Encrypted PDFs are rejected with `EXTRACTION_UNSUPPORTED`.
+Unicode text extraction backed by pdfnative v1.6.0's `extractText()` (`src/tools/extract-text.ts`). Decodes each font's `/ToUnicode` CMap, `/Encoding /Differences`, and WinAnsi/MacRoman base tables, recursing Form XObjects — so subset fonts decode to real characters, not glyph indices. Returns `{ pageCount, extractedPageCount, extractable, extractableReason?, pages: [{ index, text, runs? }], fullText }`. Optional inputs: `includeRuns` (adds per-page positioned `runs[]` of `{ text, x, y, fontSize, fontName }`), `password` (encrypted PDFs), `maxTextLength` (memory cap, default 16 000 000). `extractable: false` now means a page decoded entirely to U+FFFD (a font with no usable mapping) — still not an error.
 
 ### `merge_pdfs`
 
-Concatenates 2–50 source PDFs into one via pdfnative's page-tree API (`src/tools/merge-pdfs.ts`). Inputs: `pdfsBase64[]` (2–50), optional `dropAnnotations`, optional `maxOutputSizeBytes`, plus the shared `outputMode`/`outputPath`. Returns a single `OutputResult`. Encrypted sources are rejected with `ENCRYPTED_SOURCE`; oversize output with `OUTPUT_TOO_LARGE` (shared `src/pagetree.ts` error mapping).
+Concatenates 2–50 source PDFs into one via pdfnative's page-tree API (`src/tools/merge-pdfs.ts`). Inputs: `pdfsBase64[]` (2–50), optional `dropAnnotations`, `maxOutputSizeBytes`, `password` (decrypt every encrypted source), `encrypt` (re-secure the output; AES-128/256), plus the shared `outputMode`/`outputPath`. Returns a single `OutputResult`. Signatures/AcroForm are always dropped by a page-tree edit. Since v1.5.0 encrypted sources are accepted with a `password`; a missing/wrong password yields `PASSWORD_REQUIRED`/`PASSWORD_INVALID`; oversize output → `OUTPUT_TOO_LARGE` (shared `src/pagetree.ts` mapping, which delegates encryption failures to `src/encryption.ts`).
 
 ### `split_pdf`
 
-Splits one PDF into one document per page range (`src/tools/split-pdf.ts`). Inputs: `pdfBase64`, `ranges: [{ start, end? }]` (0-based inclusive; `end` defaults to `start`; validated `end >= start`), optional `dropAnnotations`, optional `maxOutputSizeBytes`. Returns a **`MultiOutputResult`** — one part per range. In `file` mode the `outputPath` is indexed (`report.pdf` → `report-1.pdf`, `report-2.pdf`, …).
+Splits one PDF into one document per page range (`src/tools/split-pdf.ts`). Inputs: `pdfBase64`, `ranges: [{ start, end? }]` (0-based inclusive; `end` defaults to `start`; validated `end >= start`), optional `dropAnnotations`, `maxOutputSizeBytes`, `password`, `encrypt`. Returns a **`MultiOutputResult`** — one part per range. In `file` mode the `outputPath` is indexed (`report.pdf` → `report-1.pdf`, `report-2.pdf`, …).
 
 ### `extract_pages`
 
-Pulls an arbitrary page subset into a single PDF (`src/tools/extract-pages.ts`). Inputs: `pdfBase64`, `pages: number[]` (0-based, max 5000, order preserved), optional `dropAnnotations`, optional `maxOutputSizeBytes`. Returns a single `OutputResult`. Out-of-range indices and encrypted sources are rejected (`PDF_PARSE_FAILED` / `ENCRYPTED_SOURCE`).
+Pulls an arbitrary page subset into a single PDF (`src/tools/extract-pages.ts`). Inputs: `pdfBase64`, `pages: number[]` (0-based, max 5000, order preserved), optional `dropAnnotations`, `maxOutputSizeBytes`, `password`, `encrypt`. Returns a single `OutputResult`. Out-of-range indices → `PDF_PARSE_FAILED`; a password-protected source without a password → `PASSWORD_REQUIRED`.
 
 ### `annotate_pdf`
 
@@ -307,6 +311,30 @@ Overlays markup annotations on an existing PDF via pdfnative's incremental-updat
 ### `draft_governance_issue`
 
 Drafts a governance-compliant GitHub issue **locally** for human review (`src/tools/draft-governance-issue.ts`). It performs **no** network I/O and never submits — the agent is a draftsman, a human is the only gate. Inputs: `title`, `issueType` (`bug|feature|security|docs|performance`), `summary`, `reproduction: { command, result }`, `expectedBehavior`, optional `actualBehavior`, `targetRepo` (default `pdfnative-mcp`), `affectedPackages` (default `['pdfnative-mcp']`), `duplicateSearchPerformed` (**must be `true`**), plus `outputMode` (`'inline'|'file'`) / `outputPath`. Returns `{ draftMarkdown, complianceReport, … }`. Contract enforcement lives in `src/governance.ts` (`validateIssueMarkdown`): proposing a runtime dependency, omitting the reproduction, or `duplicateSearchPerformed: false` throws `GovernanceError('GOVERNANCE_VIOLATION')`. In `file` mode the draft `.md` is written through `writeSandboxedText()` (same sandbox guards as PDF output, `.md` extension). The contract source of truth is under `.github/` (`ai-governance.json`, `AGENT_RULES.md`); the narrative guide is [`guides/AI_GOVERNANCE.md`](guides/AI_GOVERNANCE.md).
+
+### `read_form_fields`
+
+Read-only enumeration of an existing AcroForm's field tree via pdfnative v1.6.0's `readFormFields()` (`src/tools/read-form-fields.ts`). Inputs: `pdfBase64`, optional `password`, `verbosity`/`fields`. Returns `{ fieldCount, fields: [{ name, type, value, readOnly, required, multiline, options?, maxLen?, onState?, widgets: [{ pageIndex, rect }] }] }`. `type` is one of `text|checkbox|radio|dropdown|listbox|button|signature|unknown`. Routed by a dedicated `dispatchOutput` discriminator (`'fieldCount' in output`). Call it before `fill_form` to discover field names.
+
+### `fill_form`
+
+Fill and/or flatten an existing AcroForm via pdfnative's `fillForm()`/`flattenForm()` (`src/tools/fill-form.ts`). Inputs: `pdfBase64`, `values` (map of field name → string | boolean | string[]), optional `flatten`, `onUnknownField` (`throw|ignore`), `nonWinAnsi` (`throw|needAppearances`), `password`, plus the shared `outputMode`/`outputPath`. Non-destructive incremental update (a prior signature stays valid for its revision). A pure flatten is `flatten:true` with no `values`. Signature fields are not fillable → `FORM_UNSUPPORTED`; unknown names → `FORM_FIELD_NOT_FOUND`; type/option mismatch → `FORM_VALUE_TYPE_ERROR` (mapped in-file).
+
+### `add_chart`
+
+Native vector chart via pdfnative v1.6.0's `ChartBlock` (`src/tools/add-chart.ts`, shared schema in `src/chart.ts`). Inputs: `chartType` (`bar|barH|line|pie|donut`), `series: [{ label, values[], color? }]`, optional `categories`, `title`, `intro`, `legend`, `axis`, `markers`, `colors` (hex), `align`, `altText`, `pdfA`, plus `outputMode`/`outputPath`. Rendered as pure PDF path operators with a tagged `/Figure` + `/Alt` (auto when omitted). Pie/donut use one series. `generate_basic_pdf` also accepts a `chart` block (same `toChartBlock` mapper).
+
+### `encrypt_pdf`
+
+Re-secure a PDF with the Standard Security Handler via the page-tree `encrypt` path (`src/tools/encrypt-pdf.ts`, on `mergePdfs` single-source). Inputs: `pdfBase64`, `ownerPassword` (required), optional `userPassword`, `algorithm` (`aes128` default / `aes256`), `permissions`, `password` (rotate an already-encrypted source), plus `outputMode`/`outputPath`. RC4 is never emitted. **Caveat:** rebuilding the page tree drops signatures + AcroForm — encrypt before signing.
+
+### `decrypt_pdf`
+
+Emit an unencrypted copy of an encrypted PDF (`src/tools/decrypt-pdf.ts`, on `mergePdfs` single-source with no `encrypt`). Inputs: `pdfBase64`, optional `password` (omit only for empty-user-password documents), plus `outputMode`/`outputPath`. Supports RC4 (V1–V4), AES-128 (V4/R4), AES-256 (V5/R6). Same page-tree-rebuild caveat as `encrypt_pdf`. To merely *read* an encrypted PDF, pass `password` to `inspect_pdf`/`extract_text`/… instead.
+
+### MCP resources
+
+Generated PDFs written in `outputMode:'file'` are exposed as native MCP resources (`src/resources.ts`). `resources/list` walks the `PDFNATIVE_MCP_OUTPUT_DIR` sandbox and returns `pdfnative://output/<relative>.pdf` URIs; `resources/read` returns the base64 blob after re-validating the path through `resolveSandboxedPath` (traversal/extension guards). PDF-producing tools also emit a `resource_link` content block in file mode. When file output is disabled, there are no resources. Capability advertised as `resources: {}`.
 
 ### MCP prompts
 

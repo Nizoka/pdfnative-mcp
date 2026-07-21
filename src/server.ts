@@ -9,16 +9,21 @@ import {
     ListToolsRequestSchema,
     ListPromptsRequestSchema,
     GetPromptRequestSchema,
+    ListResourcesRequestSchema,
+    ListResourceTemplatesRequestSchema,
+    ReadResourceRequestSchema,
     type CallToolRequest,
     type CallToolResult,
     type GetPromptRequest,
     type GetPromptResult,
+    type ReadResourceRequest,
 } from '@modelcontextprotocol/sdk/types.js';
 import { initCrypto, initNodeCompression } from 'pdfnative';
 
 import { ToolError } from './errors.js';
 import { getCached, setCached } from './cache.js';
 import { PDFNATIVE_MCP_VERSION } from './version.js';
+import { listResources, listResourceTemplates, readResource, resourceLinkForPath } from './resources.js';
 import {
     GOVERNANCE_CONTRACT_SUMMARY,
     DRAFT_ISSUE_WORKFLOW,
@@ -132,6 +137,33 @@ import {
     draftGovernanceIssue,
     type DraftGovernanceIssueResult,
 } from './tools/draft-governance-issue.js';
+import {
+    READ_FORM_FIELDS_NAME,
+    READ_FORM_FIELDS_INPUT_SCHEMA,
+    READ_FORM_FIELDS_OUTPUT_SCHEMA,
+    readFormFieldsTool,
+    type ReadFormFieldsResult,
+} from './tools/read-form-fields.js';
+import {
+    FILL_FORM_NAME,
+    FILL_FORM_INPUT_SCHEMA,
+    fillFormTool,
+} from './tools/fill-form.js';
+import {
+    ADD_CHART_NAME,
+    ADD_CHART_INPUT_SCHEMA,
+    addChart,
+} from './tools/add-chart.js';
+import {
+    ENCRYPT_PDF_NAME,
+    ENCRYPT_PDF_INPUT_SCHEMA,
+    encryptPdf,
+} from './tools/encrypt-pdf.js';
+import {
+    DECRYPT_PDF_NAME,
+    DECRYPT_PDF_INPUT_SCHEMA,
+    decryptPdf,
+} from './tools/decrypt-pdf.js';
 
 // JSON import attribute (Node 22+, TS 5.3+) keeps version in lock-step with package.json.
 // Hardcoded here to keep the build rootDir limited to ./src; tests assert it stays in sync.
@@ -145,10 +177,12 @@ const SERVER_NAME = 'pdfnative-mcp';
  */
 const SERVER_TITLE = 'pdfnative MCP — PDF generation, signing & introspection';
 const SERVER_DESCRIPTION =
-    'Production-grade MCP server for PDF generation, PDF/A archival, PDF/UA structural validation, ' +
-    'digital signatures (PAdES sign + verify, constant-time node:crypto), page-tree ops (merge / split / extract), ' +
-    'markup annotations, Factur-X invoices, PDF introspection, and human-in-the-loop AI-governance issue drafting. ' +
-    '19 tools, 24 scripts, zero runtime dependencies beyond pdfnative and the MCP SDK.';
+    'Production-grade MCP server for PDF generation, PDF/A archival, PDF/UA structural validation, native vector charts, ' +
+    'digital signatures (PAdES sign + verify, constant-time node:crypto), encryption round-trip (decrypt + AES-128/256 re-encrypt), ' +
+    'AcroForm fill & flatten, page-tree ops (merge / split / extract), markup annotations, Factur-X invoices, ' +
+    'Unicode text extraction with positioned runs, PDF introspection, MCP resources for generated PDFs, ' +
+    'and human-in-the-loop AI-governance issue drafting. ' +
+    '24 tools, 24 scripts, zero runtime dependencies beyond pdfnative and the MCP SDK.';
 
 /**
  * Per-tool API version used by the opt-in cache key and by `_meta.apiVersion`.
@@ -156,7 +190,16 @@ const SERVER_DESCRIPTION =
  * make a cached response unsafe to serve. Independent from SERVER_VERSION
  * (which tracks the npm package).
  */
-const TOOL_API_VERSION = '1.4.0';
+const TOOL_API_VERSION = '1.5.0';
+
+/**
+ * Tools whose output must never be persisted to the opt-in response cache
+ * (`PDFNATIVE_MCP_CACHE_DIR`, which writes tool output as plaintext at rest).
+ * `decrypt_pdf` produces the *unencrypted* bytes of a deliberately-encrypted
+ * document; `encrypt_pdf` produces protected bytes plus takes a source
+ * password — neither should linger on disk. They are cheap to recompute.
+ */
+const NON_CACHEABLE_TOOLS: ReadonlySet<string> = new Set([ENCRYPT_PDF_NAME, DECRYPT_PDF_NAME]);
 
 /** True when the call's input requests a file-mode output (filesystem side-effect). */
 function isFileOutput(input: unknown): boolean {
@@ -187,6 +230,9 @@ function dispatchOutput(output: unknown, name: string, input: unknown): CallTool
         }
         if ('attachmentCount' in output && 'attachments' in output) {
             return buildExtractAttachmentsResult(output as ExtractAttachmentsResult, name, input);
+        }
+        if ('fieldCount' in output && 'fields' in output) {
+            return buildReadFormFieldsResult(output as ReadFormFieldsResult, name, input);
         }
     }
     return buildInspectResult(output as InspectPdfResult, name, input);
@@ -266,7 +312,7 @@ interface ToolDefinition {
     };
     /** Minimal MCP `_meta.examples` payload — each entry is a self-contained input. */
     examples?: ReadonlyArray<{ readonly title: string; readonly input: Record<string, unknown> }>;
-    handler: (args: unknown) => Promise<OutputResult | MultiOutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult | ValidatePdfResult | ExtractAttachmentsResult | DraftGovernanceIssueResult>;
+    handler: (args: unknown) => Promise<OutputResult | MultiOutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult | ValidatePdfResult | ExtractAttachmentsResult | DraftGovernanceIssueResult | ReadFormFieldsResult>;
 }
 
 const TOOLS: readonly ToolDefinition[] = [
@@ -528,37 +574,115 @@ const TOOLS: readonly ToolDefinition[] = [
             "Produce a LOCAL, governance-compliant GitHub issue draft plus a structured compliance report — and NEVER submit anything. This is the MCP-native embodiment of the pdfnative AI-governance / Human-In-The-Loop contract (.github/ai-governance.json, .github/AGENT_RULES.md): the agent is a DRAFTSMAN, the human is the only gate. The server makes NO outbound network call and has NO GitHub write path. The assembled draft is validated against the zero-dependency + reproduction policy; a violation (proposing a runtime dependency, missing reproduction, or duplicateSearchPerformed=false) throws GOVERNANCE_VIOLATION so the human must fix it before submitting under their own identity. Returns the draft markdown inline by default; outputMode='file' also writes a .md to the sandbox. After calling this, present BOTH the draft and the compliance report to the user, then STOP.",
         inputSchema: DRAFT_GOVERNANCE_ISSUE_INPUT_SCHEMA,
         outputSchema: DRAFT_GOVERNANCE_ISSUE_OUTPUT_SCHEMA,
-        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        // Not readOnlyHint: outputMode='file' writes a .md into the sandbox (like every
+        // other file-producing tool). The default inline mode is side-effect-free.
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
             { title: 'Draft a bug report (never submitted)', input: { title: 'add_table clips descenders on wrapped cells', summary: 'Wrapped table cells clip the descenders of g/j/p/q/y at the default cellPadding.', issueType: 'bug', targetRepo: 'pdfnative', reproduction: { command: "add_table with a wrapped cell containing 'paragraphy'", result: 'The descenders of g/p/y are visibly clipped in the rendered PDF.' }, expectedBehavior: 'Descenders render fully within the cell.', affectedPackages: ['pdfnative'], duplicateSearchPerformed: true } },
             { title: 'Draft an upstream feature request for true redaction', input: { title: 'Expose a content-removal API for true redaction', summary: 'pdfnative 1.5 can only overlay annotations; a content-stream removal API is needed for genuine redaction.', issueType: 'feature', targetRepo: 'pdfnative', reproduction: { command: 'annotate_pdf overlay then extract_text', result: 'Text under the overlay is still extractable.' }, expectedBehavior: 'A supported API removes the underlying bytes so redacted text is unextractable.', affectedPackages: ['pdfnative', 'pdfnative-mcp'], duplicateSearchPerformed: true } },
         ],
         handler: draftGovernanceIssue,
     },
+    {
+        name: READ_FORM_FIELDS_NAME,
+        title: 'Read AcroForm fields',
+        description:
+            "Read-only enumeration of an existing PDF's interactive AcroForm fields (pdfnative v1.6.0). Returns each terminal field's fully-qualified name, classified type (text | checkbox | radio | dropdown | listbox | button | signature | unknown), current value, flags (readOnly / required / multiline), choice options, and widget placements. Call this FIRST to discover field names before driving fill_form. Encrypted sources are supported via `password`. Token-frugal: verbosity:'summary' returns just { fieldCount }.",
+        inputSchema: READ_FORM_FIELDS_INPUT_SCHEMA,
+        outputSchema: READ_FORM_FIELDS_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'List every field', input: { pdfBase64: '<base64>' } },
+            { title: 'Just the field count', input: { pdfBase64: '<base64>', verbosity: 'summary' } },
+        ],
+        handler: readFormFieldsTool,
+    },
+    {
+        name: FILL_FORM_NAME,
+        title: 'Fill / flatten an existing AcroForm',
+        description:
+            "Fill (and optionally flatten) the AcroForm of an EXISTING PDF (pdfnative v1.6.0) — the counterpart to add_form, which CREATES a new form. Non-destructive incremental update: original bytes are preserved (a prior signature stays valid for its revision). `values` maps fully-qualified field name → value: text/choice take a string (array for multi-select listboxes); checkbox/radio take a boolean or the export-state string. Set flatten:true to stamp appearances into page content and drop the interactive layer (pass no values + flatten:true for a pure flatten). Encrypted documents are supported via `password` (appended objects are encrypted under the existing scheme). Signature fields cannot be filled (FORM_UNSUPPORTED). Discover field names with read_form_fields first.",
+        inputSchema: FILL_FORM_INPUT_SCHEMA,
+        outputSchema: PDF_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Fill a couple of fields', input: { pdfBase64: '<base64>', values: { fullName: 'Alice Martin', subscribe: true } } },
+            { title: 'Fill and flatten (final, non-editable)', input: { pdfBase64: '<base64>', values: { fullName: 'Alice Martin' }, flatten: true } },
+            { title: 'Pure flatten (no value changes)', input: { pdfBase64: '<base64>', flatten: true } },
+        ],
+        handler: fillFormTool,
+    },
+    {
+        name: ADD_CHART_NAME,
+        title: 'Add native vector chart',
+        description:
+            "Generate a single-page PDF with a native vector chart (pdfnative v1.6.0): bar, barH (horizontal bar), line (optional markers), pie or donut — rendered as pure PDF path operators, zero rasterisation. Multi-series bar/line, legends, 'nice' 1/2/5×10ⁿ axis ticks, gridlines, negative values, and a tagged-PDF /Figure + /Alt (auto-generated when altText omitted, so PDF/A stays conformant). Pie/donut use exactly one series (each value = a slice). Colours are hex strings (e.g. '#3366cc'). For a chart embedded amongst headings/paragraphs/tables, use a 'chart' block inside generate_basic_pdf instead.",
+        inputSchema: ADD_CHART_INPUT_SCHEMA,
+        outputSchema: PDF_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Grouped bar chart (2 series)', input: { chartType: 'bar', title: 'Quarterly revenue', categories: ['Q1', 'Q2', 'Q3', 'Q4'], series: [{ label: '2025', values: [12, 18, 15, 22] }, { label: '2026', values: [14, 20, 19, 25] }], axis: { grid: true } } },
+            { title: 'Pie chart', input: { chartType: 'pie', title: 'Market share', categories: ['A', 'B', 'C'], series: [{ label: 'Share', values: [55, 30, 15] }] } },
+            { title: 'Archival PDF/A-2b line chart', input: { chartType: 'line', markers: true, categories: ['Jan', 'Feb', 'Mar'], series: [{ label: 'Signups', values: [120, 180, 260] }], pdfA: 'pdfa2b' } },
+        ],
+        handler: addChart,
+    },
+    {
+        name: ENCRYPT_PDF_NAME,
+        title: 'Encrypt / re-secure a PDF',
+        description:
+            "Re-secure an existing PDF with the PDF Standard Security Handler (pdfnative v1.6.0): AES-128 (V4/R4, default) or AES-256 (V5/R6). RC4 is never emitted. Set ownerPassword (required) and optionally userPassword (open password), algorithm, and permissions { print, copy, modify, extractText }. Re-encrypt an already-encrypted source under a NEW password by passing its current `password` (password rotation in one call). CAVEAT: encryption rebuilds the page tree, so existing signatures and the interactive AcroForm are DROPPED and only self-contained URI links are kept — encrypt BEFORE signing, not after.",
+        inputSchema: ENCRYPT_PDF_INPUT_SCHEMA,
+        outputSchema: PDF_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+        examples: [
+            { title: 'Encrypt with AES-256 (owner + user password)', input: { pdfBase64: '<base64>', ownerPassword: 'owner-secret', userPassword: 'open-me', algorithm: 'aes256' } },
+            { title: 'Owner-locked, no-print (empty user password)', input: { pdfBase64: '<base64>', ownerPassword: 'owner-secret', permissions: { print: false } } },
+        ],
+        handler: encryptPdf,
+    },
+    {
+        name: DECRYPT_PDF_NAME,
+        title: 'Decrypt a PDF',
+        description:
+            "Open an encrypted PDF (pdfnative v1.6.0 reader/decryptor — RC4 V1–V4, AES-128 V4/R4, AES-256 V5/R6) and emit an UNENCRYPTED copy. Pass `password` (user or owner); documents with an empty user password decrypt without one. CAVEAT: decryption rebuilds the page tree, so existing signatures and the interactive AcroForm are DROPPED and only self-contained URI links are kept. To READ an encrypted PDF without rebuilding it, pass `password` directly to inspect_pdf / extract_text / extract_attachments instead.",
+        inputSchema: DECRYPT_PDF_INPUT_SCHEMA,
+        outputSchema: PDF_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Decrypt with a user password', input: { pdfBase64: '<encrypted-base64>', password: 'open-me' } },
+        ],
+        handler: decryptPdf,
+    },
 ];
 
 const TOOL_INDEX: ReadonlyMap<string, ToolDefinition> = new Map(TOOLS.map((t) => [t.name, t]));
 
-const SERVER_INSTRUCTIONS = `pdfnative-mcp bridges the zero-dependency 'pdfnative' v1.5 library to MCP. API version: 1.4.0 (stable).
+const SERVER_INSTRUCTIONS = `pdfnative-mcp bridges the zero-dependency 'pdfnative' v1.6 library to MCP. API version: 1.5.0 (stable). 24 tools.
 
 DECISION TREE — pick the right tool in one step:
-  • Plain document (headings, paragraphs, lists)             → ${GENERATE_BASIC_PDF_NAME}
+  • Plain document (headings, paragraphs, lists, charts)     → ${GENERATE_BASIC_PDF_NAME}
+  • Native vector chart (bar / line / pie / donut)           → ${ADD_CHART_NAME}
   • QR code / barcode (URL, SKU, EAN)                        → ${ADD_BARCODE_NAME}
   • Non-Latin script (Arabic, Hindi, Chinese, Japanese…)     → ${ADD_INTERNATIONAL_TEXT_NAME}
   • Tabular / report data                                    → ${ADD_TABLE_NAME}
-  • Interactive form (text fields, checkboxes, dropdowns)    → ${ADD_FORM_NAME}
+  • Create a NEW interactive form                            → ${ADD_FORM_NAME}
+  • Read fields of an EXISTING form                          → ${READ_FORM_FIELDS_NAME}
+  • Fill / flatten an EXISTING form                          → ${FILL_FORM_NAME}
   • Embed a JPEG/PNG into a PDF                              → ${EMBED_IMAGE_NAME}
   • Add markup annotations (highlight, note, shapes, line)   → ${ANNOTATE_PDF_NAME}
   • Sign any PDF (auto-injects placeholder)                  → ${SIGN_PDF_NAME}
   • Customize signature placeholder before signing           → ${PREPARE_SIGNATURE_PLACEHOLDER_NAME} → ${SIGN_PDF_NAME}
   • Factur-X / ZUGFeRD invoice or any PDF with attachments   → ${ADD_ATTACHMENT_NAME}   (NOT generate_basic_pdf)
+  • Encrypt / re-secure a PDF (AES-128 / AES-256)            → ${ENCRYPT_PDF_NAME}
+  • Decrypt an encrypted PDF                                 → ${DECRYPT_PDF_NAME}
   • Concatenate several PDFs into one                        → ${MERGE_PDFS_NAME}
   • Split a PDF into per-range PDFs                          → ${SPLIT_PDF_NAME}
   • Pull a subset of pages into one PDF                      → ${EXTRACT_PAGES_NAME}
   • Inspect / assert PDF metadata in CI                      → ${INSPECT_PDF_NAME}
   • Verify all PAdES signatures                              → ${VERIFY_PDF_NAME}
   • Validate PDF/UA accessibility structure                  → ${VALIDATE_PDF_NAME}
-  • Pull plain text from a PDF                               → ${EXTRACT_TEXT_NAME}
+  • Pull Unicode text (optionally positioned runs) from a PDF → ${EXTRACT_TEXT_NAME}
   • Pull embedded files back out (Factur-X XML, side-cars)   → ${EXTRACT_ATTACHMENTS_NAME}
   • Draft a GitHub issue for human review (never submits)    → ${DRAFT_GOVERNANCE_ISSUE_NAME}
 
@@ -574,7 +698,11 @@ COMMON PITFALLS (read these to avoid retry loops):
   • sign_pdf accepts ONLY DER-encoded inputs in base64. Convert from PEM with: openssl pkey -in key.pem -outform DER | base64 -w0  (and openssl x509 -in cert.pem -outform DER | base64 -w0 for the cert).
   • sign_pdf RSA key must be PKCS#1 DER (field 'rsaKeyPkcs1DerBase64'). ECDSA key may be SEC1 or PKCS#8 DER (field 'ecPrivateKeyDerBase64') or the raw 32-byte scalar as 64 hex chars (field 'ecPrivateScalarHex'). DER keys are signed with a native constant-time node:crypto provider; the raw scalar uses the pure-JS path.
   • sign_pdf auto-injects a placeholder when missing — call it directly on ANY PDF unless you specifically need to customize the placeholder.
-  • merge_pdfs / split_pdf / extract_pages reject ENCRYPTED PDFs (ENCRYPTED_SOURCE — decrypt first) and ALWAYS drop signatures + AcroForm (a page-tree edit invalidates them). They keep self-contained URI links unless dropAnnotations=true. Page indices/ranges are 0-based. split_pdf returns one PDF per range (file mode writes 'out-1.pdf', 'out-2.pdf', …); extract_pages returns a single PDF.
+  • merge_pdfs / split_pdf / extract_pages now ACCEPT encrypted sources via 'password' (pdfnative 1.6) and can re-encrypt output via 'encrypt' { ownerPassword, userPassword?, algorithm?, permissions? }. A missing/wrong password yields PASSWORD_REQUIRED / PASSWORD_INVALID. They ALWAYS drop signatures + AcroForm (a page-tree edit invalidates them) and keep self-contained URI links unless dropAnnotations=true. Page indices/ranges are 0-based. split_pdf returns one PDF per range (file mode writes 'out-1.pdf', 'out-2.pdf', …); extract_pages returns a single PDF.
+  • ENCRYPTION: encrypt_pdf re-secures a PDF (AES-128 default / AES-256; ownerPassword required; RC4 never emitted) and decrypt_pdf emits an unencrypted copy — BOTH rebuild the page tree, so they drop signatures + AcroForm. To merely READ an encrypted PDF, pass 'password' to inspect_pdf / extract_text / extract_attachments / verify_pdf instead of decrypting. inspect_pdf surfaces precise cipher details in 'encryptionInfo'.
+  • FORMS: add_form CREATES a new interactive form; read_form_fields lists an EXISTING form's fields (call it first to get names); fill_form fills/flattens an EXISTING form (values map field name → string | boolean | string[]; flatten:true bakes it in; pure flatten = flatten:true with no values). Signature fields cannot be filled (FORM_UNSUPPORTED). Encrypted forms work via 'password'.
+  • CHARTS: add_chart draws bar / barH / line / pie / donut as native vectors (colours are hex strings; pie/donut use one series). For a chart amongst other content, add a 'chart' block to generate_basic_pdf. Alt text is auto-generated for PDF/A when omitted.
+  • extract_text now returns real Unicode (pdfnative 1.6 resolves /ToUnicode); pass includeRuns:true for positioned runs and 'password' for encrypted PDFs. 'extractable' is false only when a page decodes entirely to U+FFFD (a font with no usable mapping).
   • annotate_pdf adds VISUAL OVERLAY markup only (highlight, sticky note, square/circle, line, freetext) via a non-destructive incremental update; it does NOT remove/redact underlying content (the covered text stays extractable). Encrypted sources are rejected (ENCRYPTED_SOURCE). Each annotation needs a 0-based 'page' and a 'rect' [x1,y1,x2,y2]; 'line' also needs 'start'/'end'.
   • For Factur-X / ZUGFeRD invoices, use add_attachment (PDF/A-3) — generate_basic_pdf cannot embed files.
   • PDF/A: pass pdfA='pdfa2b' for the widest reader compatibility. PDF/A-3 is required when you have attachments.
@@ -588,7 +716,10 @@ COMMON PITFALLS (read these to avoid retry loops):
   • outputMode='file' is only available when the host sets PDFNATIVE_MCP_OUTPUT_DIR; otherwise PDFs are returned as base64. draft_governance_issue writes a .md there when outputMode='file'.
   • TOKEN-FRUGAL READS: the read-only tools (inspect_pdf, verify_pdf, validate_pdf, extract_text, extract_attachments) accept verbosity:'summary' for a compact scalar-only verdict (drops large arrays / full text) and fields:[...] for dot-path projection (e.g. fields:['allValid']). Defaults are unchanged (full output). Generated PDFs are returned as an embedded resource block, not duplicated in structuredContent.
 
-Every tool ships JSON-Schema-typed inputs/outputs, _meta.apiVersion = '1.4.0', and worked-example _meta.examples. The server also exposes MCP prompts ('governance_contract', 'draft_issue_workflow'). See docs/AI_GUIDE.md for a longer walk-through and docs/guides/AI_GOVERNANCE.md for the HITL contract.`;
+  • TOKEN-FRUGAL READS also apply to read_form_fields (verbosity:'summary' → { fieldCount }).
+  • MCP RESOURCES: when the host sets PDFNATIVE_MCP_OUTPUT_DIR, every PDF written in outputMode='file' is exposed as an MCP resource (resources/list + resources/read, uri 'pdfnative://output/<name>.pdf'); file-mode tool results also carry a resource_link so you can re-reference the artifact across calls.
+
+Every tool ships JSON-Schema-typed inputs/outputs, _meta.apiVersion = '1.5.0', and worked-example _meta.examples. The server also exposes MCP prompts ('governance_contract', 'draft_issue_workflow') and MCP resources for generated PDFs. See docs/AI_GUIDE.md for a longer walk-through and docs/guides/AI_GOVERNANCE.md for the HITL contract.`;
 
 function buildDraftGovernanceIssueResult(output: DraftGovernanceIssueResult, toolName: string): CallToolResult {
     const where = output.outputMode === 'file' ? ` and written to ${output.filePath}` : '';
@@ -709,14 +840,34 @@ function buildExtractAttachmentsResult(
     };
 }
 
+function buildReadFormFieldsResult(output: ReadFormFieldsResult, toolName: string, input: unknown): CallToolResult {
+    const full = output as unknown as Record<string, unknown>;
+    const summary: Record<string, unknown> = { fieldCount: output.fieldCount };
+    return {
+        content: [
+            {
+                type: 'text',
+                text: `${toolName}: ${output.fieldCount} form field(s)${
+                    output.fieldCount > 0 ? ` — ${output.fields.map((f) => f.name).slice(0, 20).join(', ')}${output.fieldCount > 20 ? ', …' : ''}` : ''
+                }.`,
+            },
+        ],
+        structuredContent: projectStructured(full, summary, input),
+    };
+}
+
 function buildSuccessResult(output: OutputResult, toolName: string): CallToolResult {
     if (output.mode === 'file') {
+        const link = output.filePath !== undefined ? resourceLinkForPath(output.filePath) : null;
         return {
             content: [
                 {
                     type: 'text',
                     text: `${toolName}: wrote ${output.sizeBytes} bytes to ${output.filePath}`,
                 },
+                ...(link !== null
+                    ? [{ type: 'resource_link' as const, ...link, mimeType: 'application/pdf' }]
+                    : []),
             ],
             structuredContent: {
                 mode: output.mode,
@@ -749,6 +900,10 @@ function buildSuccessResult(output: OutputResult, toolName: string): CallToolRes
 
 function buildMultiSuccessResult(output: MultiOutputResult, toolName: string): CallToolResult {
     if (output.mode === 'file') {
+        const links = output.parts
+            .map((p) => (p.filePath !== undefined ? resourceLinkForPath(p.filePath) : null))
+            .filter((l): l is { uri: string; name: string; title: string } => l !== null)
+            .map((l) => ({ type: 'resource_link' as const, ...l, mimeType: 'application/pdf' }));
         return {
             content: [
                 {
@@ -757,6 +912,7 @@ function buildMultiSuccessResult(output: MultiOutputResult, toolName: string): C
                         .map((p) => p.filePath)
                         .join(', ')}`,
                 },
+                ...links,
             ],
             structuredContent: {
                 mode: output.mode,
@@ -839,10 +995,31 @@ export function createServer(): Server {
     const server = new Server(
         { name: SERVER_NAME, version: SERVER_VERSION, title: SERVER_TITLE, description: SERVER_DESCRIPTION },
         {
-            capabilities: { tools: {}, prompts: {} },
+            capabilities: { tools: {}, prompts: {}, resources: {} },
             instructions: SERVER_INSTRUCTIONS,
         },
     );
+
+    // Native MCP resources: expose sandboxed generated PDFs as re-referenceable
+    // pdfnative://output/… URIs (empty when file output is disabled).
+    server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+        resources: (await listResources()).map((r) => ({
+            uri: r.uri,
+            name: r.name,
+            title: r.title,
+            description: r.description,
+            mimeType: r.mimeType,
+            size: r.size,
+        })),
+    }));
+
+    server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({
+        resourceTemplates: listResourceTemplates(),
+    }));
+
+    server.setRequestHandler(ReadResourceRequestSchema, async (request: ReadResourceRequest) => ({
+        contents: [await readResource(request.params.uri)],
+    }));
 
     server.setRequestHandler(ListPromptsRequestSchema, async () => ({
         prompts: PROMPTS.map((p) => ({ name: p.name, title: p.title, description: p.description })),
@@ -891,8 +1068,9 @@ export function createServer(): Server {
         try {
             const input = args ?? {};
             // Content-addressed cache (opt-in via PDFNATIVE_MCP_CACHE_DIR).
-            // We skip caching for outputMode='file' since the filesystem write is itself an effect.
-            const cacheable = !isFileOutput(input);
+            // We skip caching for outputMode='file' since the filesystem write is itself an effect,
+            // and for the encryption tools so decrypted/protected bytes are never persisted at rest.
+            const cacheable = !isFileOutput(input) && !NON_CACHEABLE_TOOLS.has(name);
             const cacheKey = cacheable ? { tool: name, apiVersion: TOOL_API_VERSION } : null;
             if (cacheKey !== null) {
                 const hit = getCached<unknown>(cacheKey.tool, cacheKey.apiVersion, input);

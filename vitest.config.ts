@@ -5,6 +5,10 @@ export default defineConfig({
         include: ['tests/**/*.test.ts'],
         environment: 'node',
         globals: false,
+        // AES-256 (R6) uses the ISO 32000-2 SHA-256/384/512 hash rotation in
+        // pure JS; under v8 coverage instrumentation an encrypt→decrypt round
+        // trip can exceed the 5 s default, so allow generous headroom.
+        testTimeout: 30_000,
         coverage: {
             provider: 'v8',
             include: ['src/**/*.ts'],

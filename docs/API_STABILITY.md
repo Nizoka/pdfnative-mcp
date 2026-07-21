@@ -9,7 +9,7 @@
 
 Every tool emits `_meta.apiVersion` in the `ListTools` response.
 
-Current value: **`1.4.0`** (stable, since pdfnative-mcp 1.4.0).
+Current value: **`1.5.0`** (stable, since pdfnative-mcp 1.5.0).
 
 The tool API version is **independent of the npm release version**.
 Server releases that ship only documentation, refactoring, or non-breaking ergonomic improvements (richer descriptions, additional `_meta.examples`, new optional output fields) **do not** bump `_meta.apiVersion`.
@@ -76,12 +76,40 @@ When a tool, field or error code is scheduled for removal:
 
 ## 5. Per-tool stability matrix
 
-All 19 tools shipped through pdfnative-mcp 1.4.0 are at `_meta.apiVersion = '1.4.0'` and are considered **stable**:
+All 24 tools shipped through pdfnative-mcp 1.5.0 are at `_meta.apiVersion = '1.5.0'` and are considered **stable**:
 
 `generate_basic_pdf`, `add_barcode`, `add_international_text`, `add_table`, `add_form`,
 `embed_image`, `prepare_signature_placeholder`, `sign_pdf`, `verify_pdf`, `validate_pdf`,
 `inspect_pdf`, `add_attachment`, `extract_attachments`, `extract_text`,
-`merge_pdfs`, `split_pdf`, `extract_pages`, `annotate_pdf`, `draft_governance_issue`.
+`merge_pdfs`, `split_pdf`, `extract_pages`, `annotate_pdf`, `draft_governance_issue`,
+`read_form_fields`, `fill_form`, `add_chart`, `encrypt_pdf`, `decrypt_pdf`.
+
+> **v1.5.0 minor bump rationale:** five **new tools** were added — `add_chart`
+> (native vector charts on pdfnative 1.6's `ChartBlock`), `read_form_fields` and
+> `fill_form` (AcroForm fill/flatten), and `encrypt_pdf` / `decrypt_pdf`
+> (Standard Security Handler round-trip). Existing tools gained **optional**
+> inputs with backward-compatible defaults: `password` on `inspect_pdf`,
+> `verify_pdf`, `extract_text`, `extract_attachments`, `merge_pdfs`, `split_pdf`,
+> `extract_pages`; `encrypt` on the three page-tree tools; `includeRuns` /
+> `maxTextLength` on `extract_text`; a `chart` block on `generate_basic_pdf`.
+> Optional **output** fields were added: `encryptionInfo` on `inspect_pdf` and
+> per-page `runs[]` on `extract_text`. New error codes `PASSWORD_REQUIRED`,
+> `PASSWORD_INVALID`, `ENCRYPTION_UNSUPPORTED`, `ENCRYPTION_ERROR`,
+> `FORM_FIELD_NOT_FOUND`, `FORM_VALUE_TYPE_ERROR`, `FORM_UNSUPPORTED`, `CHART_ERROR`,
+> and `UNKNOWN_RESOURCE` are introduced (additive — no existing code was removed or
+> repurposed). The server also newly advertises the MCP `resources` capability and
+> per-tool `annotations`. All changes are additive per §3; default responses for
+> existing tools are byte-identical to v1.4.0.
+>
+> **One behaviour change to note:** the page-tree tools (`merge_pdfs`,
+> `split_pdf`, `extract_pages`) previously rejected *every* encrypted source with
+> `ENCRYPTED_SOURCE`. They now accept encrypted sources via `password`; an
+> empty-user-password document processes transparently, and a password-protected
+> source supplied without a password returns the more specific `PASSWORD_REQUIRED`
+> (or `PASSWORD_INVALID`). No previously-succeeding call changes behaviour — only
+> inputs that previously failed now either succeed or return a more precise code.
+> `ENCRYPTED_SOURCE` is retained by `annotate_pdf` (which does not accept a
+> password).
 
 > **v1.4.0 minor bump rationale:** two **new tools** were added — `annotate_pdf`
 > (markup-overlay annotations on pdfnative v1.5.0's incremental-update annotation writer)
@@ -127,7 +155,7 @@ All 19 tools shipped through pdfnative-mcp 1.4.0 are at `_meta.apiVersion = '1.4
 > satisfy the full `outputSchema` (which describes the default `'full'` shape). This is an
 > opt-in token-saving feature; the `outputSchema` contract continues to describe full output.
 
-Page-tree tools `merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative v1.4.0's page-tree API; `annotate_pdf` shipped in v1.4.0 on pdfnative v1.5.0's annotation writer. `redact_pdf` stays **deferred by design** (pdfnative can only overlay, not remove, content — an overlay-only redaction would create false security) and an encrypted-PDF round-trip remains **blocked upstream** (no Standard Security Handler writer). Both will be added with the same stability guarantees once pdfnative exports the required APIs.
+Page-tree tools `merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative v1.4.0's page-tree API; `annotate_pdf` shipped in v1.4.0 on pdfnative v1.5.0's annotation writer; charts (`add_chart`), form fill/flatten (`read_form_fields`, `fill_form`) and the encrypted round-trip (`encrypt_pdf`, `decrypt_pdf`, `password`/`encrypt` on the page-tree and read-only tools) shipped in v1.5.0 on pdfnative v1.6.0. `redact_pdf` stays **deferred by design** (pdfnative can overlay/flatten but not remove content — an overlay-only redaction would create false security) and will be added with the same stability guarantees once pdfnative exports a content-removal API.
 
 ---
 

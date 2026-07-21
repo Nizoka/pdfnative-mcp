@@ -95,7 +95,21 @@ Priorities may shift based on community feedback and sponsorship.
 - [x] **Page labels in `inspect_pdf`** — read-only surfacing of `/PageLabels` ranges.
 - [x] **Math / scientific script** — `add_international_text` accepts the explicit `math` lang (Noto Sans Math), embedded on demand only (no global auto-routing).
 
-_v1.4.0 is the active release. `redact_pdf` stays **deferred** and an encrypted-PDF round-trip remains blocked on upstream pdfnative APIs (see Blocked below)._
+### v1.5.0 — charts, forms, encryption round-trip, MCP resources, pdfnative 1.6
+
+- [x] **pdfnative v1.6.0** — dependency bump `^1.5.0` → `^1.6.0` (additive, no breaking changes).
+- [x] **Tool `add_chart`** — native vector charts (bar / barH / line / pie / donut) via pdfnative 1.6's `ChartBlock`; also available as a `chart` block in `generate_basic_pdf`. **20th tool.**
+- [x] **Tool `read_form_fields`** — read-only enumeration of an existing AcroForm's field tree. **21st tool.**
+- [x] **Tool `fill_form`** — fill / flatten an existing AcroForm (counterpart to `add_form`). **22nd tool.**
+- [x] **Tool `encrypt_pdf`** — re-secure a PDF with AES-128 / AES-256 (owner/user passwords, permissions, password rotation). **23rd tool.**
+- [x] **Tool `decrypt_pdf`** — emit an unencrypted copy of an RC4 / AES-128 / AES-256 document. **24th tool.**
+- [x] **Encrypted-PDF round-trip** — `password` on the read-only tools (`inspect_pdf`, `verify_pdf`, `extract_text`, `extract_attachments`) and `password` + `encrypt` on `merge_pdfs` / `split_pdf` / `extract_pages`, plus in-process encrypted fixtures. (Previously blocked; unblocked by pdfnative 1.6's Standard Security Handler reader/writer.)
+- [x] **`extract_text` real Unicode** — rewritten onto pdfnative's `extractText()`: `/ToUnicode` decoding, optional positioned `runs[]`, `password`, `maxTextLength`.
+- [x] **`inspect_pdf` `encryptionInfo`** — precise `{ algorithm, revision, authenticatedAs }` from `reader.encryption`.
+- [x] **Native MCP resources** — generated PDFs (file mode) exposed as `pdfnative://output/…` resource URIs (`resources/list` + `resources/read`) with `resource_link` in results. (Previously long-term.)
+- [x] **Tool annotations** — every tool advertises `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`.
+
+_v1.5.0 is the active release. `redact_pdf` stays **deferred** by design (overlay/flatten ≠ content removal)._
 
 ---
 
@@ -103,24 +117,20 @@ _v1.4.0 is the active release. `redact_pdf` stays **deferred** and an encrypted-
 
 ### Blocked upstream
 
-`merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative
-v1.4.0's page-tree export API; `annotate_pdf` shipped in v1.4.0 on pdfnative
-v1.5.0's annotation writer. The remaining items stay **blocked/deferred**:
-pdfnative does not yet export a content-*removal* API or a Standard Security
-Handler writer, and implementing them on raw primitives would contradict this
-project's faithful, thin-wrapper philosophy. They will ship once pdfnative
-exports the required APIs.
+The page-tree tools, the annotation writer, and (in v1.5.0) the encrypted
+round-trip, charts and form fill/flatten have all shipped on their respective
+pdfnative exports. The remaining items stay **blocked/deferred**: pdfnative does
+not yet export a content-*removal* API, and implementing one on raw primitives
+would contradict this project's faithful, thin-wrapper philosophy.
 
-- [ ] **Tool `redact_pdf`** — **deferred by design.** pdfnative 1.5's annotation writer can only *overlay* content; an overlay-only "redaction" would leave the original bytes intact and create false security, which fails this project's honesty bar. Blocked on an upstream true content-removal API (tracked as a `draft_governance_issue` feature request).
-- [ ] **Encrypted-PDF round-trip fixtures** — once pdfnative exposes a Standard Security Handler writer.
-- [ ] **Per-tool HTTP page-by-page streaming** — once MCP allows partial structuredContent envelopes.
+- [ ] **Tool `redact_pdf`** — **deferred by design.** pdfnative can overlay annotations and flatten forms, but not *remove* page content; an overlay-only "redaction" would leave the original bytes intact and create false security, which fails this project's honesty bar. Blocked on an upstream true content-removal API (tracked as a `draft_governance_issue` feature request).
+- [ ] **`verify_pdf` native ECDSA verify** — replace the local P-256 verifier once pdfnative exports `ecdsaVerifyHash` (still internal-only in 1.6.0).
+- [ ] **Per-tool HTTP page-by-page streaming** — once MCP allows partial structuredContent envelopes (pdfnative 1.6 already provides `streamMergedPdfs` / `streamSplitPdf` / `streamExtractPages`).
 
 ### Long-Term
 
 - [ ] **OCR ingestion** — accept scanned-image PDFs and produce searchable PDF/A via an external OCR engine (opt-in, sandboxed).
 - [ ] **PDF/UA accessibility** — full PDF/UA-1 conformance (Tagged PDF + structure tree validation) with `inspect_pdf` reporting accessibility issues.
-- [ ] **Native MCP resources** — expose generated PDFs as MCP `resource` URIs so AI clients can re-reference them across calls.
-- [ ] **Tool discovery hints** — per-tool `examples[]` so AI clients can prime themselves with high-quality call patterns.
 - [ ] **Telemetry hook (opt-in, off by default)** — anonymous usage counts via OpenTelemetry for adoption metrics; never includes PDF content.
 
 ---
