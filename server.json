@@ -1,19 +1,19 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.github.Nizoka/pdfnative-mcp",
-  "description": "Production-grade MCP server for PDF generation, PDF/A archival, PDF/UA structural validation, digital signatures (PAdES sign + verify, constant-time node:crypto), page-tree ops (merge / split / extract), markup annotations, Factur-X invoices, PDF introspection, and human-in-the-loop AI-governance issue drafting. 19 tools, 24 scripts, zero runtime dependencies beyond pdfnative and the MCP SDK.",
+  "description": "Production-grade MCP server for PDF generation, PDF/A archival, PDF/UA structural validation, native vector charts, digital signatures (PAdES sign + verify, constant-time node:crypto), encryption round-trip (decrypt + AES-128/256 re-encrypt), AcroForm fill & flatten, page-tree ops (merge / split / extract), markup annotations, Factur-X invoices, Unicode text extraction with positioned runs, PDF introspection, MCP resources for generated PDFs, and human-in-the-loop AI-governance issue drafting. 24 tools, 24 scripts, zero runtime dependencies beyond pdfnative and the MCP SDK.",
   "repository": {
     "url": "https://github.com/Nizoka/pdfnative-mcp",
     "source": "github"
   },
-  "version": "1.4.0",
+  "version": "1.5.0",
   "websiteUrl": "https://github.com/Nizoka/pdfnative-mcp#readme",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "pdfnative-mcp",
-      "version": "1.4.0",
+      "version": "1.5.0",
       "transport": { "type": "stdio" },
       "runtimeHint": "npx",
       "runtimeArguments": [
@@ -29,7 +29,7 @@
         },
         {
           "name": "PDFNATIVE_MCP_CACHE_DIR",
-          "description": "Opt-in content-addressed response cache directory. SHA-256 keyed, 1h TTL, 256 MiB LRU.",
+          "description": "Opt-in content-addressed response cache directory. SHA-256 keyed, 1h TTL, 256 MiB LRU. Tool output is stored as plaintext at rest; encrypt_pdf and decrypt_pdf are never cached so decrypted/protected bytes never linger on disk.",
           "isRequired": false,
           "isSecret": false
         },

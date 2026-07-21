@@ -6,4 +6,4 @@
  * governance tooling reference one constant without importing package.json
  * (the build rootDir is limited to ./src).
  */
-export const PDFNATIVE_MCP_VERSION = '1.4.0';
+export const PDFNATIVE_MCP_VERSION = '1.5.0';

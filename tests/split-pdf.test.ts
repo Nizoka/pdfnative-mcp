@@ -11,6 +11,7 @@ import { ensureCompressionReady } from '../src/server.js';
 import { ToolError } from '../src/errors.js';
 import { assertValidPdf } from './_pdf-assert.js';
 import { makePdfBase64, makeEncryptedPdfBase64 } from './_pagetree-fixtures.js';
+import { makeEncryptedPdfBase64 as makeUserEncryptedPdfBase64 } from './_encrypted-fixtures.js';
 
 const ENV_KEY = 'PDFNATIVE_MCP_OUTPUT_DIR';
 
@@ -52,10 +53,16 @@ describe('split_pdf', () => {
         await expect(splitPdfTool({ pdfBase64: src, ranges: [] })).rejects.toThrow(ToolError);
     });
 
-    it('rejects an encrypted source with ENCRYPTED_SOURCE', async () => {
+    it('processes an owner-only encrypted source (empty user password) transparently', async () => {
         const enc = makeEncryptedPdfBase64();
+        const out = await splitPdfTool({ pdfBase64: enc, ranges: [{ start: 0 }] });
+        expect(out.count).toBe(1);
+    });
+
+    it('rejects a password-protected source without a password (PASSWORD_REQUIRED)', async () => {
+        const enc = makeUserEncryptedPdfBase64({ userPassword: 'open-me' });
         await expect(splitPdfTool({ pdfBase64: enc, ranges: [{ start: 0 }] })).rejects.toMatchObject({
-            code: 'ENCRYPTED_SOURCE',
+            code: 'PASSWORD_REQUIRED',
         });
     });
 

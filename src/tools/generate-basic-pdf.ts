@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { splitParagraphSegments } from '../text.js';
+import { CHART_BODY_PROPERTIES, ChartBodySchema, toChartBlock } from '../chart.js';
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
 import { NORMALIZE_ENUM, NORMALIZE_FIELD_DESCRIPTION, NormalizeSchema } from '../normalize.js';
 import {
@@ -103,6 +104,16 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
                             height: { type: 'number', minimum: 1, maximum: 500 },
                         },
                     },
+                    {
+                        type: 'object',
+                        additionalProperties: false,
+                        required: ['type', 'chartType', 'series'],
+                        description: 'Native vector chart (pdfnative v1.6.0) — bar / horizontal-bar / line / pie / donut, rendered as pure PDF path operators.',
+                        properties: {
+                            type: { const: 'chart' },
+                            ...CHART_BODY_PROPERTIES,
+                        },
+                    },
                 ],
             },
         },
@@ -163,6 +174,7 @@ const InputSchema = z.object({
                     type: z.literal('spacer'),
                     height: z.number().min(1).max(500),
                 }),
+                ChartBodySchema.extend({ type: z.literal('chart') }),
             ]),
         )
         .min(1)
@@ -199,6 +211,8 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
                 return [{ type: 'pageBreak' }];
             case 'spacer':
                 return [{ type: 'spacer', height: block.height }];
+            case 'chart':
+                return [toChartBlock(block)];
         }
     });
     if (docBlocks.length === 0) {

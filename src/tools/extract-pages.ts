@@ -21,6 +21,13 @@ import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { mapPageTreeError } from '../pagetree.js';
+import {
+    ENCRYPT_INPUT_SCHEMA,
+    EncryptSchema,
+    PASSWORD_INPUT_SCHEMA,
+    PasswordSchema,
+    toEncryptionOptions,
+} from '../encryption.js';
 
 export const EXTRACT_PAGES_NAME = 'extract_pages';
 
@@ -32,8 +39,10 @@ export const EXTRACT_PAGES_INPUT_SCHEMA = {
         pdfBase64: {
             type: 'string',
             minLength: 4,
-            description: 'Base64-encoded source PDF. Must not be encrypted.',
+            description: 'Base64-encoded source PDF. Pass `password` for an encrypted source.',
         },
+        password: PASSWORD_INPUT_SCHEMA,
+        encrypt: ENCRYPT_INPUT_SCHEMA,
         pages: {
             type: 'array',
             description: '0-based page indices to keep, in output order. Duplicates and out-of-range indices are rejected.',
@@ -58,6 +67,8 @@ export const EXTRACT_PAGES_INPUT_SCHEMA = {
 
 const InputSchema = z.object({
     pdfBase64: z.string().min(4),
+    password: PasswordSchema.optional(),
+    encrypt: EncryptSchema.optional(),
     pages: z.array(z.number().int().min(0)).min(1).max(5000),
     dropAnnotations: z.boolean().default(false),
     maxOutputSizeBytes: z.number().int().positive().optional(),
@@ -85,13 +96,15 @@ export async function extractPagesTool(rawInput: unknown): Promise<OutputResult>
     const opts: MergeOptions = {
         dropAnnotations: input.dropAnnotations,
         ...(input.maxOutputSizeBytes !== undefined ? { maxOutputSize: input.maxOutputSizeBytes } : {}),
+        ...(input.password !== undefined ? { password: input.password } : {}),
+        ...(input.encrypt !== undefined ? { encrypt: toEncryptionOptions(input.encrypt) } : {}),
     };
 
     let extracted: Uint8Array;
     try {
         extracted = extractPages(source, input.pages, opts);
     } catch (err) {
-        mapPageTreeError(err);
+        mapPageTreeError(err, input.password !== undefined);
     }
 
     return emitPdf(extracted, {

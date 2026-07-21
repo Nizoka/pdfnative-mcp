@@ -1,0 +1,16 @@
+{
+  "description": "Render a native vector chart (pdfnative v1.6 via add_chart). A grouped bar chart with two series, categories, gridlines and a custom hex palette — pure PDF path operators, zero rasterisation, with an auto-generated tagged-PDF /Figure /Alt. Self-contained: runs end-to-end with no placeholders. For a chart embedded amongst other content, add a 'chart' block to generate_basic_pdf instead.",
+  "tool": "add_chart",
+  "arguments": {
+    "chartType": "bar",
+    "title": "Quarterly revenue (k€)",
+    "categories": ["Q1", "Q2", "Q3", "Q4"],
+    "series": [
+      { "label": "2025", "values": [120, 180, 150, 220] },
+      { "label": "2026", "values": [140, 200, 190, 250] }
+    ],
+    "axis": { "grid": true },
+    "colors": ["#3366cc", "#dc3912"],
+    "legend": "bottom"
+  }
+}

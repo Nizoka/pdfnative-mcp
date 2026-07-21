@@ -13,55 +13,70 @@ invocations live under [examples/](examples/).
 
 ---
 
-## 1. Tool catalogue (19 tools)
+## 1. Tool catalogue (24 tools)
 
 | # | Tool | Use it for | Read-only |
 |---|------|-----------|:---:|
-| 1 | `generate_basic_pdf` | Plain documents (headings, paragraphs, nested lists). Optional `pdfA`, `watermark`, `normalize`, `outline` (bookmarks), `pageLabels`, `viewerPreferences`. | |
+| 1 | `generate_basic_pdf` | Plain documents (headings, paragraphs, nested lists, **`chart` blocks**). Optional `pdfA`, `watermark`, `normalize`, `outline` (bookmarks), `pageLabels`, `viewerPreferences`. | |
 | 2 | `add_barcode` | QR / Code 128 / EAN-13 / Data Matrix / PDF417. | |
 | 3 | `add_international_text` | 24 scripts + colour emoji, BiDi + OpenType shaping. Optional `normalize` (default `NFC`), `viewerPreferences`. | |
 | 4 | `add_table` | Tabular reports (wrap, repeatHeader, zebra, caption, `cellBorders`, `cellVAlign`…). Optional `watermark`, `viewerPreferences`. | |
-| 5 | `add_form` | Interactive AcroForms (text, checkbox, radio, dropdown). | |
-| 6 | `embed_image` | Embed a JPEG/PNG into a titled PDF. | |
-| 7 | `prepare_signature_placeholder` | Customize the `/Sig` placeholder before signing. | |
-| 8 | `sign_pdf` | PAdES CMS signature (RSA-SHA256 / ECDSA-P256), constant-time via `node:crypto`. Auto-injects a placeholder. | |
-| 9 | `verify_pdf` | Verify every PAdES signature (integrity + value + chain). | ✓ |
-| 10 | `validate_pdf` | PDF/UA (ISO 14289-1) structural conformance. | ✓ |
-| 11 | `inspect_pdf` | Metadata: version, pages, encryption, PDF/A, signatures, attachments. | ✓ |
-| 12 | `add_attachment` | PDF/A-3 with embedded files (Factur-X / ZUGFeRD). | |
-| 13 | `extract_attachments` | Read embedded files back out (byte-for-byte). | ✓ |
-| 14 | `extract_text` | Best-effort plain-text extraction (non-encrypted). | ✓ |
-| 15 | `merge_pdfs` | Concatenate 2–50 PDFs into one (page-tree API). | |
-| 16 | `split_pdf` | Split a PDF into one document per page range (multi-output). | |
-| 17 | `extract_pages` | Pull an arbitrary page subset into a single PDF. | ✓¹ |
-| 18 | `annotate_pdf` | Add markup annotations (highlight, sticky note, square/circle, line, freetext). Visual overlay only — does **not** redact underlying content. | |
-| 19 | `draft_governance_issue` | Draft a governance-compliant GitHub issue for **human** review. Produces a local draft + compliance report; **never submits**, no network. | ✓ |
+| 5 | `add_form` | Create a **new** interactive AcroForm (text, checkbox, radio, dropdown). | |
+| 6 | `read_form_fields` | Enumerate an **existing** AcroForm's fields (name, type, value, widgets). Supports `password`. | ✓ |
+| 7 | `fill_form` | Fill / flatten an **existing** AcroForm (incremental update). Supports `password`. | |
+| 8 | `add_chart` | Native vector charts (bar / barH / line / pie / donut), PDF/A-safe. | |
+| 9 | `embed_image` | Embed a JPEG/PNG into a titled PDF. | |
+| 10 | `prepare_signature_placeholder` | Customize the `/Sig` placeholder before signing. | |
+| 11 | `sign_pdf` | PAdES CMS signature (RSA-SHA256 / ECDSA-P256), constant-time via `node:crypto`. Auto-injects a placeholder. | |
+| 12 | `verify_pdf` | Verify every PAdES signature (integrity + value + chain). Supports `password`. | ✓ |
+| 13 | `validate_pdf` | PDF/UA (ISO 14289-1) structural conformance. | ✓ |
+| 14 | `inspect_pdf` | Metadata: version, pages, encryption (+ `encryptionInfo`), PDF/A, signatures, attachments. Supports `password`. | ✓ |
+| 15 | `add_attachment` | PDF/A-3 with embedded files (Factur-X / ZUGFeRD). | |
+| 16 | `extract_attachments` | Read embedded files back out (byte-for-byte). Supports `password`. | ✓ |
+| 17 | `extract_text` | Unicode text extraction (resolves `/ToUnicode`), optional positioned `runs`. Supports `password`. | ✓ |
+| 18 | `merge_pdfs` | Concatenate 2–50 PDFs into one (page-tree API). Optional `password` / `encrypt`. | |
+| 19 | `split_pdf` | Split a PDF into one document per page range (multi-output). Optional `password` / `encrypt`. | |
+| 20 | `extract_pages` | Pull an arbitrary page subset into a single PDF. Optional `password` / `encrypt`. | ✓¹ |
+| 21 | `encrypt_pdf` | Re-secure a PDF with AES-128 / AES-256 (owner/user passwords, permissions, rotation). | |
+| 22 | `decrypt_pdf` | Emit an unencrypted copy of an RC4 / AES-128 / AES-256 document. | |
+| 23 | `annotate_pdf` | Add markup annotations (highlight, sticky note, square/circle, line, freetext). Visual overlay only — does **not** redact underlying content. | |
+| 24 | `draft_governance_issue` | Draft a governance-compliant GitHub issue for **human** review. Produces a local draft + compliance report; **never submits**, no network. | ✓² |
 
 ¹ `extract_pages` only reads the source, but it produces a new PDF, so it is not annotated `readOnlyHint`.
+² `draft_governance_issue` is read-only in the default inline mode; `outputMode:'file'` writes a `.md` into the sandbox, so its `readOnlyHint` is `false`.
 
 ## 2. Decision tree
 
 ```
 Need a NEW PDF?
  ├─ has embedded files (Factur-X/ZUGFeRD)? → add_attachment
+ ├─ a chart (bar/line/pie/donut)?          → add_chart
  ├─ a table/report?                        → add_table
  ├─ non-Latin text / emoji?                → add_international_text
  ├─ a barcode/QR?                          → add_barcode
  ├─ an image?                              → embed_image
- ├─ an interactive form?                   → add_form
- └─ otherwise                              → generate_basic_pdf
+ ├─ a NEW interactive form?                → add_form
+ └─ otherwise                              → generate_basic_pdf  (supports `chart` blocks)
+Work with an EXISTING form?
+ ├─ list its fields?                       → read_form_fields
+ └─ fill / flatten it?                     → fill_form
 Annotate an existing PDF (overlay)?       → annotate_pdf
 Combine / carve existing PDFs?
- ├─ join several into one?                 → merge_pdfs
- ├─ split into per-range documents?        → split_pdf
- └─ keep an arbitrary page subset (1 PDF)? → extract_pages
+ ├─ join several into one?                 → merge_pdfs   (password / encrypt optional)
+ ├─ split into per-range documents?        → split_pdf    (password / encrypt optional)
+ └─ keep an arbitrary page subset (1 PDF)? → extract_pages (password / encrypt optional)
+Encryption?
+ ├─ protect a PDF?                         → encrypt_pdf
+ ├─ get an unencrypted copy?               → decrypt_pdf
+ └─ just READ an encrypted PDF?            → pass `password` to inspect_pdf / extract_text / …
 Need to SIGN?            → sign_pdf  (then verify_pdf)
-Need to READ a PDF?
+Need to READ a PDF?      (all accept `password` for encrypted sources)
  ├─ metadata/structure?  → inspect_pdf
  ├─ signatures valid?    → verify_pdf
  ├─ PDF/UA conformant?   → validate_pdf
  ├─ embedded files?      → extract_attachments
- └─ plain text?          → extract_text
+ ├─ form fields?         → read_form_fields
+ └─ plain text (+runs)?  → extract_text
 Propose a bug/feature to GitHub? → draft_governance_issue (local draft; a human reviews & submits)
 ```
 
@@ -105,6 +120,9 @@ attachments in the caller.
 - **Assemble / carve:** generate parts → `merge_pdfs`; or `split_pdf` (per range) / `extract_pages` (one subset) → `inspect_pdf` to confirm the page count.
 - **Annotate for review:** `annotate_pdf` with `{ type: 'highlight' }` / `{ type: 'text' }` overlays — a visual review layer, **not** a redaction (underlying bytes remain).
 - **Math / scientific text:** `add_international_text` with `lang: ['latin', 'math']` — `math` is an **explicit** script, embedded only when requested (no global auto-routing).
+- **Chart:** `add_chart` for a standalone chart, or a `chart` block inside `generate_basic_pdf` to compose one with text/tables.
+- **Fill a form:** `read_form_fields` (discover names) → `fill_form` with `values` (+ `flatten: true` for a final copy).
+- **Encryption round-trip:** `encrypt_pdf` to protect, `decrypt_pdf` to recover, or pass `password` to a read-only tool to read an encrypted PDF without rebuilding it. `merge_pdfs`/`split_pdf`/`extract_pages` compose `password` (in) + `encrypt` (out).
 - **Propose an upstream change:** `draft_governance_issue` → review the local `.md` draft + compliance report → a **human** submits it to GitHub (the server never does).
 
 ## 6. Error reference
@@ -115,8 +133,16 @@ attachments in the caller.
 | `PDF_PARSE_FAILED` | Input PDF malformed/truncated | Re-encode the base64; confirm it opens in a reader. |
 | `PDF_A_COMPLIANCE_VIOLATION` | Watermark `opacity < 1.0` (incl. 0.15 default) under `pdfA:'pdfa1b'` | Use `opacity:1.0`, or target `pdfa2b`/`pdfa3b` (allow transparency). |
 | `MISSING_PLACEHOLDER` | `sign_pdf` w/ `autoInjectPlaceholder:false` on unplaceheld PDF | Keep the default `true`, or run `prepare_signature_placeholder`. |
-| `EXTRACTION_UNSUPPORTED` | Encrypted PDF to `extract_text` / `extract_attachments` | Decrypt outside the server first. |
-| `ENCRYPTED_SOURCE` | Encrypted source to `merge_pdfs` / `split_pdf` / `extract_pages` | Decrypt outside the server first; the page-tree API rejects encrypted input. |
+| `PASSWORD_REQUIRED` | Encrypted source, no `password` supplied (read-only or page-tree tools) | Pass the `password` input (user or owner). |
+| `PASSWORD_INVALID` | Supplied `password` did not open the document | Check the password; either user or owner works. |
+| `ENCRYPTION_UNSUPPORTED` | Security handler this server cannot open | The document uses an unsupported scheme. |
+| `ENCRYPTION_ERROR` | Re-encryption failed (e.g. no Web Crypto CSPRNG) | Run under a runtime with Web Crypto available. |
+| `FORM_FIELD_NOT_FOUND` | `fill_form` value key matched no field | Use `read_form_fields`, or `onUnknownField:'ignore'`. |
+| `FORM_VALUE_TYPE_ERROR` | Wrong value type / choice not in options | Match the field type; use a valid option. |
+| `FORM_UNSUPPORTED` | Tried to fill/flatten a signature field | Sign with `sign_pdf` instead. |
+| `CHART_ERROR` | `add_chart` failed to render | Check `series`/`chartType`; hex colours only. |
+| `EXTRACTION_UNSUPPORTED` | (legacy) retained for compatibility | Encrypted reads now use `password` instead. |
+| `ENCRYPTED_SOURCE` | Retained by `annotate_pdf` (no `password` input) | Decrypt with `decrypt_pdf` first, or use a password-aware tool. |
 | `ATTACHMENT_NOT_FOUND` | `extract_attachments` `filename` matched nothing | Drop `filename` or list names via `inspect_pdf`. |
 | `ATTACHMENT_TOO_LARGE` | `add_attachment` payload > 8 MiB | Shrink/split the payload. |
 | `OUTPUT_TOO_LARGE` | PDF > 50 MiB, or extraction > 16 MiB/file · 32 MiB total | Reduce content; for extraction use `includeData:false` or `filename`. |

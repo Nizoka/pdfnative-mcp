@@ -1,0 +1,40 @@
+{
+  "description": "Encryption round-trip (pdfnative v1.6): generate a PDF, re-secure it with AES-256 (owner + user password) via encrypt_pdf, confirm the cipher with inspect_pdf (password required), then recover an unencrypted copy with decrypt_pdf. NOTE: encrypt_pdf / decrypt_pdf rebuild the page tree, so signatures and AcroForms are dropped — encrypt BEFORE signing. To merely READ an encrypted PDF, pass `password` to inspect_pdf / extract_text instead of decrypting. Replace the <base64…> placeholders with the bytes returned by each prior step.",
+  "steps": [
+    {
+      "tool": "generate_basic_pdf",
+      "arguments": {
+        "title": "Confidential report",
+        "blocks": [
+          { "type": "heading", "text": "Confidential", "level": 1 },
+          { "type": "paragraph", "text": "For authorised recipients only." }
+        ]
+      }
+    },
+    {
+      "tool": "encrypt_pdf",
+      "arguments": {
+        "pdfBase64": "<base64 from step 1>",
+        "ownerPassword": "owner-secret",
+        "userPassword": "open-me",
+        "algorithm": "aes256",
+        "permissions": { "print": true, "copy": false }
+      }
+    },
+    {
+      "tool": "inspect_pdf",
+      "arguments": {
+        "pdfBase64": "<base64 from step 2>",
+        "password": "open-me",
+        "check": ["encrypted"]
+      }
+    },
+    {
+      "tool": "decrypt_pdf",
+      "arguments": {
+        "pdfBase64": "<base64 from step 2>",
+        "password": "open-me"
+      }
+    }
+  ]
+}

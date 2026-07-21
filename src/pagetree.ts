@@ -6,27 +6,39 @@
  * them into stable {@link ToolError} codes so AI clients get a consistent,
  * actionable `code` to branch on (see AGENTS.md §6 error reference).
  */
+import { PdfEncryptionUnsupportedError, PdfPasswordError } from 'pdfnative';
+
 import { ToolError } from './errors.js';
+import { mapDecryptError } from './encryption.js';
 
 /**
  * Maps a thrown page-tree error to a {@link ToolError} with a stable code.
  * Always throws — declared `never` so callers can treat the surrounding
  * `try`/`catch` as exhaustive.
  *
- * - Encrypted source           → `ENCRYPTED_SOURCE`
- * - Output / size-cap exceeded  → `OUTPUT_TOO_LARGE`
- * - Anything else (malformed)   → `PDF_PARSE_FAILED`
+ * Since pdfnative v1.6.0 the page-tree API ingests encrypted sources (via a
+ * `password`) and can re-encrypt its output, so encryption failures are routed
+ * through the shared decrypt mapper for precise codes:
+ *
+ * - Missing source password     → `PASSWORD_REQUIRED`
+ * - Wrong source password       → `PASSWORD_INVALID`
+ * - Unsupported handler / CSPRNG → `ENCRYPTION_UNSUPPORTED` / `ENCRYPTION_ERROR`
+ * - Output / size-cap exceeded   → `OUTPUT_TOO_LARGE`
+ * - Anything else (malformed)    → `PDF_PARSE_FAILED`
+ *
+ * @param hadPassword whether the caller supplied a source password (informs the
+ *                    PASSWORD_REQUIRED vs PASSWORD_INVALID distinction).
  */
-export function mapPageTreeError(err: unknown): never {
-    const message = err instanceof Error ? err.message : String(err);
-    if (/encrypt/i.test(message)) {
-        throw new ToolError(
-            'ENCRYPTED_SOURCE',
-            `The page-tree operation does not support encrypted PDFs. Decrypt the source outside the server first. (${message})`,
-        );
+export function mapPageTreeError(err: unknown, hadPassword = false): never {
+    if (err instanceof PdfPasswordError || err instanceof PdfEncryptionUnsupportedError) {
+        mapDecryptError(err, hadPassword);
     }
+    const message = err instanceof Error ? err.message : String(err);
     if (/\b(exceed|exceeds|too large|maxoutputsize|output size)\b/i.test(message)) {
         throw new ToolError('OUTPUT_TOO_LARGE', message);
+    }
+    if (/csprng|getRandomValues|web ?crypto/i.test(message)) {
+        mapDecryptError(err, hadPassword);
     }
     throw new ToolError('PDF_PARSE_FAILED', `Failed to process the source PDF(s): ${message}`);
 }

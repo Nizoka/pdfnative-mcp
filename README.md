@@ -16,7 +16,7 @@
 
 ## ✨ Features
 
-`pdfnative-mcp` exposes **19 production-grade tools** to any MCP host:
+`pdfnative-mcp` exposes **24 production-grade tools** to any MCP host:
 
 | Tool                               | Purpose                                                                                          |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
@@ -24,7 +24,10 @@
 | `add_barcode`                      | QR Code, Code 128, EAN-13, Data Matrix, PDF417 — embedded in a single-page PDF.                 |
 | `add_international_text`           | 24 scripts (incl. **Latin** & COLRv1 **colour emoji**) with BiDi & OpenType shaping; multi-lang per document. |
 | `add_table`                        | Tabular reports with smart fields (wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding). |
-| `add_form`                         | Interactive AcroForm PDFs with text fields, checkboxes, radio buttons, dropdowns.                |
+| `add_form`                         | Create a **new** interactive AcroForm PDF with text fields, checkboxes, radio buttons, dropdowns. |
+| `read_form_fields` *(new in v1.5.0)* | Read-only enumeration of an **existing** AcroForm's field tree (names, types, values, widgets).  |
+| `fill_form` *(new in v1.5.0)*      | Fill and/or flatten an **existing** AcroForm (non-destructive incremental update).              |
+| `add_chart` *(new in v1.5.0)*      | Native vector charts — bar / horizontal-bar / line / pie / donut (pure PDF path operators, PDF/A-safe). |
 | `embed_image`                      | Embed a JPEG or PNG image (base64) into a titled PDF document.                                  |
 | `prepare_signature_placeholder`    | Step 1 of the two-step sign workflow — create a PDF with a `/Sig` AcroForm placeholder.        |
 | `sign_pdf`                         | Apply a PAdES-compatible CMS signature (RSA-SHA256 / ECDSA-SHA256 P-256). Auto-injects a placeholder when needed. |
@@ -32,13 +35,25 @@
 | `validate_pdf` *(new in v1.1.0)*   | Validate a Tagged PDF for PDF/UA (ISO 14289-1) structural conformance (read-only).              |
 | `add_attachment`                   | Generate a PDF/A-3 document with embedded files (Factur-X / ZUGFeRD invoices).                  |
 | `extract_attachments`              | Read-only extraction of embedded files (Factur-X / ZUGFeRD XML round-trip) with byte-for-byte payloads. |
-| `extract_text`                     | Best-effort plain-text extraction from a non-encrypted PDF.                                     |
-| `inspect_pdf`                      | Read-only inspection: PDF version, page count, encryption, PDF/A claim, signatures, attachments, placeholder state. |
+| `extract_text`                     | Unicode text extraction (resolves `/ToUnicode`) with optional positioned runs; opens encrypted PDFs via `password`. |
+| `inspect_pdf`                      | Read-only inspection: PDF version, page count, encryption (+ precise `encryptionInfo`), PDF/A claim, signatures, attachments, placeholder state. |
+| `encrypt_pdf` *(new in v1.5.0)*    | Re-secure a PDF with AES-128 / AES-256 (owner/user passwords, permissions, password rotation).  |
+| `decrypt_pdf` *(new in v1.5.0)*    | Emit an unencrypted copy of an RC4 / AES-128 / AES-256 document.                                |
 | `merge_pdfs` *(new in v1.3.0)*     | Concatenate 2–50 PDFs into one via pdfnative's page-tree API.                                  |
 | `split_pdf` *(new in v1.3.0)*      | Split one PDF into one document per page range (multi-output).                                  |
 | `extract_pages` *(new in v1.3.0)*  | Pull an arbitrary page subset into a single PDF.                                               |
 | `annotate_pdf` *(new in v1.4.0)*   | Add markup annotations (highlight, note, square/circle, line, freetext) as a visual overlay — **not** a redaction. |
 | `draft_governance_issue` *(new in v1.4.0)* | Draft a governance-compliant GitHub issue locally for **human** review; never submits, no network. |
+
+**New in v1.5.0:**
+
+- 📊 **Native vector charts** — `add_chart` renders bar / horizontal-bar / line / pie / donut charts as pure PDF path operators (zero rasterisation, PDF/A-safe with auto alt text). `generate_basic_pdf` also accepts a `chart` block for composition with text and tables.
+- 📝 **Fill & flatten forms** — `read_form_fields` lists an existing AcroForm's fields; `fill_form` fills and/or flattens it via a non-destructive incremental update (the counterpart to `add_form`).
+- 🔐 **Encryption round-trip** — `encrypt_pdf` re-secures with AES-128 / AES-256 (RC4 never emitted), `decrypt_pdf` recovers an unencrypted copy, a `password` input opens encrypted sources on the read-only tools, and `merge_pdfs` / `split_pdf` / `extract_pages` gain `password` + `encrypt`.
+- 🔤 **Real text extraction** — `extract_text` now resolves each font's `/ToUnicode` CMap (no more glyph-index output) and can return positioned `runs`.
+- 🔗 **Native MCP resources** — sandboxed generated PDFs become `pdfnative://output/…` resources (`resources/list` + `resources/read`), with a `resource_link` in file-mode results for cross-call re-reference.
+- 🏷️ **Tool annotations** — every tool advertises `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`.
+- ⬆ **Engine upgrade** — [pdfnative **v1.6.0**](https://github.com/Nizoka/pdfnative) (decrypt/re-encrypt, `extractText`, fill/flatten, charts; colour-emoji subset 221 → 1167 glyphs).
 
 **New in v1.4.0:**
 
@@ -85,7 +100,7 @@
 - 🆕 **AI agent guide:** [`docs/AI_GUIDE.md`](docs/AI_GUIDE.md) — decision tree + common pitfalls. See also the root [`AGENTS.md`](AGENTS.md) operations manual.
 - 🆕 **PDF/A authoring guide:** [`docs/guides/PDFA.md`](docs/guides/PDFA.md).
 - 🛠 **Env-var rename:** `PDFNATIVE_MCP_OUTPUT_DIR` (was `PDFNATIVE_MPC_OUTPUT_DIR`; old name still works with a one-shot deprecation warning).
-- ✅ **Now shipped:** `merge_pdfs`, `split_pdf`, `extract_pages` (v1.3.0) and `annotate_pdf` (v1.4.0). `redact_pdf` stays **deferred** — pdfnative can only overlay content, and an overlay-only "redaction" would create false security, so it is intentionally not shipped (tracked as an upstream content-removal request).
+- ✅ **Now shipped:** `merge_pdfs`, `split_pdf`, `extract_pages` (v1.3.0), `annotate_pdf` (v1.4.0), and the `add_chart` / `read_form_fields` / `fill_form` / `encrypt_pdf` / `decrypt_pdf` tools plus the encrypted round-trip and native MCP resources (v1.5.0). `redact_pdf` stays **deferred** — pdfnative can overlay/flatten but not *remove* page content, and an overlay-only "redaction" would create false security, so it is intentionally not shipped (tracked as an upstream content-removal request).
 
 All tools support two output modes:
 

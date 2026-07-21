@@ -1,39 +1,36 @@
 /**
  * Tool: extract_text
  *
- * Best-effort plain-text extraction from a PDF.
+ * Unicode text extraction from a PDF, backed by pdfnative v1.6.0's
+ * `extractText()` (ISO 32000-1 §9.4 text-showing operators decoded through each
+ * font's `/ToUnicode` CMap, `/Encoding /Differences`, and WinAnsi / MacRoman
+ * base tables; Form XObjects are recursed).
  *
- * Approach:
- *   - Walk each page's `/Contents` stream(s) via pdfnative's `openPdf()`
- *     reader and `decodeStream()`.
- *   - Pull out the operands of the `Tj`, `'`, `"` and `TJ` text-showing
- *     operators (PDF 32000-1 §9.4). Literal strings (`(...)`) are unescaped
- *     for the common escape sequences (\\\\, \\(, \\), \\n, \\r, \\t, octal);
- *     hex strings (`<...>`) are decoded to bytes and reinterpreted as
- *     PDFDocEncoding fallback (Latin-1) when no /ToUnicode CMap can be applied.
+ * What changed in pdfnative-mcp v1.5.0 (was best-effort in ≤ 1.4.0):
+ *   - Real Unicode output: subset fonts with `/ToUnicode` now decode to
+ *     characters instead of glyph indices. Codes with no mapping decode to
+ *     U+FFFD (the `extractable` flag flips to false and `extractableReason`
+ *     explains it).
+ *   - Encrypted PDFs are supported: pass `password` (decryption is transparent),
+ *     replacing the old `EXTRACTION_UNSUPPORTED` rejection.
+ *   - Optional positioned runs (`includeRuns`) surface per-run device-space
+ *     geometry `{ text, x, y, fontSize, fontName }`.
+ *   - A hard `maxTextLength` memory cap (default 16 000 000 chars) bounds
+ *     adversarial input.
  *
- * Limitations (intentional v1.0.0 scope):
- *   - No /ToUnicode CMap resolution — text from embedded subset fonts may
- *     come out as glyph indices rather than Unicode characters. The output
- *     `extractable` flag is set to `false` when *any* page yields no text
- *     while having a non-empty content stream.
- *   - Encrypted PDFs are rejected with `EXTRACTION_UNSUPPORTED`.
- *   - Tagged-mode structure-tree extraction (which would give cleaner text)
- *     is tracked for v1.1.
+ * The default response shape (`pages[]`, `fullText`, `extractable`) is
+ * unchanged; `runs` is additive and present only when `includeRuns` is true.
  */
-import {
-    isArray,
-    isRef,
-    isStream,
-    openPdf,
-    type PdfReader,
-    type PdfStream,
-} from 'pdfnative';
+import { extractText as pdfnativeExtractText, openPdf, type ExtractTextOptions, type PdfReader } from 'pdfnative';
 import { z } from 'zod';
 
 import { ToolError } from '../errors.js';
+import { mapDecryptError, PASSWORD_INPUT_SCHEMA, PasswordSchema } from '../encryption.js';
 
 export const EXTRACT_TEXT_NAME = 'extract_text';
+
+/** Default hard cap on total extracted characters (matches pdfnative's default). */
+const DEFAULT_MAX_TEXT_LENGTH = 16_000_000;
 
 export const EXTRACT_TEXT_INPUT_SCHEMA = {
     type: 'object',
@@ -50,6 +47,18 @@ export const EXTRACT_TEXT_INPUT_SCHEMA = {
             description: 'Optional 0-based page indices to extract. When omitted, every page is extracted.',
             maxItems: 1000,
             items: { type: 'integer', minimum: 0 },
+        },
+        includeRuns: {
+            type: 'boolean',
+            default: false,
+            description:
+                'When true, each page also carries `runs[]` — positioned text-showing operations `{ text, x, y, fontSize, fontName }` in device space (content-stream order). Useful for layout-aware extraction; larger responses.',
+        },
+        password: PASSWORD_INPUT_SCHEMA,
+        maxTextLength: {
+            type: 'integer',
+            minimum: 1,
+            description: `Hard cap on total extracted characters across all pages (memory bound for adversarial input). Default ${DEFAULT_MAX_TEXT_LENGTH}. Exceeding it fails with OUTPUT_TOO_LARGE.`,
         },
         verbosity: {
             type: 'string',
@@ -75,7 +84,11 @@ export const EXTRACT_TEXT_OUTPUT_SCHEMA = {
     properties: {
         pageCount: { type: 'integer', minimum: 0 },
         extractedPageCount: { type: 'integer', minimum: 0 },
-        extractable: { type: 'boolean', description: 'False when one or more requested pages had a non-empty content stream but yielded no extractable text (likely subset fonts without /ToUnicode).' },
+        extractable: {
+            type: 'boolean',
+            description:
+                'False when one or more requested pages produced text that is entirely U+FFFD replacement characters — a font with no usable /ToUnicode CMap or base encoding. Blank pages are still considered extractable.',
+        },
         extractableReason: { type: 'string', description: 'Human-readable explanation when extractable=false. Absent when extractable=true.' },
         pages: {
             type: 'array',
@@ -86,6 +99,22 @@ export const EXTRACT_TEXT_OUTPUT_SCHEMA = {
                 properties: {
                     index: { type: 'integer', minimum: 0 },
                     text: { type: 'string' },
+                    runs: {
+                        type: 'array',
+                        description: 'Positioned text runs (present only when includeRuns is true).',
+                        items: {
+                            type: 'object',
+                            additionalProperties: false,
+                            required: ['text', 'x', 'y', 'fontSize', 'fontName'],
+                            properties: {
+                                text: { type: 'string' },
+                                x: { type: 'number' },
+                                y: { type: 'number' },
+                                fontSize: { type: 'number' },
+                                fontName: { type: 'string' },
+                            },
+                        },
+                    },
                 },
             },
         },
@@ -96,13 +125,25 @@ export const EXTRACT_TEXT_OUTPUT_SCHEMA = {
 const InputSchema = z.object({
     pdfBase64: z.string().min(4),
     pages: z.array(z.number().int().min(0)).max(1000).optional(),
+    includeRuns: z.boolean().default(false),
+    password: PasswordSchema.optional(),
+    maxTextLength: z.number().int().positive().optional(),
     verbosity: z.enum(['summary', 'full']).optional(),
     fields: z.array(z.string().min(1)).max(16).optional(),
 });
 
+export interface ExtractedTextRun {
+    readonly text: string;
+    readonly x: number;
+    readonly y: number;
+    readonly fontSize: number;
+    readonly fontName: string;
+}
+
 export interface ExtractedPage {
     readonly index: number;
     readonly text: string;
+    readonly runs?: readonly ExtractedTextRun[];
 }
 
 export interface ExtractTextResult {
@@ -123,183 +164,15 @@ function decodeBase64(value: string): Uint8Array {
     }
 }
 
-function isEncrypted(reader: PdfReader): boolean {
-    return reader.trailer.get('Encrypt') !== undefined;
-}
-
-function collectContentStreams(reader: PdfReader, page: ReturnType<PdfReader['getPage']>): Uint8Array {
-    const contents = page.get('Contents');
-    if (contents === undefined) return new Uint8Array(0);
-    const resolved = isRef(contents) ? reader.resolve(contents) : contents;
-    const streams: PdfStream[] = [];
-    if (isStream(resolved)) {
-        streams.push(resolved);
-    } else if (isArray(resolved)) {
-        for (const entry of resolved) {
-            const r = isRef(entry) ? reader.resolve(entry) : entry;
-            if (isStream(r)) streams.push(r);
-        }
+/** True when a page's text is non-empty but every non-whitespace char is U+FFFD. */
+function isUnmapped(text: string): boolean {
+    let sawContent = false;
+    for (const ch of text) {
+        if (ch === ' ' || ch === '\n' || ch === '\r' || ch === '\t' || ch === '\f') continue;
+        sawContent = true;
+        if (ch !== '�') return false;
     }
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    for (const s of streams) {
-        try {
-            const decoded = reader.decodeStream(s);
-            chunks.push(decoded);
-            total += decoded.length;
-            /* v8 ignore next 3 */
-        } catch {
-            // skip undecodable stream (e.g. unknown filter)
-        }
-    }
-    const out = new Uint8Array(total);
-    let off = 0;
-    for (const c of chunks) {
-        out.set(c, off);
-        off += c.length;
-    }
-    return out;
-}
-
-/** Latin-1 view of decoded content-stream bytes — sufficient for operator detection. */
-function toLatin1(bytes: Uint8Array): string {
-    let s = '';
-    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]!);
-    return s;
-}
-
-const TEXT_OPERATORS = new Set(['Tj', "'", '"', 'TJ']);
-
-function unescapePdfLiteral(raw: string): string {
-    let out = '';
-    for (let i = 0; i < raw.length; i++) {
-        const c = raw[i]!;
-        if (c !== '\\') {
-            out += c;
-            continue;
-        }
-        const next = raw[i + 1];
-        if (next === undefined) break;
-        if (next === 'n') { out += '\n'; i++; continue; }
-        if (next === 'r') { out += '\r'; i++; continue; }
-        if (next === 't') { out += '\t'; i++; continue; }
-        if (next === 'b') { out += '\b'; i++; continue; }
-        if (next === 'f') { out += '\f'; i++; continue; }
-        if (next === '(' || next === ')' || next === '\\') { out += next; i++; continue; }
-        if (next >= '0' && next <= '7') {
-            let oct = next;
-            if (raw[i + 2] !== undefined && raw[i + 2]! >= '0' && raw[i + 2]! <= '7') {
-                oct += raw[i + 2];
-                if (raw[i + 3] !== undefined && raw[i + 3]! >= '0' && raw[i + 3]! <= '7') {
-                    oct += raw[i + 3];
-                }
-            }
-            out += String.fromCharCode(parseInt(oct, 8));
-            i += oct.length;
-            continue;
-        }
-        // Unknown escape: drop the backslash, keep next char (PDF spec §7.3.4.2).
-        out += next;
-        i++;
-    }
-    return out;
-}
-
-function unescapePdfHex(hex: string): string {
-    let cleaned = '';
-    for (const c of hex) {
-        if (/[0-9a-fA-F]/.test(c)) cleaned += c;
-    }
-    if (cleaned.length % 2 === 1) cleaned += '0';
-    let out = '';
-    for (let i = 0; i < cleaned.length; i += 2) {
-        out += String.fromCharCode(parseInt(cleaned.substring(i, i + 2), 16));
-    }
-    return out;
-}
-
-/**
- * Tokenise a single page's content stream and concatenate the operand strings
- * of every text-showing operator. Strings are emitted in the order they appear;
- * paragraph breaks are inferred from BT/ET blocks (one newline per text object).
- */
-/** @internal — exported for unit-testing only. */
-export function _extractPageTextForTesting(latin1: string): string {
-    return extractPageText(latin1);
-}
-
-function extractPageText(latin1: string): string {
-    const out: string[] = [];
-    let i = 0;
-    const len = latin1.length;
-    let pendingStrings: string[] = [];
-
-    function flushTextObject(): void {
-        if (pendingStrings.length === 0) return;
-        out.push(pendingStrings.join(''));
-        out.push('\n');
-        pendingStrings = [];
-    }
-
-    while (i < len) {
-        const c = latin1[i]!;
-        // Skip comments
-        if (c === '%') {
-            while (i < len && latin1[i] !== '\n' && latin1[i] !== '\r') i++;
-            continue;
-        }
-        // Literal string `(...)`
-        if (c === '(') {
-            let depth = 1;
-            let j = i + 1;
-            let raw = '';
-            while (j < len && depth > 0) {
-                const cj = latin1[j]!;
-                if (cj === '\\' && j + 1 < len) {
-                    raw += cj + latin1[j + 1]!;
-                    j += 2;
-                    continue;
-                }
-                if (cj === '(') depth++;
-                else if (cj === ')') {
-                    depth--;
-                    if (depth === 0) break;
-                }
-                raw += cj;
-                j++;
-            }
-            pendingStrings.push(unescapePdfLiteral(raw));
-            i = j + 1;
-            continue;
-        }
-        // Hex string `<...>`
-        if (c === '<' && latin1[i + 1] !== '<') {
-            const end = latin1.indexOf('>', i + 1);
-            if (end === -1) break;
-            pendingStrings.push(unescapePdfHex(latin1.substring(i + 1, end)));
-            i = end + 1;
-            continue;
-        }
-        // Identify operator tokens (letters / quote chars)
-        if (/[A-Za-z'"]/.test(c)) {
-            let j = i;
-            while (j < len && /[A-Za-z'"*]/.test(latin1[j]!)) j++;
-            const tok = latin1.substring(i, j);
-            if (tok === 'BT') {
-                pendingStrings = [];
-            } else if (tok === 'ET') {
-                flushTextObject();
-            } else if (TEXT_OPERATORS.has(tok)) {
-                // Strings already captured above; just record a soft separator.
-                if (tok === "'" || tok === '"') pendingStrings.push(' ');
-            }
-            i = j;
-            continue;
-        }
-        i++;
-    }
-    flushTextObject();
-    return out.join('').replace(/\s+\n/g, '\n').trim();
+    return sawContent;
 }
 
 export async function extractText(rawInput: unknown): Promise<ExtractTextResult> {
@@ -307,43 +180,65 @@ export async function extractText(rawInput: unknown): Promise<ExtractTextResult>
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const pdfBytes = decodeBase64(parsed.data.pdfBase64);
+    const input = parsed.data;
+    const pdfBytes = decodeBase64(input.pdfBase64);
+    if (pdfBytes.length === 0) {
+        throw new ToolError('VALIDATION_ERROR', 'pdfBase64 decoded to an empty buffer.');
+    }
 
+    // Open once to report the true document page count (extractText only returns
+    // the requested subset) and to surface password / parse failures up-front.
     let reader: PdfReader;
     try {
-        reader = openPdf(pdfBytes);
+        reader = openPdf(pdfBytes, input.password !== undefined ? { password: input.password } : undefined);
     } catch (err) {
-        throw new ToolError('PDF_PARSE_FAILED', `Failed to parse PDF: ${err instanceof Error ? err.message : String(err)}`);
+        mapDecryptError(err, input.password !== undefined);
     }
-
-    if (isEncrypted(reader)) {
-        throw new ToolError('EXTRACTION_UNSUPPORTED', 'Encrypted PDFs are not supported by extract_text in v1.0.0.');
-    }
-
     const totalPages = reader.pageCount;
-    const requested = parsed.data.pages ?? Array.from({ length: totalPages }, (_, k) => k);
 
-    const pagesOut: ExtractedPage[] = [];
-    let extractable = true;
-    for (const idx of requested) {
-        if (idx >= totalPages) {
-            throw new ToolError('VALIDATION_ERROR', `pages[]: index ${idx} is out of range (pageCount=${totalPages}).`);
+    const options: ExtractTextOptions = {
+        includeRuns: input.includeRuns,
+        maxTextLength: input.maxTextLength ?? DEFAULT_MAX_TEXT_LENGTH,
+        ...(input.pages !== undefined ? { pages: input.pages } : {}),
+        ...(input.password !== undefined ? { password: input.password } : {}),
+    };
+
+    let extracted;
+    try {
+        extracted = pdfnativeExtractText(pdfBytes, options);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (/maxtextlength|exceed|too (large|many)/i.test(message)) {
+            throw new ToolError('OUTPUT_TOO_LARGE', `Extracted text exceeds the configured maxTextLength cap. (${message})`);
         }
-        const page = reader.getPage(idx);
-        const raw = collectContentStreams(reader, page);
-        const latin1 = toLatin1(raw);
-        const text = extractPageText(latin1);
-        if (raw.length > 0 && text.length === 0) extractable = false;
-        pagesOut.push({ index: idx, text });
+        if (/\bpage\b/i.test(message) && /\b(index|range|invalid|out of)\b/i.test(message)) {
+            throw new ToolError('VALIDATION_ERROR', message);
+        }
+        // openPdf parse / password failures funnel through the shared decrypt mapper.
+        mapDecryptError(err, input.password !== undefined);
     }
 
+    const pagesOut: ExtractedPage[] = extracted.map((p) => ({
+        index: p.pageIndex,
+        text: p.text,
+        ...(input.includeRuns && p.runs !== undefined
+            ? { runs: p.runs.map((r) => ({ text: r.text, x: r.x, y: r.y, fontSize: r.fontSize, fontName: r.fontName })) }
+            : {}),
+    }));
+
+    const unmapped = pagesOut.some((p) => isUnmapped(p.text));
     const fullText = pagesOut.map((p) => p.text).filter((t) => t.length > 0).join('\n\n');
 
     return {
         pageCount: totalPages,
         extractedPageCount: pagesOut.length,
-        extractable,
-        ...(extractable ? {} : { extractableReason: 'One or more pages have non-empty content streams but yielded no extractable text. This typically means the PDF uses subset fonts without /ToUnicode CMaps (common for PDFs produced by some converters). The PDF is not corrupt; re-render the source document with a producer that emits /ToUnicode mappings, or wait for pdfnative-mcp v1.1 which adds tagged-mode structure-tree extraction.' }),
+        extractable: !unmapped,
+        ...(unmapped
+            ? {
+                  extractableReason:
+                      'One or more pages decoded entirely to U+FFFD replacement characters. The PDF uses a font with no usable /ToUnicode CMap or base encoding, so its glyphs cannot be mapped to Unicode. Re-render the source with a producer that embeds /ToUnicode mappings.',
+              }
+            : {}),
         pages: pagesOut,
         fullText,
     };

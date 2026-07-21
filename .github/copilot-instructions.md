@@ -5,19 +5,22 @@
 
 ## Overview
 
-MCP server bridging pdfnative (v1.5.x) to AI clients over stdio. 19 tools.
+MCP server bridging pdfnative (v1.6.x) to AI clients over stdio. 24 tools.
 Quality bar: production-grade OSS (strict TypeScript, strong validation, secure
 file IO, deterministic releases).
 
 ## Architecture (one line each)
 
-- src/cli.ts — stdio entry point.
-- src/server.ts — tool registry + MCP request handlers + SERVER_INSTRUCTIONS.
-- src/tools/* — one file per tool (JSON schema + Zod + handler).
+- src/cli.ts — stdio / Streamable HTTP entry point.
+- src/server.ts — tool registry (+ MCP annotations) + request handlers + SERVER_INSTRUCTIONS; resources & prompts capabilities.
+- src/tools/* — one file per tool (JSON schema `as const` + parallel Zod + handler).
+- src/encryption.ts — shared password/encrypt schema + decrypt error mapper (pdfnative 1.6).
+- src/chart.ts — shared ChartBlock schema + mapper (add_chart and the generate_basic_pdf chart block).
+- src/resources.ts — native MCP resources over the sandbox output dir (pdfnative://output/…).
 - src/text.ts — newline sanitizer (Safe PDF/A).
 - src/output.ts — output mode (base64 or sandboxed file write).
-- src/errors.ts — ToolError and SecurityError.
-- tests/* — unit tests for tool behavior and sandbox security.
+- src/errors.ts — ToolError, SecurityError, GovernanceError.
+- tests/* — unit tests for tool behavior and sandbox security; tests/_encrypted-fixtures.ts builds encrypted PDFs in-process.
 
 ## Core conventions
 

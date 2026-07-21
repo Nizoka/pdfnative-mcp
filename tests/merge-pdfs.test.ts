@@ -11,6 +11,7 @@ import { ensureCompressionReady } from '../src/server.js';
 import { ToolError } from '../src/errors.js';
 import { assertValidPdf } from './_pdf-assert.js';
 import { makePdfBase64, makeEncryptedPdfBase64 } from './_pagetree-fixtures.js';
+import { makeEncryptedPdfBase64 as makeUserEncryptedPdfBase64 } from './_encrypted-fixtures.js';
 
 const ENV_KEY = 'PDFNATIVE_MCP_OUTPUT_DIR';
 
@@ -51,11 +52,21 @@ describe('merge_pdfs', () => {
         await expect(mergePdfsTool({ pdfsBase64: many })).rejects.toThrow(ToolError);
     });
 
-    it('rejects an encrypted source with ENCRYPTED_SOURCE', async () => {
+    it('processes an owner-only encrypted source (empty user password) transparently', async () => {
+        // pdfnative 1.6 opens empty-user-password documents without a password;
+        // the merged output is unencrypted.
         const a = await makePdfBase64(1, 'A');
         const enc = makeEncryptedPdfBase64();
+        const out = await mergePdfsTool({ pdfsBase64: [a, enc] });
+        expect(out.mode).toBe('base64');
+        expect(out.sizeBytes).toBeGreaterThan(0);
+    });
+
+    it('rejects a password-protected source without a password (PASSWORD_REQUIRED)', async () => {
+        const a = await makePdfBase64(1, 'A');
+        const enc = makeUserEncryptedPdfBase64({ userPassword: 'open-me' });
         await expect(mergePdfsTool({ pdfsBase64: [a, enc] })).rejects.toMatchObject({
-            code: 'ENCRYPTED_SOURCE',
+            code: 'PASSWORD_REQUIRED',
         });
     });
 

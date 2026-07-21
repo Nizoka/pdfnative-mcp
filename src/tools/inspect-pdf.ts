@@ -27,6 +27,7 @@ import {
 import { z } from 'zod';
 import { ToolError } from '../errors.js';
 import { collectEmbeddedFiles } from '../pdf-introspection.js';
+import { mapDecryptError, PASSWORD_INPUT_SCHEMA, PasswordSchema } from '../encryption.js';
 
 export const INSPECT_PDF_NAME = 'inspect_pdf';
 
@@ -42,6 +43,7 @@ export const INSPECT_PDF_INPUT_SCHEMA = {
             minLength: 4,
             description: 'Base64-encoded PDF bytes to inspect.',
         },
+        password: PASSWORD_INPUT_SCHEMA,
         pages: {
             type: 'boolean',
             default: false,
@@ -80,6 +82,18 @@ export const INSPECT_PDF_OUTPUT_SCHEMA = {
         version: { type: 'string', description: 'PDF version (e.g. "1.7").' },
         pageCount: { type: 'integer', minimum: 0 },
         encryption: { type: 'string', enum: ['none', 'aes-128', 'aes-256', 'rc4', 'unknown'] },
+        encryptionInfo: {
+            type: 'object',
+            additionalProperties: false,
+            description:
+                'Precise Standard Security Handler details (pdfnative v1.6.0), present only when the document is encrypted and was opened successfully. Objects served by the reader are already decrypted.',
+            required: ['algorithm', 'revision', 'authenticatedAs'],
+            properties: {
+                algorithm: { type: 'string', enum: ['rc4-40', 'rc4-128', 'aes128', 'aes256'] },
+                revision: { type: 'integer', description: 'Standard Security Handler revision (2, 3, 4 or 6).' },
+                authenticatedAs: { type: 'string', enum: ['user', 'owner'], description: 'Which supplied password opened the document.' },
+            },
+        },
         pdfA: {
             type: ['string', 'null'],
             description: "Detected PDF/A claim (e.g. '1B', '2B', '2U', '3B') from XMP metadata, or null when absent.",
@@ -148,11 +162,18 @@ export const INSPECT_PDF_OUTPUT_SCHEMA = {
 
 const InputSchema = z.object({
     pdfBase64: z.string().min(4),
+    password: PasswordSchema.optional(),
     pages: z.boolean().default(false),
     check: z.array(z.enum(CHECK_VALUES)).max(8).optional(),
     verbosity: z.enum(['summary', 'full']).optional(),
     fields: z.array(z.string().min(1)).max(16).optional(),
 });
+
+export interface EncryptionInfo {
+    readonly algorithm: 'rc4-40' | 'rc4-128' | 'aes128' | 'aes256';
+    readonly revision: number;
+    readonly authenticatedAs: 'user' | 'owner';
+}
 
 export interface AttachmentSummary {
     readonly name: string;
@@ -166,6 +187,7 @@ export interface InspectPdfResult {
     readonly version: string;
     readonly pageCount: number;
     readonly encryption: 'none' | 'aes-128' | 'aes-256' | 'rc4' | 'unknown';
+    readonly encryptionInfo?: EncryptionInfo;
     readonly pdfA: string | null;
     readonly signatureCount: number;
     readonly hasSignaturePlaceholder: boolean;
@@ -245,6 +267,19 @@ function detectEncryption(reader: PdfReader): InspectPdfResult['encryption'] {
     const dict = isRef(enc) ? reader.resolve(enc) : enc;
     if (!isDict(dict)) return 'unknown';
     return classifyEncryption(dict.get('V'), dict.get('Length'));
+}
+
+/** Map pdfnative's precise `reader.encryption` cipher to the scalar `encryption` field. */
+function scalarFromEncryptionInfo(info: EncryptionInfo): InspectPdfResult['encryption'] {
+    switch (info.algorithm) {
+        case 'aes256':
+            return 'aes-256';
+        case 'aes128':
+            return 'aes-128';
+        /* v8 ignore next 3 -- rc4 requires a legacy encrypted fixture; classification is covered by classifyEncryption unit tests. */
+        default:
+            return 'rc4';
+    }
 }
 
 function inspectSignatures(reader: PdfReader): { count: number; hasPlaceholder: boolean } {
@@ -359,20 +394,22 @@ export async function inspectPdf(rawInput: unknown): Promise<InspectPdfResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { pdfBase64, pages: includePages, check } = parsed.data;
+    const { pdfBase64, password, pages: includePages, check } = parsed.data;
 
     const bytes = decodeBase64(pdfBase64);
     let reader: PdfReader;
     try {
-        reader = openPdf(bytes);
+        reader = openPdf(bytes, password !== undefined ? { password } : undefined);
     } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new ToolError('PDF_PARSE_FAILED', `Failed to parse PDF: ${message}`);
+        mapDecryptError(err, password !== undefined);
     }
 
     const version = extractVersion(bytes);
     const pageCount = reader.pageCount;
-    const encryption = detectEncryption(reader);
+    const encryptionInfo = reader.encryption ?? undefined;
+    const encryption = encryptionInfo !== null && encryptionInfo !== undefined
+        ? scalarFromEncryptionInfo(encryptionInfo)
+        : detectEncryption(reader);
     const pdfA = detectPdfAClaim(reader);
     const info = readInfoDict(reader);
     const { count: signatureCount, hasPlaceholder } = inspectSignatures(reader);
@@ -391,6 +428,10 @@ export async function inspectPdf(rawInput: unknown): Promise<InspectPdfResult> {
         attachments,
         info,
     };
+
+    if (encryptionInfo !== null && encryptionInfo !== undefined) {
+        result.encryptionInfo = encryptionInfo;
+    }
 
     if (pageLabels !== undefined) {
         result.pageLabels = pageLabels;

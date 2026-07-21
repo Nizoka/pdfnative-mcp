@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-21
+
+A minor, backward-compatible release that aligns the server with
+[pdfnative v1.6.0](https://github.com/Nizoka/pdfnative) and takes the catalogue to
+**24 tools**. It adds native vector charts, AcroForm fill/flatten, an encryption
+round-trip (decrypt + AES-128/256 re-encrypt), rewrites `extract_text` onto real
+Unicode extraction with positioned runs, threads a `password` input through the
+read-only and page-tree tools, and exposes generated PDFs as native **MCP
+resources**. Default tool calls return responses identical to v1.4.0 — all new
+behaviour is opt-in.
+
+### Added
+
+- **Tool `add_chart`** (new): native vector charts — `bar`, `barH`, `line`, `pie`, `donut` — rendered as pure PDF path operators (zero rasterisation) via pdfnative v1.6.0's `ChartBlock`. Multi-series, legends, nice axis ticks, gridlines, negative values, hex palettes, and an auto-generated tagged-PDF `/Figure` + `/Alt` (PDF/A-safe). `generate_basic_pdf` also accepts a `chart` block for composition with text/tables.
+- **Tool `read_form_fields`** (new, read-only): enumerate an existing AcroForm's field tree (name, type, value, flags, options, widget placements) — the input inventory for `fill_form`.
+- **Tool `fill_form`** (new): fill and/or flatten an *existing* AcroForm via pdfnative's `fillForm`/`flattenForm` (non-destructive incremental update). Values map field name → string | boolean | string[]; `flatten:true` bakes appearances in; a pure flatten needs no values. Typed errors `FORM_FIELD_NOT_FOUND`, `FORM_VALUE_TYPE_ERROR`, `FORM_UNSUPPORTED`.
+- **Tool `encrypt_pdf`** (new): re-secure a PDF with the Standard Security Handler (AES-128 V4/R4 default, AES-256 V5/R6; RC4 never emitted). Owner/user passwords, permissions, and one-call password rotation of an already-encrypted source.
+- **Tool `decrypt_pdf`** (new): open an encrypted PDF (RC4 / AES-128 / AES-256) and emit an unencrypted copy.
+- **`password` input** on the read-only tools `inspect_pdf`, `verify_pdf`, `extract_text`, `extract_attachments` — open encrypted sources transparently (empty-user-password documents need no password). New error codes `PASSWORD_REQUIRED`, `PASSWORD_INVALID`, `ENCRYPTION_UNSUPPORTED`.
+- **`inspect_pdf`**: optional `encryptionInfo` output field (`{ algorithm, revision, authenticatedAs }`) sourced from `reader.encryption`.
+- **`extract_text`**: rewritten onto pdfnative's `extractText()` — real Unicode via `/ToUnicode` (subset fonts decode to characters, not glyph indices), optional `includeRuns` returning positioned runs (`{ text, x, y, fontSize, fontName }`), `password`, and a `maxTextLength` memory cap. Output schema unchanged; `runs` is additive.
+- **`merge_pdfs` / `split_pdf` / `extract_pages`**: optional `password` (ingest encrypted sources) and `encrypt` (re-secure the output) — completing the encrypted round-trip *open → edit → re-secure*.
+- **Native MCP resources:** the server advertises the `resources` capability. PDFs written in `outputMode:'file'` are exposed as `resources/list` + `resources/read` (and a `resources/templates/list` template `pdfnative://output/{path}`), and file-mode tool results carry a `resource_link` for cross-call re-reference.
+- **Tool annotations:** every tool now advertises MCP `annotations` (`readOnlyHint`, `destructiveHint:false`, `idempotentHint`, `openWorldHint:false`).
+- **Examples:** `chart-report.json`, `fill-form.json`, `encrypt-decrypt-roundtrip.json`, `encrypted-merge.json`, `extract-text-runs.json`.
+- **Tests:** `add-chart.test.ts`, `read-form-fields.test.ts`, `fill-form.test.ts`, `encrypt-pdf.test.ts`, `decrypt-pdf.test.ts`, `resources.test.ts`, `encrypted-reads.test.ts`, `pagetree-encryption.test.ts`, `add-barcode.test.ts` (coverage gap), plus in-process encrypted fixtures `tests/_encrypted-fixtures.ts` (unblocks the roadmap's encrypted round-trip fixtures). `extract-text.test.ts` rewritten for the Unicode/runs/password surface.
+- **Docs:** new guides `docs/guides/CHARTS.md`, `docs/guides/FORMS.md`, `docs/guides/ENCRYPTION.md`; new `CLAUDE.md` (Claude Code guidance).
+
+### Changed
+
+- **Dependency:** `pdfnative` bumped `^1.5.0` → `^1.6.0` (additive; decrypt/re-encrypt, `extractText`, fill/flatten, charts, streaming). Free improvements surfaced: colour-emoji subset 221 → 1167 glyphs, spec-compliant AES-256 (R6) hashing, encryption of all strings, arrows routed to the math font, and a more tolerant xref reader.
+- **MCP `_meta.apiVersion`** bumped `1.4.0` → `1.5.0` on every tool; `SERVER_VERSION`, `server.json` versions, and `package.json` version → `1.5.0`.
+- **Server:** `SERVER_DESCRIPTION` and `SERVER_INSTRUCTIONS` extended to **24 tools** (charts, forms, encryption branches, MCP resources note).
+- **Page-tree tools:** encrypted sources are no longer rejected outright — a password-protected source without a password now returns `PASSWORD_REQUIRED` (was `ENCRYPTED_SOURCE`), and empty-user-password documents process transparently. Signatures/AcroForm are still dropped by a page-tree edit.
+- **Docs:** README, `AGENTS.md`, `docs/API_STABILITY.md`, `docs/AI_GUIDE.md`, `docs/KNOWLEDGE_BASE.md`, `ROADMAP.md`, `llms.txt`, and `.github/copilot-instructions.md` refreshed for the v1.5.0 surface.
+
+### Fixed
+
+- **`extract_text`** no longer emits glyph indices for subset fonts that ship a `/ToUnicode` CMap — the long-standing "best-effort" limitation is resolved by pdfnative v1.6.0's decoder.
+- **`add_barcode`** gains a dedicated test file (previously only two cases folded into `tools.test.ts`).
+
+### Security
+
+- **Encryption tools are never cached.** `encrypt_pdf` and `decrypt_pdf` are excluded from the opt-in response cache (`PDFNATIVE_MCP_CACHE_DIR`), so decrypted plaintext (or freshly-protected bytes) of a deliberately-encrypted document is never persisted at rest. `draft_governance_issue` is now correctly annotated `readOnlyHint:false` (it writes a `.md` in `outputMode:'file'`).
+
+### Deferred by design
+
+- **`redact_pdf`** stays deferred — pdfnative can overlay/flatten but not *remove* page content; an overlay-only redaction would create false security. `verify_pdf` continues to ship a local P-256 ECDSA verifier because pdfnative does not export `ecdsaVerifyHash` (public crypto surface unchanged in 1.6.0). Per-tool HTTP page-by-page streaming remains blocked on MCP partial `structuredContent` envelopes.
+
 ## [1.4.0] - 2026-07-14
 
 A minor, backward-compatible release that brings the pdfnative AI-governance /
@@ -251,7 +300,8 @@ stability via the new per-tool `_meta.apiVersion` field. Built on top of
 - Strict JSON Schema + Zod validation at every tool boundary.
 - Vitest test suite with sandbox security checks.
 
-[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.1.0...v1.2.0

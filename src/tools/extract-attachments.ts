@@ -25,6 +25,7 @@ import { z } from 'zod';
 
 import { ToolError } from '../errors.js';
 import { collectEmbeddedFiles } from '../pdf-introspection.js';
+import { mapDecryptError, PASSWORD_INPUT_SCHEMA, PasswordSchema } from '../encryption.js';
 
 export const EXTRACT_ATTACHMENTS_NAME = 'extract_attachments';
 
@@ -43,6 +44,7 @@ export const EXTRACT_ATTACHMENTS_INPUT_SCHEMA = {
             minLength: 4,
             description: 'Base64-encoded PDF bytes to read embedded files from.',
         },
+        password: PASSWORD_INPUT_SCHEMA,
         filename: {
             type: 'string',
             minLength: 1,
@@ -102,6 +104,7 @@ export const EXTRACT_ATTACHMENTS_OUTPUT_SCHEMA = {
 
 const InputSchema = z.object({
     pdfBase64: z.string().min(4),
+    password: PasswordSchema.optional(),
     filename: z.string().min(1).max(255).optional(),
     includeData: z.boolean().default(true),
     verbosity: z.enum(['summary', 'full']).optional(),
@@ -131,31 +134,25 @@ function decodeBase64(value: string): Uint8Array {
     }
 }
 
-function isEncrypted(reader: PdfReader): boolean {
-    return reader.trailer.get('Encrypt') !== undefined;
-}
-
 export async function extractAttachments(rawInput: unknown): Promise<ExtractAttachmentsResult> {
     const parsed = InputSchema.safeParse(rawInput);
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { filename, includeData } = parsed.data;
+    const { filename, includeData, password } = parsed.data;
 
     const pdfBytes = decodeBase64(parsed.data.pdfBase64);
     if (pdfBytes.length === 0) {
         throw new ToolError('VALIDATION_ERROR', 'pdfBase64 decoded to an empty buffer.');
     }
 
+    // pdfnative v1.6.0 decrypts transparently — encrypted sources are now
+    // supported via `password` (empty-user-password docs open without one).
     let reader: PdfReader;
     try {
-        reader = openPdf(pdfBytes);
+        reader = openPdf(pdfBytes, password !== undefined ? { password } : undefined);
     } catch (err) {
-        throw new ToolError('PDF_PARSE_FAILED', `Failed to parse PDF: ${err instanceof Error ? err.message : String(err)}`);
-    }
-
-    if (isEncrypted(reader)) {
-        throw new ToolError('EXTRACTION_UNSUPPORTED', 'Encrypted PDFs are not supported by extract_attachments.');
+        mapDecryptError(err, password !== undefined);
     }
 
     const files = collectEmbeddedFiles(reader, { includeData });
