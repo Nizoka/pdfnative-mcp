@@ -41,6 +41,7 @@ import {
     parseCmsSignedData,
     reencodeSignedAttrsAsSet,
     type CmsAlgorithm,
+    type CmsDigest,
 } from '../cms.js';
 import {
     collectSignatureWidgets,
@@ -103,7 +104,7 @@ export const VERIFY_PDF_OUTPUT_SCHEMA = {
                     fieldName: { type: ['string', 'null'] },
                     valid: { type: 'boolean' },
                     integrity: { type: 'boolean' },
-                    algorithm: { type: ['string', 'null'], enum: ['rsa-sha256', 'ecdsa-sha256', null] },
+                    algorithm: { type: ['string', 'null'], enum: ['rsa-sha256', 'rsa-sha384', 'rsa-sha512', 'ecdsa-sha256', null] },
                     signerSubject: { type: ['string', 'null'] },
                     signingTime: { type: ['string', 'null'] },
                     reason: { type: ['string', 'null'] },
@@ -157,8 +158,8 @@ function decodeBase64(value: string, field: string): Uint8Array {
     }
 }
 
-function sha256(bytes: Uint8Array): Uint8Array {
-    return new Uint8Array(createHash('sha256').update(bytes).digest());
+function hashBytes(digest: CmsDigest, bytes: Uint8Array): Uint8Array {
+    return new Uint8Array(createHash(digest).update(bytes).digest());
 }
 
 function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
@@ -449,7 +450,7 @@ function verifyOneWidget(
     let sigOk = false;
     if (cms.signedAttrsValueDer !== null) {
         const reencoded = reencodeSignedAttrsAsSet(cms.signedAttrsValueDer);
-        const attrsHash = sha256(reencoded);
+        const attrsHash = hashBytes(cms.digestAlgorithm, reencoded);
         const r = verifySignatureValue(cms.algorithm, signerCert, attrsHash, cms.signatureValue);
         sigOk = r.ok;
         if (r.error !== null) errors.push(r.error);

@@ -19,14 +19,23 @@ import { derDecode } from 'pdfnative';
 
 import { ToolError } from './errors.js';
 
-export type CmsAlgorithm = 'rsa-sha256' | 'ecdsa-sha256';
+export type CmsAlgorithm = 'rsa-sha256' | 'rsa-sha384' | 'rsa-sha512' | 'ecdsa-sha256';
+export type CmsDigest = 'sha256' | 'sha384' | 'sha512';
 
 export interface ParsedCms {
     readonly algorithm: CmsAlgorithm;
+    /** Digest used for the ByteRange hash and the signed-attributes hash. */
+    readonly digestAlgorithm: CmsDigest;
     readonly signerCertDer: Uint8Array;
+    /** Every certificate carried in `certificates [0]` (signer first), raw DER. */
+    readonly certificatesDer: readonly Uint8Array[];
     readonly signedAttrsValueDer: Uint8Array | null;
     readonly messageDigest: Uint8Array | null;
     readonly signatureValue: Uint8Array;
+    /** PAdES profile marker: ESS signing-certificate-v2 (RFC 5035) present in signedAttrs. */
+    readonly hasEssSigningCertV2: boolean;
+    /** Raw DER of the RFC 3161 TimeStampToken (id-aa-signatureTimeStampToken), when present. */
+    readonly signatureTimestampTokenDer: Uint8Array | null;
 }
 
 interface DerNode {
@@ -40,6 +49,13 @@ interface DerNode {
 const OID_SIGNED_DATA = '1.2.840.113549.1.7.2';
 const OID_RSA_ENCRYPTION = '1.2.840.113549.1.1.1';
 const OID_SHA256_RSA = '1.2.840.113549.1.1.11';
+const OID_SHA384_RSA = '1.2.840.113549.1.1.12';
+const OID_SHA512_RSA = '1.2.840.113549.1.1.13';
+const OID_SHA256 = '2.16.840.1.101.3.4.2.1';
+const OID_SHA384 = '2.16.840.1.101.3.4.2.2';
+const OID_SHA512 = '2.16.840.1.101.3.4.2.3';
+const OID_ESS_SIGNING_CERT_V2 = '1.2.840.113549.1.9.16.2.47';
+const OID_SIGNATURE_TIMESTAMP_TOKEN = '1.2.840.113549.1.9.16.2.14';
 const OID_EC_PUBLIC_KEY = '1.2.840.10045.2.1';
 const OID_ECDSA_SHA256 = '1.2.840.10045.4.3.2';
 const OID_MESSAGE_DIGEST = '1.2.840.113549.1.9.4';
@@ -92,9 +108,26 @@ function findAttribute(attrs: readonly DerNode[], oid: string): DerNode | null {
     return null;
 }
 
-function algorithmFromOid(oid: string): CmsAlgorithm {
-    if (oid === OID_SHA256_RSA || oid === OID_RSA_ENCRYPTION) return 'rsa-sha256';
-    if (oid === OID_ECDSA_SHA256 || oid === OID_EC_PUBLIC_KEY) return 'ecdsa-sha256';
+function digestFromOid(oid: string): CmsDigest {
+    if (oid === OID_SHA256) return 'sha256';
+    if (oid === OID_SHA384) return 'sha384';
+    if (oid === OID_SHA512) return 'sha512';
+    throw new ToolError('CMS_PARSE_FAILED', `unsupported digest algorithm OID ${oid}`);
+}
+
+/**
+ * Resolve the signature algorithm. `rsaEncryption` (the common PKCS#7 form)
+ * carries no digest, so the SignerInfo digestAlgorithm decides.
+ */
+function algorithmFromOid(oid: string, digest: CmsDigest): CmsAlgorithm {
+    if (oid === OID_SHA256_RSA) return 'rsa-sha256';
+    if (oid === OID_SHA384_RSA) return 'rsa-sha384';
+    if (oid === OID_SHA512_RSA) return 'rsa-sha512';
+    if (oid === OID_RSA_ENCRYPTION) return digest === 'sha384' ? 'rsa-sha384' : digest === 'sha512' ? 'rsa-sha512' : 'rsa-sha256';
+    if (oid === OID_ECDSA_SHA256 || oid === OID_EC_PUBLIC_KEY) {
+        if (digest !== 'sha256') throw new ToolError('CMS_PARSE_FAILED', `ECDSA with ${digest} is not supported (P-256/SHA-256 only)`);
+        return 'ecdsa-sha256';
+    }
     throw new ToolError('CMS_PARSE_FAILED', `unsupported signature algorithm OID ${oid}`);
 }
 
@@ -181,6 +214,7 @@ export function parseCmsSignedData(cms: Uint8Array): ParsedCms {
     const signerCertNode = certsNode.children[0]!;
     expectTag(signerCertNode, 0x30, 'Certificate');
     const signerCertDer = rawBytes(signerCertNode, cms);
+    const certificatesDer = certsNode.children.filter((c) => c.tag === 0x30).map((c) => rawBytes(c, cms));
 
     const signerInfo = signerInfos.children[0]!;
     expectTag(signerInfo, 0x30, 'SignerInfo');
@@ -191,10 +225,17 @@ export function parseCmsSignedData(cms: Uint8Array): ParsedCms {
     let siCursor = 0;
     siCursor++; // version
     siCursor++; // sid
-    siCursor++; // digestAlgorithm
+    const digestAlgNode = signerInfo.children[siCursor++]!;
+    expectTag(digestAlgNode, 0x30, 'SignerInfo.digestAlgorithm');
+    const digestOidNode = digestAlgNode.children[0];
+    if (digestOidNode === undefined || digestOidNode.tag !== 0x06) {
+        throw new ToolError('CMS_PARSE_FAILED', 'digestAlgorithm missing OID');
+    }
+    const digestAlgorithm = digestFromOid(decodeOid(digestOidNode.value));
 
     let signedAttrsValueDer: Uint8Array | null = null;
     let messageDigest: Uint8Array | null = null;
+    let hasEssSigningCertV2 = false;
     const maybeSignedAttrs = signerInfo.children[siCursor]!;
     if (maybeSignedAttrs.tag === 0xa0) {
         // [0] IMPLICIT SET OF Attribute — value bytes are concatenated Attribute SEQUENCEs.
@@ -217,6 +258,7 @@ export function parseCmsSignedData(cms: Uint8Array): ParsedCms {
             }
             messageDigest = md.value;
         }
+        hasEssSigningCertV2 = findAttribute(maybeSignedAttrs.children, OID_ESS_SIGNING_CERT_V2) !== null;
         siCursor++;
     }
 
@@ -227,18 +269,30 @@ export function parseCmsSignedData(cms: Uint8Array): ParsedCms {
     }
     const algOidNode = sigAlg.children[0]!;
     expectTag(algOidNode, 0x06, 'signatureAlgorithm.OID');
-    const algorithm = algorithmFromOid(decodeOid(algOidNode.value));
+    const algorithm = algorithmFromOid(decodeOid(algOidNode.value), digestAlgorithm);
 
-    const signatureNode = signerInfo.children[siCursor]!;
+    const signatureNode = signerInfo.children[siCursor++]!;
     expectTag(signatureNode, 0x04, 'SignerInfo.signature');
     const signatureValue = signatureNode.value;
 
+    // Optional [1] IMPLICIT unsignedAttrs — where PAdES B-T parks the RFC 3161 token.
+    let signatureTimestampTokenDer: Uint8Array | null = null;
+    const maybeUnsigned = signerInfo.children[siCursor];
+    if (maybeUnsigned !== undefined && maybeUnsigned.tag === 0xa1) {
+        const tst = findAttribute(maybeUnsigned.children, OID_SIGNATURE_TIMESTAMP_TOKEN);
+        if (tst !== null) signatureTimestampTokenDer = rawBytes(tst, cms);
+    }
+
     return {
         algorithm,
+        digestAlgorithm,
         signerCertDer,
+        certificatesDer,
         signedAttrsValueDer,
         messageDigest,
         signatureValue,
+        hasEssSigningCertV2,
+        signatureTimestampTokenDer,
     };
 }
 
