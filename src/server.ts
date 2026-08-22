@@ -168,6 +168,11 @@ import {
     DECRYPT_PDF_INPUT_SCHEMA,
     decryptPdf,
 } from './tools/decrypt-pdf.js';
+import {
+    UPDATE_METADATA_NAME,
+    UPDATE_METADATA_INPUT_SCHEMA,
+    updateMetadata,
+} from './tools/update-metadata.js';
 
 // JSON import attribute (Node 22+, TS 5.3+) keeps version in lock-step with package.json.
 // Hardcoded here to keep the build rootDir limited to ./src; tests assert it stays in sync.
@@ -679,6 +684,19 @@ const TOOLS: readonly ToolDefinition[] = [
             { title: 'Decrypt with a user password', input: { pdfBase64: '<encrypted-base64>', password: 'open-me' } },
         ],
         handler: decryptPdf,
+    },
+    {
+        name: UPDATE_METADATA_NAME,
+        title: 'Update document metadata',
+        description:
+            "Rewrite the /Info dictionary (title, author, subject, keywords) of an EXISTING PDF as a non-destructive incremental update (pdfnative v1.7 PdfModifier.updateMetadata); XMP stays in sync on PDF/A documents and /ModDate is refreshed (pin modDate for reproducible bytes). Earlier revisions and their signatures are preserved verbatim — the new revision is unsigned, so sign_pdf / timestamp_pdf again if needed. Encrypted sources are rejected (decrypt_pdf first). For metadata at GENERATION time use the `metadata` option of the document tools instead.",
+        inputSchema: UPDATE_METADATA_INPUT_SCHEMA,
+        outputSchema: PDF_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+        examples: [
+            { title: 'Set author and keywords', input: { pdfBase64: '<any-pdf-base64>', author: 'Ada Lovelace', keywords: 'invoice, 2026', modDate: '2026-08-22T10:00:00Z' } },
+        ],
+        handler: updateMetadata,
     },
 ];
 
