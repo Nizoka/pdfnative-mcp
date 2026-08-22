@@ -46,3 +46,31 @@ describe('math symbols (pdfnative v1.5 math font)', () => {
         expect(dir.length).toBeGreaterThan(0);
     });
 });
+
+describe('colour-emoji flag & ZWJ sequences (pdfnative 1.7 bundled font, no API change)', () => {
+    beforeAll(async () => {
+        delete process.env['PDFNATIVE_MCP_OUTPUT_DIR'];
+        await ensureCompressionReady();
+    });
+
+    it('renders a flag (regional-indicator pair) and a ZWJ family as valid colour-emoji output', async () => {
+        const result = await addInternationalText({
+            title: 'Flags & families',
+            lang: ['latin', 'emoji'],
+            paragraphs: ['France \u{1F1EB}\u{1F1F7} and the EU \u{1F1EA}\u{1F1FA}', 'Family \u{1F468}‍\u{1F469}‍\u{1F467}, hearts ❤️'],
+        });
+        assertValidPdf(result.base64 as string, 1);
+        const pdf = Buffer.from(result.base64 as string, 'base64').toString('latin1');
+        // COLRv1 emoji render through the embedded colour font.
+        expect(pdf).toMatch(/NotoColorEmoji|Noto Color Emoji/i);
+    });
+
+    it('is deterministic and differs from the per-codepoint fallback text', async () => {
+        const seq = { title: 'S', lang: ['emoji'], paragraphs: ['\u{1F1EB}\u{1F1F7}'] };
+        const a = await addInternationalText(seq);
+        const b = await addInternationalText(seq);
+        expect(a.base64).toBe(b.base64);
+        const split = await addInternationalText({ title: 'S', lang: ['emoji'], paragraphs: ['\u{1F1EB} \u{1F1F7}'] });
+        expect(split.base64).not.toBe(a.base64);
+    });
+});

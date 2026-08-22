@@ -1,0 +1,17 @@
+{
+  "description": "Charts v2 (pdfnative 1.7 via add_chart): a line chart on a UTC-deterministic time axis (ISO-8601 xValues) with a secondary right axis — the 'Margin %' series binds to axis2 via yAxis='right'. Self-contained: runs end-to-end with no placeholders.",
+  "tool": "add_chart",
+  "arguments": {
+    "chartType": "line",
+    "title": "Monthly revenue vs margin",
+    "xAxis": { "type": "time", "ticks": 6, "grid": true },
+    "axis": { "grid": true, "yMin": 0 },
+    "axis2": { "yMin": 0, "yMax": 100, "ticks": 5 },
+    "series": [
+      { "label": "Revenue (k€)", "values": [120, 135, 150, 160, 172, 190], "xValues": ["2026-01-01", "2026-02-01", "2026-03-01", "2026-04-01", "2026-05-01", "2026-06-01"] },
+      { "label": "Margin %", "values": [38, 41, 40, 44, 45, 47], "xValues": ["2026-01-01", "2026-02-01", "2026-03-01", "2026-04-01", "2026-05-01", "2026-06-01"], "yAxis": "right" }
+    ],
+    "markers": true,
+    "legend": "bottom"
+  }
+}

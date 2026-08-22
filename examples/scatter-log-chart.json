@@ -1,0 +1,15 @@
+{
+  "description": "Charts v2 (pdfnative 1.7 via add_chart): a scatter plot on a linear x axis with a logarithmic value axis (strictly positive values required). Self-contained: runs end-to-end with no placeholders.",
+  "tool": "add_chart",
+  "arguments": {
+    "chartType": "scatter",
+    "title": "Latency vs payload size",
+    "xAxis": { "type": "linear", "min": 0, "max": 1000, "grid": true },
+    "axis": { "scale": "log", "grid": true },
+    "series": [
+      { "label": "p50 (ms)", "values": [12, 18, 35, 90, 240, 610], "xValues": [10, 50, 120, 300, 600, 950] },
+      { "label": "p99 (ms)", "values": [40, 70, 150, 400, 900, 2100], "xValues": [10, 50, 120, 300, 600, 950] }
+    ],
+    "legend": "bottom"
+  }
+}
