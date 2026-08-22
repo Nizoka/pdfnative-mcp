@@ -18,8 +18,10 @@
 import {
     addSignaturePlaceholder,
     buildDocumentPDFBytes,
+    estimateContentsSize,
     type AddSignaturePlaceholderOptions,
     type DocumentBlock,
+    type SigDictMetadata,
 } from 'pdfnative';
 import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
@@ -69,7 +71,17 @@ export const PREPARE_SIGNATURE_PLACEHOLDER_INPUT_SCHEMA = {
             type: 'integer',
             minimum: 2048,
             maximum: 65536,
-            description: 'Reserved bytes for the future CMS /Contents blob (default 16384). Increase only for >4096-bit RSA or PAdES-B-LT.',
+            description: 'Reserved bytes for the future CMS /Contents blob (default 16384; 24576 when reserveTimestamp=true). Increase only for >4096-bit RSA, long chains or large TSA tokens.',
+        },
+        subFilter: {
+            type: 'string',
+            enum: ['adbe.pkcs7.detached', 'ETSI.CAdES.detached'],
+            description: "Signature SubFilter baked into the /Sig dictionary (frozen at placeholder time). Use 'ETSI.CAdES.detached' for PAdES baseline signatures (sign_pdf profile='pades'). Default 'adbe.pkcs7.detached'.",
+        },
+        reserveTimestamp: {
+            type: 'boolean',
+            default: false,
+            description: 'Reserve room for an RFC 3161 signature timestamp (sign_pdf timestamp=true): adds 8 KiB to the default placeholder size. Ignored when placeholderBytes is set explicitly.',
         },
         pageIndex: {
             type: 'integer',
@@ -158,6 +170,8 @@ const InputSchema = z.object({
     contactInfo: z.string().max(200).optional(),
     fieldName: z.string().max(100).optional(),
     placeholderBytes: z.number().int().min(2048).max(65536).optional(),
+    subFilter: z.enum(['adbe.pkcs7.detached', 'ETSI.CAdES.detached']).optional(),
+    reserveTimestamp: z.boolean().default(false),
     pageIndex: z.number().int().min(0).optional(),
     pdfA: PdfASchema.optional(),
     blocks: z.array(BlockSchema).max(2000).optional(),
@@ -197,6 +211,8 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
         contactInfo,
         fieldName,
         placeholderBytes,
+        subFilter,
+        reserveTimestamp,
         pageIndex,
         pdfA,
         blocks,
@@ -247,14 +263,21 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
         throw mapBuildError(err, PREPARE_SIGNATURE_PLACEHOLDER_NAME);
     }
 
-    const placeholderOptions: AddSignaturePlaceholderOptions = {
-        ...(fieldName !== undefined ? { fieldName } : {}),
-        ...(placeholderBytes !== undefined ? { placeholderBytes } : {}),
-        ...(pageIndex !== undefined ? { pageIndex } : {}),
+    // pdfnative 1.7: signer metadata is baked into the /Sig dictionary at
+    // placeholder time (earlier engines silently dropped these values).
+    const sigMetadata: SigDictMetadata = {
         ...(signerName !== undefined ? { name: signerName } : {}),
         ...(reason !== undefined ? { reason } : {}),
         ...(location !== undefined ? { location } : {}),
         ...(contactInfo !== undefined ? { contactInfo } : {}),
+        ...(subFilter !== undefined ? { subFilter } : {}),
+    };
+    const reserved = placeholderBytes ?? (reserveTimestamp ? estimateContentsSize([], 'rsa-sha256', { timestamp: true }) : undefined);
+    const placeholderOptions: AddSignaturePlaceholderOptions = {
+        ...(fieldName !== undefined ? { fieldName } : {}),
+        ...(reserved !== undefined ? { placeholderBytes: reserved } : {}),
+        ...(pageIndex !== undefined ? { pageIndex } : {}),
+        ...(Object.keys(sigMetadata).length > 0 ? { metadata: sigMetadata } : {}),
     };
 
     const withPlaceholder = injectPlaceholderIntoBase(baseBytes, placeholderOptions);

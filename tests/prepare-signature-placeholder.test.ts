@@ -137,3 +137,36 @@ describe('prepare_signature_placeholder print + diagnostics inputs (v1.6.0)', ()
         expect(text).toContain('/ByteRange');
     });
 });
+
+describe('prepare_signature_placeholder — v1.6.0 (pdfnative 1.7) metadata baking, subFilter, reserveTimestamp', () => {
+    beforeAll(async () => {
+        await ensureCompressionReady();
+    });
+
+    it('bakes signer metadata and the PAdES SubFilter into the /Sig dictionary', async () => {
+        const out = await prepareSignaturePlaceholder({
+            title: 'Contract',
+            signerName: 'Alice',
+            reason: 'Approved',
+            location: 'Paris',
+            contactInfo: 'alice@example.com',
+            subFilter: 'ETSI.CAdES.detached',
+        });
+        const text = Buffer.from(out.base64 as string, 'base64').toString('latin1');
+        expect(text).toContain('/Name (Alice)');
+        expect(text).toContain('/Reason (Approved)');
+        expect(text).toContain('/Location (Paris)');
+        expect(text).toContain('/ContactInfo (alice@example.com)');
+        expect(text).toContain('/SubFilter /ETSI.CAdES.detached');
+    });
+
+    it('keeps the legacy SubFilter by default and reserves a larger /Contents with reserveTimestamp', async () => {
+        const plain = await prepareSignaturePlaceholder({ title: 'Contract' });
+        const reserved = await prepareSignaturePlaceholder({ title: 'Contract', reserveTimestamp: true });
+        expect(Buffer.from(plain.base64 as string, 'base64').toString('latin1')).toContain('/SubFilter /adbe.pkcs7.detached');
+        expect(reserved.sizeBytes - plain.sizeBytes).toBeGreaterThanOrEqual(2 * 8192); // hex-encoded +8 KiB
+        // Explicit placeholderBytes wins over reserveTimestamp.
+        const explicit = await prepareSignaturePlaceholder({ title: 'Contract', reserveTimestamp: true, placeholderBytes: 4096 });
+        expect(explicit.sizeBytes).toBeLessThan(plain.sizeBytes);
+    });
+});
