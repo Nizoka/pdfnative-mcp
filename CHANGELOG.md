@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-08-23
+
+A minor, backward-compatible release that aligns the server with
+[pdfnative v1.7.0](https://github.com/Nizoka/pdfnative) and the MCP 2026-07-28
+specification, and grows the catalogue to **27 tools**: the full PAdES baseline
+ladder (`sign_pdf` timestamps, `add_ltv`, `timestamp_pdf`), print production,
+charts v2, PDF/A conformance diagnostics with `embedFonts`, `update_metadata`,
+the SDK v2 transport with legacy fallback, and a network charter that keeps the
+server offline by default (operator-configured TSA / OCSP / CRL endpoints only).
+Default tool outputs stay byte-identical except where pdfnative 1.7.0 corrected
+previously-wrong output (see `release-notes/v1.6.0.md` → Upgrade).
+
+### Added
+
+- **feat(tool): add_ltv** — PAdES B-LT Document Security Store; `mode: 'online'` (operator revocation provider, `REVOCATION_NOT_CONFIGURED` otherwise) or `mode: 'offline'` (parse-validated caller material); `summary` in the structured result.
+- **feat(tool): timestamp_pdf** — PAdES B-LTA document timestamp through the operator TSA (`TSA_NOT_CONFIGURED` otherwise), verified before embedding, auto-suffixed field names for periodic re-timestamping.
+- **feat(tool): update_metadata** — incremental `/Info` + XMP rewrite (title / author / subject / keywords / pinned `modDate`); encrypted sources rejected.
+- **feat(sign): sign_pdf** — `profile`, `timestamp`, `algorithm` rsa-sha384 / rsa-sha512, `certChainDerBase64`, `fieldName`, `allowMultiple`; errors `PLACEHOLDER_AMBIGUOUS`, `SIGNATURE_FIELD_NOT_FOUND`, `TSA_REJECTED`.
+- **feat(sign): prepare_signature_placeholder** — `subFilter`, `reserveTimestamp`.
+- **feat(verify): verify_pdf** — `/DocTimeStamp` entries verified as RFC 3161 tokens, per-signature `subFilter`, opt-in `ltv` view (`profile`, `timestamp`, `revocation`, `ltvLevel`, document-level `dss` / `ltvLevel` / `caveats`).
+- **feat(inspect): inspect_pdf** — `signatures: true` inventory (`subFilter`, `isDocTimestamp`, `isPlaceholder`, `byteRange`, `vriKey`), presence-gated `dss` / `docTimestampCount` / `trapped`, page boxes + `userUnit` under `pages: true`, `check` values `dss` / `docTimestamp` / `trapped`.
+- **feat(print):** `print`, `outputIntent`, `metadata`, `strict`, `includeDiagnostics`, `embedFonts` on generate_basic_pdf, add_table (both backends), add_international_text (no `embedFonts` — fonts are always embedded), add_chart, add_barcode, embed_image, add_form, add_attachment, prepare_signature_placeholder; `viewerPreferences` gains `duplex`, `pickTrayByPDFSize`, `printPageRange`, `numCopies`. Errors `PRINT_ERROR`, `GENERATION_FAILED`; `PDF_A_COMPLIANCE_VIOLATION` also covers strict diagnostics and `userUnit` under pdfa1b.
+- **feat(chart):** charts v2 fields on `add_chart` and the `chart` block of `generate_basic_pdf`; engine cross-field rules surface as `CHART_ERROR` with the remedy.
+- **feat(mcp):** MCP 2026-07-28 on `@modelcontextprotocol/server` ^2.0.0 with legacy fallback; `SERVER_CACHE_HINTS`; dependency-free node:http bridge (`src/http.ts`); stdio smoke and 2026-era HTTP conformance tests.
+- **feat(network):** `src/network.ts` — operator-configured TSA / OCSP / CRL providers with the SSRF guard; env vars `PDFNATIVE_MCP_TSA_URL`, `PDFNATIVE_MCP_TSA_AUTH`, `PDFNATIVE_MCP_REVOCATION`, `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS`, `PDFNATIVE_MCP_NETWORK_TIMEOUT_MS`; errors `TSA_NOT_CONFIGURED`, `REVOCATION_NOT_CONFIGURED`, `NETWORK_HOST_NOT_ALLOWED`, `NETWORK_ERROR`, `LTV_NO_SIGNATURE`, `LTV_EMPTY`, `LTV_MATERIAL_INVALID`, `LTV_ERROR`, `METADATA_ERROR`.
+- **feat(validation):** advisory veraPDF corpus — `npm run corpus:pdfa` / `npm run validate:pdfa` (pinned veraPDF 1.30.2, Windows `.bat` launcher supported) and the non-blocking `verapdf.yml` workflow.
+- **test:** offline mock PKI (`tests/_ltv-fixtures.ts`), loopback RFC 3161 server (`tests/_tsa-server.ts`), in-memory MCP harness (`tests/_mcp-harness.ts`), HTTP fixture; 635 tests across 54 files; coverage thresholds raised to 89 / 80 / 90 / 91.
+- **docs:** guides `LTV.md`, `PRINT.md`; examples `pades-ltv-ladder`, `ltv-offline`, `multi-signature`, `update-metadata`, `stacked-bar-chart`, `dual-axis-time-chart`, `scatter-log-chart`, `print-bleed-marks`, `pdfa-embed-fonts`.
+
+### Changed
+
+- **chore(deps): pdfnative** `^1.6.0` → `^1.7.0` (additive, 0 removed exports). Free wins: colour-emoji flag and ZWJ sequences render as single glyphs; Arabic ALEF joining and Persian forms, RTL digit order and paired-delimiter mirroring are now UAX #9 conformant; incremental writer / xref reader hardening.
+- **chore(deps): MCP SDK** `@modelcontextprotocol/sdk` ^1.29 → `@modelcontextprotocol/server` ^2.0.0 (+ `@modelcontextprotocol/core`); `zod` ^4.2.0. Still three runtime dependencies; the transitive tree no longer contains hono / express / jose.
+- **chore(api):** `_meta.apiVersion` `1.5.0` → `1.6.0`; package / server versions → `1.6.0`.
+- **chore(governance):** the charter keeps "no GitHub write path" and "no telemetry" absolute and now states the single permitted egress class: operator-configured TSA / OCSP / CRL endpoints, never a URL from a tool argument (`ai-governance.json`, `AGENT_RULES.md`, MCP governance prompts).
+- **chore(http):** GET / DELETE on `/mcp` answer 405 (stateless serving, no SSE resumability — unchanged for the stateless mode v1.5 already used); Host / Origin loopback guard kept.
+
+### Fixed
+
+- **fix(sign):** `signerName` / `reason` / `location` / `contactInfo` never reached the `/Sig` dictionary — pdfnative < 1.7 dropped the values passed at placeholder time. They are now baked into the placeholder (`sign_pdf` when it injects one, `prepare_signature_placeholder` always), so `verify_pdf` reports them.
+- **fix(verify):** a `/DocTimeStamp` field was parsed as a CMS signature and flipped `allValid` to `false` on every B-LTA document; document timestamps are now verified as RFC 3161 tokens.
+- **fix(docs):** the PDF/A guide claimed every font was embedded; base-14 Helvetica text is not. See `embedFonts`.
+
+### Security
+
+- **Network egress policy** — no outbound request by default; the only permitted egress goes to operator-configured RFC 3161 / OCSP / CRL endpoints (`PDFNATIVE_MCP_TSA_URL`, `PDFNATIVE_MCP_REVOCATION`, `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS`). Certificate-supplied OCSP / CRL URLs pass an SSRF guard: http(s) only, no embedded credentials, no redirects, allow-listed hosts, loopback / link-local / private / unique-local / multicast literals rejected unless listed verbatim, response-size caps, per-request timeouts, secrets never echoed.
+- **Dependency surface** — the MCP SDK v2 swap removes hono / express / jose from the transitive tree; `npm audit` reports 0 vulnerabilities.
+
+### Deferred by design
+
+- **redact_pdf** stays deferred (overlay / flatten ≠ content removal; pdfnative 1.7.0 exports no content-removal API). `verify_pdf` keeps its local P-256 ECDSA verifier (`ecdsaVerifyHash` still not exported). Per-tool HTTP page streaming remains blocked: MCP 2026-07-28 still has no partial `structuredContent` envelope.
+- The opt-in telemetry hook stays a long-term item and is intentionally not part of this release.
+
 ## [1.5.0] - 2026-07-21
 
 A minor, backward-compatible release that aligns the server with
