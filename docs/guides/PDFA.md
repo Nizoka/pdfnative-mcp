@@ -17,7 +17,7 @@ This guide tells you, in two pages, **when to pick which PDF/A part** and **whic
 
 ## Hard rules pdfnative-mcp enforces for you
 
-1. Every font is **fully embedded** (subset or full) — already done by pdfnative.
+1. Fonts must be **embedded** — but this is *not* automatic for Latin text. `generate_basic_pdf`, `add_table`, `add_chart`, `add_barcode`, `embed_image` and `add_attachment` render Latin text through the base-14 Helvetica, which is **not embedded** and voids the PDF/A claim (ISO 19005 §6.2.11.4.1). Pass `embedFonts: true` (new in 1.6.0) to embed Noto Sans instead, or use `add_international_text`, which always embeds the Noto fonts it renders with. Set `strict: true` to turn the silent diagnostic into a `PDF_A_COMPLIANCE_VIOLATION` error.
 2. An **OutputIntent** with sRGB ICC is added — done by pdfnative.
 3. The document **must not be encrypted** — pdfnative-mcp refuses to combine `pdfA` with encryption.
 4. **No JavaScript, no actions, no movies, no XFA** — none of pdfnative-mcp's tools emit these.
@@ -74,6 +74,10 @@ This guide tells you, in two pages, **when to pick which PDF/A part** and **whic
 { "name": "inspect_pdf", "arguments": { "pdfBase64": "<step-1 base64>", "check": ["pdfa", "attachments"] } }
 // → expect attachments.length === 1, pdfA === "3B"
 ```
+
+## Validating with veraPDF
+
+`inspect_pdf` confirms the claim is *present*; only a reference validator confirms it is *true*. The repository ships a corpus runner: `npm run validate:pdfa` builds the server, generates one PDF/A-claiming document per feature into `test-output/pdfa/` and runs each through [veraPDF](https://verapdf.org) against its claimed profile (exit 0 with install hints when veraPDF is absent). The same flow runs in CI (`.github/workflows/verapdf.yml`, advisory in 1.6.0, blocking from 1.7.0). Note that `merge_pdfs` / `extract_pages` rebuild the page tree without the source XMP, so their outputs no longer claim PDF/A — generate the final document in one step when you need the claim. Setup and details: [CONTRIBUTING.md](../../CONTRIBUTING.md#pdfa-validation-verapdf).
 
 ## References
 

@@ -169,6 +169,8 @@
         "test:coverage": "vitest run --coverage",
         "examples:check": "vitest run tests/examples.test.ts",
         "verify:issue": "node scripts/verify-issue.mjs",
+        "corpus:pdfa": "node scripts/generate-pdfa-corpus.mjs",
+        "validate:pdfa": "npm run build && npm run corpus:pdfa && node scripts/validate-pdfa.mjs",
         "prepare": "npm run build",
         "prepublishOnly": "npm run clean && npm run lint && npm run typecheck && npm run test && npm run build"
     },

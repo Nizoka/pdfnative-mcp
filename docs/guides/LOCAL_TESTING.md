@@ -116,17 +116,44 @@ names are rejected by the sandbox). Open the resulting file with your OS viewer:
 ## 5. External PDF/A conformance (optional, recommended for archival work)
 
 The built-in `validate_pdf` is a fast **structural** PDF/UA gate — it is *not* a
-substitute for a full reference validator. For authoritative PDF/A verification,
-run the open-source [veraPDF](https://verapdf.org/) validator against a file you
-wrote in step 4:
+substitute for a full reference validator. For authoritative PDF/A verification
+the project ships a corpus + runner around the open-source
+[veraPDF](https://verapdf.org/) validator (a Java CLI, intentionally **not** a
+project dependency):
 
 ```bash
-# Download veraPDF (Java) separately — it is intentionally NOT a project dependency.
-verapdf --flavour 2b .out/demo.pdf
+npm run validate:pdfa
+# = npm run build
+#   && npm run corpus:pdfa            # tool handlers → test-output/pdfa/*.pdf + manifest.json
+#   && node scripts/validate-pdfa.mjs # veraPDF, one run per file, profile from the XMP claim
+```
+
+The corpus covers every PDF/A-relevant feature (outline / page labels / lists,
+watermark, charts, print boxes + metadata, tables, international text, QR code,
+embedded JPEG, PDF/A-3b attachment, page-tree outputs). The validator prints one
+`PASS` / `FAIL` line per file with the failing veraPDF rule ids, exits 1 on any
+failure or when a manifest file is missing / no longer claims PDF/A, and exits 0
+with install hints when veraPDF is not installed (see
+[CONTRIBUTING.md](../../CONTRIBUTING.md#pdfa-validation-verapdf) for the
+three-OS setup and `VERAPDF_HOME`). Only `test-output/pdfa/` is scanned.
+
+To check a single file you wrote in step 4 instead:
+
+```bash
+verapdf --flavour 2b .out/demo.pdf        # Windows: verapdf.bat --flavour 2b .out\demo.pdf
 ```
 
 A `compliant="true"` result confirms PDF/A-2b conformance end-to-end (fonts,
-colour, OutputIntent, XMP). Treat any veraPDF failure on generated PDF/A as a bug.
+colour, OutputIntent, XMP). Remember that text rendered through the base-14
+Helvetica is *not* embedded — pass `embedFonts: true` (1.6.0) on the generating
+tool, or the claim will fail on ISO 19005 §6.2.11.4.1. Treat any veraPDF failure
+on generated PDF/A as a bug.
+
+**CI status:** `.github/workflows/verapdf.yml` runs the same flow with a pinned
+veraPDF 1.30.2 on every push / PR touching the sources. It is **advisory in
+1.6.0** — the validate step uses `continue-on-error`, and its outcome plus the
+full report are written to the job summary and the `verapdf-report` artifact —
+and is planned to become **blocking in 1.7.0**.
 
 ## 6. Smoke-testing the MCP server over stdio
 

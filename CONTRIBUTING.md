@@ -41,6 +41,69 @@ For the full local-verification workflow — quality gate, examples-as-tests, ch
 5. Add a worked example under `examples/` (it is automatically executed by `tests/examples.test.ts` — run `npm run examples:check`).
 6. Bump the changelog.
 
+## PDF/A validation (veraPDF)
+
+The server's PDF/A claims are checked against the official reference validator,
+[veraPDF](https://verapdf.org). `npm run validate:pdfa` builds `dist/`, drives the
+tool handlers to write a corpus of PDF/A-claiming documents to `test-output/pdfa/`
+(`scripts/generate-pdfa-corpus.mjs` — one file per PDF/A-relevant feature:
+outline / page labels / nested lists, watermark, chart blocks, print boxes and
+metadata, tables, scatter chart, international text, QR code, embedded JPEG,
+PDF/A-3b attachment, plus `merge_pdfs` / `extract_pages` outputs), then validates
+each file against the profile it claims in XMP (1b / 2b / 2u / 3b) with
+`scripts/validate-pdfa.mjs`.
+
+A coverage canary in the validator fails the run if a file listed in
+`manifest.json` is missing or its XMP claim disagrees with the manifest, so a
+silent regression in claim emission cannot shrink the validated corpus. Note that
+the page-tree tools (`merge_pdfs`, `extract_pages`) rebuild the page tree without
+the source XMP, so their outputs do not claim PDF/A — the manifest records that
+and the validator asserts it.
+
+Without veraPDF installed the validator prints install hints and exits 0, so local
+development never blocks. In CI (`.github/workflows/verapdf.yml`) the same scripts
+run with a pinned veraPDF 1.30.2 on every push / PR touching `src/`, `scripts/`,
+`examples/` or the package manifest. The job is **advisory in 1.6.0** (the validate
+step has `continue-on-error`; the outcome and full report land in the job summary
+and the `verapdf-report` artifact) and is planned to become **blocking in 1.7.0**.
+veraPDF is an external CI tool, not a dependency — the zero-runtime-dependency
+policy is unchanged.
+
+Installing veraPDF locally (Java 8+ required):
+
+```bash
+# macOS
+brew install --cask verapdf
+
+# Linux (headless, no GUI — same mechanism as CI; adjust the install path)
+curl -fsSL -o installer.zip https://software.verapdf.org/rel/1.30/verapdf-greenfield-1.30.2-installer.zip
+unzip installer.zip && cd verapdf-greenfield-*
+cat > auto-install.xml <<'XML'
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<AutomatedInstallation langpack="eng">
+  <com.izforge.izpack.panels.htmlhello.HTMLHelloPanel id="welcome"/>
+  <com.izforge.izpack.panels.target.TargetPanel id="install_dir"><installpath>/opt/verapdf</installpath></com.izforge.izpack.panels.target.TargetPanel>
+  <com.izforge.izpack.panels.packs.PacksPanel id="sdk_pack_select"><pack index="0" name="veraPDF GUI" selected="true"/><pack index="1" name="veraPDF Mac and *nix Scripts" selected="true"/><pack index="2" name="veraPDF Documentation" selected="false"/><pack index="3" name="veraPDF Sample Plugins" selected="false"/></com.izforge.izpack.panels.packs.PacksPanel>
+  <com.izforge.izpack.panels.install.InstallPanel id="install"/>
+  <com.izforge.izpack.panels.finish.FinishPanel id="finish"/>
+</AutomatedInstallation>
+XML
+java -jar verapdf-izpack-installer-*.jar auto-install.xml
+export VERAPDF_HOME=/opt/verapdf
+```
+
+```powershell
+# Windows — download the same installer zip, unzip, and run the GUI installer
+# (or the headless recipe above with a Windows <installpath>). The install
+# directory contains verapdf.bat; point VERAPDF_HOME at it:
+$env:VERAPDF_HOME = "C:\Program Files\veraPDF"
+```
+
+Then expose it: add the install directory to `PATH`, or set `VERAPDF_HOME` to it
+(`verapdf` / `verapdf.bat` is picked up from the directory root or its `bin/`).
+Windows note: the `.bat` launcher is invoked through a shell with quoted
+arguments (Node refuses to spawn batch files directly), so paths with spaces work.
+
 ## Reporting bugs
 
 Use [GitHub Issues](https://github.com/Nizoka/pdfnative-mcp/issues) with:
