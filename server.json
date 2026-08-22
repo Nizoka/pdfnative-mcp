@@ -6,14 +6,14 @@
     "url": "https://github.com/Nizoka/pdfnative-mcp",
     "source": "github"
   },
-  "version": "1.5.0",
+  "version": "1.6.0",
   "websiteUrl": "https://github.com/Nizoka/pdfnative-mcp#readme",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "pdfnative-mcp",
-      "version": "1.5.0",
+      "version": "1.6.0",
       "transport": { "type": "stdio" },
       "runtimeHint": "npx",
       "runtimeArguments": [

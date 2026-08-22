@@ -1,6 +1,6 @@
 {
     "name": "pdfnative-mcp",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "Model Context Protocol (MCP) server bridging the zero-dependency pdfnative v1.6 library — generate PDFs (PDF/A-1b/2b/2u/3b) with bookmarks/outline, page labels & viewer preferences, render native vector charts (bar / line / pie / donut), add markup annotations, merge / split / extract pages, validate PDF/UA structure, embed barcodes & QR codes, sign (constant-time node:crypto) and **verify** PAdES documents (RSA / ECDSA P-256 CMS), decrypt & re-encrypt (RC4 / AES-128 / AES-256), fill & flatten AcroForms, render 24 scripts including colour emoji and math symbols, build smart tables (cell borders + vertical alignment) and AcroForms, embed images, embed files (Factur-X / ZUGFeRD PDF/A-3), extract Unicode text with positioned runs, inspect existing PDFs, expose generated PDFs as MCP resources, and draft human-in-the-loop GitHub issues under an AI-governance contract — from any MCP-compatible AI client (Claude, Cursor, ChatGPT, Continue, Zed, Windsurf, Cline, Roo Code, …).",
     "mcpName": "io.github.Nizoka/pdfnative-mcp",
     "keywords": [
