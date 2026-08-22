@@ -169,6 +169,16 @@ import {
     decryptPdf,
 } from './tools/decrypt-pdf.js';
 import {
+    ADD_LTV_NAME,
+    ADD_LTV_INPUT_SCHEMA,
+    addLtv,
+} from './tools/add-ltv.js';
+import {
+    TIMESTAMP_PDF_NAME,
+    TIMESTAMP_PDF_INPUT_SCHEMA,
+    timestampPdf,
+} from './tools/timestamp-pdf.js';
+import {
     UPDATE_METADATA_NAME,
     UPDATE_METADATA_INPUT_SCHEMA,
     updateMetadata,
@@ -224,7 +234,22 @@ export const SERVER_CACHE_HINTS = {
  * document; `encrypt_pdf` produces protected bytes plus takes a source
  * password — neither should linger on disk. They are cheap to recompute.
  */
-const NON_CACHEABLE_TOOLS: ReadonlySet<string> = new Set([ENCRYPT_PDF_NAME, DECRYPT_PDF_NAME]);
+const NON_CACHEABLE_TOOLS: ReadonlySet<string> = new Set([
+    ENCRYPT_PDF_NAME,
+    DECRYPT_PDF_NAME,
+    // Time-dependent (TSA tokens, /ModDate) or network-dependent outputs.
+    ADD_LTV_NAME,
+    TIMESTAMP_PDF_NAME,
+    UPDATE_METADATA_NAME,
+]);
+
+/** True when this call's output must bypass the response cache. */
+function isCacheable(name: string, input: unknown): boolean {
+    if (isFileOutput(input) || NON_CACHEABLE_TOOLS.has(name)) return false;
+    // A timestamped signature embeds a TSA token minted at call time.
+    if (name === SIGN_PDF_NAME && input !== null && typeof input === 'object' && (input as { timestamp?: unknown }).timestamp === true) return false;
+    return true;
+}
 
 /** True when the call's input requests a file-mode output (filesystem side-effect). */
 function isFileOutput(input: unknown): boolean {
@@ -698,6 +723,34 @@ const TOOLS: readonly ToolDefinition[] = [
         ],
         handler: updateMetadata,
     },
+    {
+        name: ADD_LTV_NAME,
+        title: 'Embed LTV validation material (PAdES B-LT)',
+        description:
+            "Embed a Document Security Store (/DSS + per-signature /VRI) with the certificates and OCSP/CRL revocation material future verifiers need — PAdES B-LT (ETSI EN 319 142-1), shown as 'LTV enabled' by Adobe Reader. Step 3 of the ladder: sign_pdf (profile=pades, timestamp=true) → add_ltv → timestamp_pdf. mode='online' (default) collects material through the OPERATOR-configured revocation provider (PDFNATIVE_MCP_REVOCATION + PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS; REVOCATION_NOT_CONFIGURED otherwise — no network call is ever made without it); mode='offline' embeds caller-supplied DER certificates / OCSP responses / CRLs with zero network access. Incremental: an existing /DSS is merged, earlier revisions stay byte-identical. Requires at least one signed signature; unencrypted PDFs only.",
+        inputSchema: ADD_LTV_INPUT_SCHEMA,
+        outputSchema: PDF_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+        examples: [
+            { title: 'Collect OCSP/CRL through the configured provider', input: { pdfBase64: '<signed-pdf-base64>', mode: 'online' } },
+            { title: 'Air-gapped: embed exported material', input: { pdfBase64: '<signed-pdf-base64>', mode: 'offline', certificatesDerBase64: ['<intermediate-ca-der-base64>'], crlsDerBase64: ['<crl-der-base64>'] } },
+        ],
+        handler: addLtv,
+    },
+    {
+        name: TIMESTAMP_PDF_NAME,
+        title: 'Add a document timestamp (PAdES B-LTA)',
+        description:
+            "Append an RFC 3161 document timestamp (/DocTimeStamp, ETSI.RFC3161) covering the whole document — PAdES B-LTA archival level. Step 4 of the ladder after add_ltv; re-run periodically (before the TSA certificate expires) to extend the chain (field names auto-suffix DocTimeStamp1, DocTimeStamp2, …). Uses the OPERATOR-configured TSA (PDFNATIVE_MCP_TSA_URL); fails with TSA_NOT_CONFIGURED otherwise and never contacts the network without it. The token is verified (status, imprint, nonce) before embedding. Unencrypted PDFs only.",
+        inputSchema: TIMESTAMP_PDF_INPUT_SCHEMA,
+        outputSchema: PDF_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+        examples: [
+            { title: 'Archive-timestamp a B-LT document', input: { pdfBase64: '<ltv-pdf-base64>' } },
+            { title: 'Re-timestamp with a larger token reservation', input: { pdfBase64: '<ltv-pdf-base64>', placeholderBytes: 24576 } },
+        ],
+        handler: timestampPdf,
+    },
 ];
 
 const TOOL_INDEX: ReadonlyMap<string, ToolDefinition> = new Map(TOOLS.map((t) => [t.name, t]));
@@ -1077,7 +1130,7 @@ export async function callToolDirect(name: string, args: unknown): Promise<CallT
         // Content-addressed cache (opt-in via PDFNATIVE_MCP_CACHE_DIR).
         // We skip caching for outputMode='file' since the filesystem write is itself an effect,
         // and for the encryption tools so decrypted/protected bytes are never persisted at rest.
-        const cacheable = !isFileOutput(input) && !NON_CACHEABLE_TOOLS.has(name);
+        const cacheable = isCacheable(name, input);
         const cacheKey = cacheable ? { tool: name, apiVersion: TOOL_API_VERSION } : null;
         if (cacheKey !== null) {
             const hit = getCached<unknown>(cacheKey.tool, cacheKey.apiVersion, input);
