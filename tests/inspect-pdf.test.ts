@@ -4,6 +4,7 @@ import { generateBasicPdf } from '../src/tools/generate-basic-pdf.js';
 import { prepareSignaturePlaceholder } from '../src/tools/prepare-signature-placeholder.js';
 import { ensureCompressionReady } from '../src/server.js';
 import { ToolError } from '../src/errors.js';
+import { fullLadder, signedBB } from './_ltv-fixtures.js';
 
 beforeAll(async () => {
     delete process.env['PDFNATIVE_MCP_OUTPUT_DIR'];
@@ -179,6 +180,119 @@ describe('inspect_pdf', () => {
         const out = await inspectPdf({ pdfBase64 });
         expect(out.attachments.length).toBe(0);
         expect(out.hasSignaturePlaceholder).toBe(false);
+    });
+});
+
+describe('inspect_pdf signatures / DSS / print-production (v1.6)', () => {
+    const DEFAULT_KEYS = [
+        'version',
+        'pageCount',
+        'encryption',
+        'pdfA',
+        'signatureCount',
+        'hasSignaturePlaceholder',
+        'attachments',
+        'info',
+    ];
+
+    async function samplePdfBytes(): Promise<Uint8Array> {
+        return new Uint8Array(Buffer.from(await buildSamplePdf(), 'base64'));
+    }
+
+    it('default output of a plain document carries no new keys', async () => {
+        const pdfBase64 = await buildSamplePdf();
+        const out = await inspectPdf({ pdfBase64 });
+        expect(Object.keys(out)).toEqual(DEFAULT_KEYS);
+        const withPages = await inspectPdf({ pdfBase64, pages: true });
+        expect(Object.keys(withPages.perPage![0]!)).toEqual(['index', 'width', 'height']);
+    });
+
+    it('lists signatures[] on a PAdES B-B document when signatures=true', async () => {
+        const bb = signedBB(await samplePdfBytes());
+        const out = await inspectPdf({ pdfBase64: Buffer.from(bb).toString('base64'), signatures: true });
+        expect(out.signatures).toHaveLength(1);
+        const sig = out.signatures![0]!;
+        expect(sig.subFilter).toBe('ETSI.CAdES.detached');
+        expect(sig.isDocTimestamp).toBe(false);
+        expect(sig.isPlaceholder).toBe(false);
+        expect(sig.byteRange).toHaveLength(4);
+        expect(sig.byteRange[0]).toBe(0);
+        expect(sig.contentsLength).toBeGreaterThan(0);
+        expect(sig.vriKey).toMatch(/^[0-9A-F]{40}$/);
+        expect(out.dss).toBeUndefined();
+        expect(out.docTimestampCount).toBeUndefined();
+        // Not requested → key absent.
+        const plain = await inspectPdf({ pdfBase64: Buffer.from(bb).toString('base64') });
+        expect(plain.signatures).toBeUndefined();
+    });
+
+    it('reports a placeholder signature with vriKey=null', async () => {
+        const placeholder = await prepareSignaturePlaceholder({ title: 'Sig', signerName: 'Bob' });
+        const out = await inspectPdf({ pdfBase64: placeholder.base64!, signatures: true });
+        expect(out.signatures![0]!.isPlaceholder).toBe(true);
+        expect(out.signatures![0]!.vriKey).toBeNull();
+    });
+
+    it('surfaces dss, docTimestampCount and isDocTimestamp on a B-LTA document', async () => {
+        const { blta } = await fullLadder(await samplePdfBytes());
+        const pdfBase64 = Buffer.from(blta).toString('base64');
+        const out = await inspectPdf({ pdfBase64, signatures: true, check: ['dss', 'docTimestamp'] });
+        expect(out.dss).toBeDefined();
+        expect(out.dss!.certs).toBeGreaterThan(0);
+        expect(out.dss!.ocsps + out.dss!.crls).toBeGreaterThan(0);
+        expect(out.dss!.vriKeys.length).toBeGreaterThan(0);
+        expect(out.docTimestampCount).toBe(1);
+        const ts = out.signatures!.find((s) => s.isDocTimestamp);
+        expect(ts).toBeDefined();
+        expect(ts!.subFilter).toBe('ETSI.RFC3161');
+        expect(ts!.isPlaceholder).toBe(false);
+        const sig = out.signatures!.find((s) => !s.isDocTimestamp)!;
+        expect(out.dss!.vriKeys).toContain(sig.vriKey);
+        expect(out.checks?.dss).toBe(true);
+        expect(out.checks?.docTimestamp).toBe(true);
+        expect(out.checksPassed).toBe(true);
+    });
+
+    it('fails the dss / docTimestamp / trapped checks on a plain document', async () => {
+        const pdfBase64 = await buildSamplePdf();
+        const out = await inspectPdf({ pdfBase64, check: ['dss', 'docTimestamp', 'trapped'] });
+        expect(out.checks?.dss).toBe(false);
+        expect(out.checks?.docTimestamp).toBe(false);
+        expect(out.checks?.trapped).toBe(false);
+        expect(out.checksPassed).toBe(false);
+        expect(out.trapped).toBeUndefined();
+    });
+
+    it('surfaces /Info /Trapped when authored', async () => {
+        const r = await generateBasicPdf({
+            title: 'Trapped',
+            blocks: [{ type: 'paragraph', text: 'print' }],
+            metadata: { trapped: 'True' },
+        });
+        const out = await inspectPdf({ pdfBase64: r.base64!, check: ['trapped'] });
+        expect(out.trapped).toBe('True');
+        expect(out.checks?.trapped).toBe(true);
+        expect(out.checksPassed).toBe(true);
+    });
+
+    it('surfaces page boxes and UserUnit under pages=true only when present', async () => {
+        const r = await generateBasicPdf({
+            title: 'Bleed',
+            blocks: [{ type: 'paragraph', text: 'print' }],
+            print: { bleed: 8.5, userUnit: 2 },
+        });
+        const out = await inspectPdf({ pdfBase64: r.base64!, pages: true });
+        const page = out.perPage![0]!;
+        expect(page.userUnit).toBe(2);
+        expect(page.trimBox).toHaveLength(4);
+        expect(page.bleedBox).toHaveLength(4);
+        // TrimBox is the MediaBox inset by the bleed.
+        expect(page.trimBox![0]).toBeCloseTo(8.5);
+        expect(page.trimBox![2]).toBeCloseTo(page.width - 8.5);
+        expect(page.artBox).toBeUndefined();
+        // Default output (without pages) is unchanged.
+        const plain = await inspectPdf({ pdfBase64: r.base64! });
+        expect(Object.keys(plain)).toEqual(DEFAULT_KEYS);
     });
 });
 

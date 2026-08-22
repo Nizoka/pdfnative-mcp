@@ -34,11 +34,13 @@ describe('server', () => {
         expect(typeof __serverMetadata.title).toBe('string');
         expect(__serverMetadata.title.length).toBeGreaterThan(0);
         expect(__serverMetadata.description).toMatch(/MCP server/i);
-        expect(__serverMetadata.description).toMatch(/24 tools/);
+        expect(__serverMetadata.description).toMatch(/27 tools/);
     });
 
     it('SERVER_INSTRUCTIONS advertises decision tree and pitfalls for AI clients', () => {
-        expect(__serverInstructions).toMatch(/pdfnative.*v1\.6/);
+        expect(__serverInstructions).toMatch(/pdfnative.*v1\.7/);
+        expect(__serverInstructions).toContain('MCP 2026-07-28');
+        expect(__serverInstructions).toContain('NETWORK POLICY');
         expect(__serverInstructions).toContain('DECISION TREE');
         expect(__serverInstructions).toContain('COMMON PITFALLS');
         // Cite each tool by name in the decision tree.
@@ -49,6 +51,7 @@ describe('server', () => {
             'extract_attachments', 'merge_pdfs', 'split_pdf', 'extract_pages',
             'annotate_pdf', 'draft_governance_issue',
             'read_form_fields', 'fill_form', 'add_chart', 'encrypt_pdf', 'decrypt_pdf',
+            'update_metadata', 'add_ltv', 'timestamp_pdf',
         ]) {
             expect(__serverInstructions).toContain(t);
         }
@@ -83,6 +86,7 @@ describe('server', () => {
             'add_chart',
             'add_form',
             'add_international_text',
+            'add_ltv',
             'add_table',
             'annotate_pdf',
             'decrypt_pdf',
@@ -100,6 +104,8 @@ describe('server', () => {
             'read_form_fields',
             'sign_pdf',
             'split_pdf',
+            'timestamp_pdf',
+            'update_metadata',
             'validate_pdf',
             'verify_pdf',
         ]);

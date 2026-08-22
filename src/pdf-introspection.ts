@@ -19,6 +19,7 @@ import {
     isStream,
     type ParsedDict as PdfDict,
     type PdfReader,
+    type PdfValue,
 } from 'pdfnative';
 
 /** Resolve the `/AcroForm` dictionary, or `null` when absent / malformed. */
@@ -64,8 +65,14 @@ export interface SignatureWidget {
     readonly fieldName: string | null;
     readonly byteRange: readonly [number, number, number, number] | null;
     readonly contentsRaw: string | null;
+    /** Decoded `/Contents` bytes (empty when the widget has no `/Contents`). */
+    readonly contentsBytes: Uint8Array;
     readonly subFilter: string | null;
     readonly filter: string | null;
+    /** `/Type /DocTimeStamp` or `/SubFilter /ETSI.RFC3161` (PAdES document timestamp). */
+    readonly isDocTimestamp: boolean;
+    /** Unsigned placeholder: `/ByteRange` all zero or `/Contents` all zero bytes. */
+    readonly isPlaceholder: boolean;
     readonly signingTimeRaw: string | null;
     readonly reason: string | null;
     readonly signerName: string | null;
@@ -110,7 +117,19 @@ function byteRangeOrNull(value: unknown): readonly [number, number, number, numb
     return [nums[0]!, nums[1]!, nums[2]!, nums[3]!] as const;
 }
 
-/** Enumerate every `/FT /Sig` widget, materialising its `/V` signature dict. */
+function isAllZeroBytes(bytes: Uint8Array): boolean {
+    for (let i = 0; i < bytes.length; i++) {
+        if (bytes[i] !== 0) return false;
+    }
+    return true;
+}
+
+/**
+ * Enumerate every `/FT /Sig` widget (recursing into `/Kids`), materialising
+ * its `/V` signature dict. Document timestamps (`/Type /DocTimeStamp`) are
+ * ordinary signature fields in the AcroForm and are returned inline, flagged
+ * via `isDocTimestamp`.
+ */
 export function collectSignatureWidgets(reader: PdfReader): SignatureWidget[] {
     const af = getAcroForm(reader);
     if (af === null) return [];
@@ -119,29 +138,197 @@ export function collectSignatureWidgets(reader: PdfReader): SignatureWidget[] {
     const arr = isRef(fields) ? reader.resolve(fields) : fields;
     if (!isArray(arr)) return [];
     const widgets: SignatureWidget[] = [];
-    for (const entry of arr) {
+    const seen = new Set<unknown>();
+    const visit = (entry: PdfValue, depth: number): void => {
+        if (depth > 32) return;
         const fieldDict = isRef(entry) ? reader.resolve(entry) : entry;
-        if (!isDict(fieldDict)) continue;
+        if (!isDict(fieldDict) || seen.has(fieldDict)) return;
+        seen.add(fieldDict);
         const ft = fieldDict.get('FT');
-        if (!isName(ft) || ft.value !== 'Sig') continue;
-        const vRaw = fieldDict.get('V');
-        const v = vRaw !== undefined && isRef(vRaw) ? reader.resolve(vRaw) : vRaw;
-        const sigDict = v !== undefined && isDict(v) ? v : null;
-        const tName = fieldDict.get('T');
-        widgets.push({
-            fieldName: stringOrNull(tName),
-            byteRange: sigDict ? byteRangeOrNull(sigDict.get('ByteRange')) : null,
-            contentsRaw: sigDict ? stringOrNull(sigDict.get('Contents')) : null,
-            subFilter: sigDict ? nameValueOrNull(sigDict.get('SubFilter')) : null,
-            filter: sigDict ? nameValueOrNull(sigDict.get('Filter')) : null,
-            signingTimeRaw: sigDict ? stringOrNull(sigDict.get('M')) : null,
-            reason: sigDict ? stringOrNull(sigDict.get('Reason')) : null,
-            signerName: sigDict ? stringOrNull(sigDict.get('Name')) : null,
-            location: sigDict ? stringOrNull(sigDict.get('Location')) : null,
-            contactInfo: sigDict ? stringOrNull(sigDict.get('ContactInfo')) : null,
-        });
-    }
+        if (isName(ft) && ft.value === 'Sig') {
+            const vRaw = fieldDict.get('V');
+            const v = vRaw !== undefined && isRef(vRaw) ? reader.resolve(vRaw) : vRaw;
+            const sigDict = v !== undefined && isDict(v) ? v : null;
+            const tName = fieldDict.get('T');
+            const byteRange = sigDict ? byteRangeOrNull(sigDict.get('ByteRange')) : null;
+            const contentsRaw = sigDict ? stringOrNull(sigDict.get('Contents')) : null;
+            const contentsBytes = contentsRaw === null ? new Uint8Array(0) : contentsToBytes(contentsRaw);
+            const subFilter = sigDict ? nameValueOrNull(sigDict.get('SubFilter')) : null;
+            const type = sigDict ? nameValueOrNull(sigDict.get('Type')) : null;
+            const byteRangeAllZero = byteRange !== null && byteRange.every((n) => n === 0);
+            widgets.push({
+                fieldName: stringOrNull(tName),
+                byteRange,
+                contentsRaw,
+                contentsBytes,
+                subFilter,
+                filter: sigDict ? nameValueOrNull(sigDict.get('Filter')) : null,
+                isDocTimestamp: type === 'DocTimeStamp' || subFilter === 'ETSI.RFC3161',
+                isPlaceholder: sigDict === null || byteRangeAllZero || contentsRaw === null || isAllZeroBytes(contentsBytes),
+                signingTimeRaw: sigDict ? stringOrNull(sigDict.get('M')) : null,
+                reason: sigDict ? stringOrNull(sigDict.get('Reason')) : null,
+                signerName: sigDict ? stringOrNull(sigDict.get('Name')) : null,
+                location: sigDict ? stringOrNull(sigDict.get('Location')) : null,
+                contactInfo: sigDict ? stringOrNull(sigDict.get('ContactInfo')) : null,
+            });
+        }
+        const kidsRaw = fieldDict.get('Kids');
+        const kids = kidsRaw !== undefined && isRef(kidsRaw) ? reader.resolve(kidsRaw) : kidsRaw;
+        if (kids !== undefined && isArray(kids)) {
+            for (const kid of kids) visit(kid, depth + 1);
+        }
+    };
+    for (const entry of arr) visit(entry, 0);
     return widgets;
+}
+
+/** Summary of the Document Security Store (`/DSS`, ISO 32000-2 §12.8.4.3). */
+export interface DssSummary {
+    readonly certs: number;
+    readonly ocsps: number;
+    readonly crls: number;
+    /** Keys of the `/VRI` dictionary (uppercase hex SHA-1 of each signature's `/Contents`). */
+    readonly vriKeys: readonly string[];
+}
+
+/** JSON Schema for {@link DssSummary} — shared by `inspect_pdf` and `verify_pdf` output schemas. */
+export const DSS_OUTPUT_SCHEMA = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['certs', 'ocsps', 'crls', 'vriKeys'],
+    properties: {
+        certs: { type: 'integer', minimum: 0, description: 'Number of /DSS /Certs entries.' },
+        ocsps: { type: 'integer', minimum: 0, description: 'Number of /DSS /OCSPs entries.' },
+        crls: { type: 'integer', minimum: 0, description: 'Number of /DSS /CRLs entries.' },
+        vriKeys: {
+            type: 'array',
+            items: { type: 'string' },
+            description: '/VRI dictionary keys (uppercase-hex SHA-1 of each covered signature /Contents).',
+        },
+    },
+} as const;
+
+/** Decoded revocation material carried by the `/DSS`. */
+export interface DssMaterial extends DssSummary {
+    readonly ocspDer: readonly Uint8Array[];
+    readonly crlDer: readonly Uint8Array[];
+}
+
+function resolveDssDict(reader: PdfReader): PdfDict | null {
+    const dssRaw = reader.getCatalog().get('DSS');
+    if (dssRaw === undefined) return null;
+    const dss = isRef(dssRaw) ? reader.resolve(dssRaw) : dssRaw;
+    return isDict(dss) ? dss : null;
+}
+
+function dssStreams(reader: PdfReader, dss: PdfDict, key: string): Uint8Array[] {
+    const raw = dss.get(key);
+    if (raw === undefined) return [];
+    const arr = isRef(raw) ? reader.resolve(raw) : raw;
+    if (!isArray(arr)) return [];
+    const out: Uint8Array[] = [];
+    for (const entry of arr) {
+        const stream = isRef(entry) ? reader.resolve(entry) : entry;
+        if (!isStream(stream)) continue;
+        try {
+            out.push(reader.decodeStream(stream));
+            /* v8 ignore next 3 -- defensive: engine-written DSS streams always decode. */
+        } catch {
+            // skip undecodable entries
+        }
+    }
+    return out;
+}
+
+function dssArrayLength(reader: PdfReader, dss: PdfDict, key: string): number {
+    const raw = dss.get(key);
+    if (raw === undefined) return 0;
+    const arr = isRef(raw) ? reader.resolve(raw) : raw;
+    return isArray(arr) ? arr.length : 0;
+}
+
+function dssVriKeys(reader: PdfReader, dss: PdfDict): string[] {
+    const raw = dss.get('VRI');
+    if (raw === undefined) return [];
+    const vri = isRef(raw) ? reader.resolve(raw) : raw;
+    if (!isDict(vri)) return [];
+    return [...vri.keys()];
+}
+
+/** Read the catalog `/DSS` summary, or `null` when the document has none. */
+export function readDss(reader: PdfReader): DssSummary | null {
+    const dss = resolveDssDict(reader);
+    if (dss === null) return null;
+    return {
+        certs: dssArrayLength(reader, dss, 'Certs'),
+        ocsps: dssArrayLength(reader, dss, 'OCSPs'),
+        crls: dssArrayLength(reader, dss, 'CRLs'),
+        vriKeys: dssVriKeys(reader, dss),
+    };
+}
+
+/** Read the catalog `/DSS` with its OCSP / CRL streams decoded, or `null` when absent. */
+export function readDssMaterial(reader: PdfReader): DssMaterial | null {
+    const dss = resolveDssDict(reader);
+    if (dss === null) return null;
+    const ocspDer = dssStreams(reader, dss, 'OCSPs');
+    const crlDer = dssStreams(reader, dss, 'CRLs');
+    return {
+        certs: dssArrayLength(reader, dss, 'Certs'),
+        ocsps: dssArrayLength(reader, dss, 'OCSPs'),
+        crls: dssArrayLength(reader, dss, 'CRLs'),
+        vriKeys: dssVriKeys(reader, dss),
+        ocspDer,
+        crlDer,
+    };
+}
+
+/** Print-production page boxes and `/UserUnit` — only the keys present on the page. */
+export interface PageBoxes {
+    readonly trimBox?: readonly [number, number, number, number];
+    readonly bleedBox?: readonly [number, number, number, number];
+    readonly artBox?: readonly [number, number, number, number];
+    readonly cropBox?: readonly [number, number, number, number];
+    readonly userUnit?: number;
+}
+
+function rectOrUndefined(value: unknown): readonly [number, number, number, number] | undefined {
+    if (!Array.isArray(value) || value.length !== 4) return undefined;
+    const nums: number[] = [];
+    for (const entry of value) {
+        if (typeof entry !== 'number' || !Number.isFinite(entry)) return undefined;
+        nums.push(entry);
+    }
+    return [nums[0]!, nums[1]!, nums[2]!, nums[3]!] as const;
+}
+
+/** Read `/TrimBox`, `/BleedBox`, `/ArtBox`, `/CropBox` and `/UserUnit` from a page dictionary. */
+export function readPageBoxes(pageDict: PdfDict, reader?: PdfReader): PageBoxes {
+    const out: { -readonly [K in keyof PageBoxes]: PageBoxes[K] } = {};
+    const resolveEntry = (key: string): unknown => {
+        const raw = pageDict.get(key);
+        if (raw === undefined) return undefined;
+        return reader !== undefined && isRef(raw) ? reader.resolve(raw) : raw;
+    };
+    const trimBox = rectOrUndefined(resolveEntry('TrimBox'));
+    if (trimBox !== undefined) out.trimBox = trimBox;
+    const bleedBox = rectOrUndefined(resolveEntry('BleedBox'));
+    if (bleedBox !== undefined) out.bleedBox = bleedBox;
+    const artBox = rectOrUndefined(resolveEntry('ArtBox'));
+    if (artBox !== undefined) out.artBox = artBox;
+    const cropBox = rectOrUndefined(resolveEntry('CropBox'));
+    if (cropBox !== undefined) out.cropBox = cropBox;
+    const userUnit = resolveEntry('UserUnit');
+    if (typeof userUnit === 'number' && Number.isFinite(userUnit)) out.userUnit = userUnit;
+    return out;
+}
+
+/** Read `/Info /Trapped` (a name: True | False | Unknown), or `null` when absent / malformed. */
+export function readTrapped(infoDict: PdfDict | null): 'True' | 'False' | 'Unknown' | null {
+    if (infoDict === null) return null;
+    const value = nameValueOrNull(infoDict.get('Trapped'));
+    if (value === 'True' || value === 'False' || value === 'Unknown') return value;
+    return null;
 }
 
 /**
