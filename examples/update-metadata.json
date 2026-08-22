@@ -1,0 +1,11 @@
+{
+  "description": "Rewrite the /Info dictionary of an existing PDF as an incremental update (pdfnative 1.7 PdfModifier.updateMetadata); XMP stays in sync on PDF/A files. Pin modDate for reproducible bytes. Earlier revisions and their signatures are preserved verbatim.",
+  "tool": "update_metadata",
+  "arguments": {
+    "pdfBase64": "<any unencrypted PDF base64>",
+    "title": "Quarterly report — final",
+    "author": "Finance team",
+    "keywords": "Q2 2026, report, final",
+    "modDate": "2026-08-22T10:00:00Z"
+  }
+}

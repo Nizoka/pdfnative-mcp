@@ -1,0 +1,19 @@
+{
+  "description": "Air-gapped PAdES B-LT: embed validation material collected out-of-band (exported CRL / OCSP responses and the issuing chain) with add_ltv mode=offline — zero network access, every DER blob is parse-validated before it lands in /DSS. Then inspect_pdf check=['dss'] asserts the store is present.",
+  "steps": [
+    {
+      "tool": "add_ltv",
+      "arguments": {
+        "pdfBase64": "<signed PDF base64>",
+        "mode": "offline",
+        "certificatesDerBase64": ["<intermediate CA DER, base64>", "<root CA DER, base64>"],
+        "crlsDerBase64": ["<CRL DER, base64>"],
+        "ocspResponsesDerBase64": ["<OCSPResponse DER, base64>"]
+      }
+    },
+    {
+      "tool": "inspect_pdf",
+      "arguments": { "pdfBase64": "<base64 from step 1>", "check": ["signed", "dss"], "signatures": true }
+    }
+  ]
+}
