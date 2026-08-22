@@ -185,3 +185,53 @@ describe('add_table', () => {
     });
 });
 
+describe('add_table print + diagnostics inputs (v1.6.0)', () => {
+    const TABLE = { title: 'T', headers: ['Name', 'Qty'], rows: [['Widget', '3']] } as const;
+    const latin1 = (b64: string): string => Buffer.from(b64, 'base64').toString('latin1');
+
+    it('embedFonts + pdfA + includeDiagnostics yields a valid PDF with no font diagnostic (document backend)', async () => {
+        const result = await addTable({ ...TABLE, embedFonts: true, pdfA: 'pdfa2b', includeDiagnostics: true });
+        assertValidPdf(result.base64!);
+        expect(result.diagnostics).toBeDefined();
+        expect(result.diagnostics!.map((d) => d.code)).not.toContain('PDFA_NO_FONT_ENTRIES');
+    });
+
+    it('pdfA without embedFonts reports PDFA_NO_FONT_ENTRIES', async () => {
+        const result = await addTable({ ...TABLE, pdfA: 'pdfa2b', includeDiagnostics: true });
+        expect(result.diagnostics!.map((d) => d.code)).toContain('PDFA_NO_FONT_ENTRIES');
+    });
+
+    it('the default buildPDFBytes backend honours print, metadata and embedFonts', async () => {
+        const result = await addTable({ ...TABLE, print: { bleed: 8.5, userUnit: 2 }, metadata: { author: 'A' }, embedFonts: true, includeDiagnostics: true });
+        assertValidPdf(result.base64!);
+        const text = latin1(result.base64!);
+        expect(text).toContain('/TrimBox');
+        expect(text).toContain('/UserUnit 2');
+        expect(text).toContain('/Author (A)');
+        expect(result.diagnostics).toEqual([]);
+    });
+
+    it('the document backend honours print and metadata too', async () => {
+        const result = await addTable({ ...TABLE, zebra: true, print: { bleed: 8.5 }, metadata: { subject: 'S' } });
+        assertValidPdf(result.base64!);
+        const text = latin1(result.base64!);
+        expect(text).toContain('/TrimBox');
+        expect(text).toContain('/Subject (S)');
+    });
+
+    it('strict + pdfA without embedFonts is rejected with PDF_A_COMPLIANCE_VIOLATION', async () => {
+        await expect(addTable({ ...TABLE, pdfA: 'pdfa2b', strict: true })).rejects.toMatchObject({ code: 'PDF_A_COMPLIANCE_VIOLATION' });
+    });
+
+    it('marks without a TrimBox is a PRINT_ERROR on the default backend', async () => {
+        await expect(addTable({ ...TABLE, print: { marks: true } })).rejects.toMatchObject({ code: 'PRINT_ERROR' });
+    });
+
+    it('keeps the default output byte-identical when the new fields are absent', async () => {
+        const a = await addTable(TABLE);
+        const b = await addTable({ ...TABLE, includeDiagnostics: false });
+        expect(a.base64).toBe(b.base64);
+        expect(Object.keys(a)).not.toContain('diagnostics');
+    });
+});
+

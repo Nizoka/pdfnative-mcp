@@ -189,3 +189,68 @@ describe('add_international_text tool', () => {
         ).rejects.toThrow("paragraphs must contain at least one non-empty line");
     });
 });
+
+describe('add_international_text print + diagnostics inputs (v1.6.0)', () => {
+    beforeEach(() => {
+        vi.resetModules();
+        registerFontMock.mockClear();
+        loadFontDataMock.mockReset();
+        buildDocumentPDFBytesMock.mockClear();
+        loadFontDataMock.mockResolvedValue({ fontName: 'NotoMock', metrics: {}, cmap: {}, defaultWidth: 500, widths: {}, pdfWidthArray: '', ttfBase64: '', gsub: {} });
+    });
+
+    it('strict + pdfA succeeds (fonts are always embedded) and forwards strict + a diagnostics sink', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        const result = await addInternationalText({ title: 'T', lang: 'ar', paragraphs: ['مرحبا'], pdfA: 'pdfa2b', strict: true, includeDiagnostics: true });
+        expect(result.diagnostics).toEqual([]);
+        const layout = buildDocumentPDFBytesMock.mock.calls[0]?.[1] as Record<string, unknown>;
+        expect(layout['strict']).toBe(true);
+        expect(layout['tagged']).toBe('pdfa2b');
+        expect(typeof layout['onDiagnostic']).toBe('function');
+    });
+
+    it('does not expose embedFonts (fonts are already embedded)', async () => {
+        const { addInternationalText, ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA } = await import('../src/tools/add-international-text.js');
+        const keys = Object.keys(ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA.properties);
+        expect(keys).not.toContain('embedFonts');
+        expect(keys).toEqual(expect.arrayContaining(['print', 'outputIntent', 'metadata', 'strict', 'includeDiagnostics']));
+        // Unknown keys are stripped at the boundary: only the requested script font is loaded.
+        await addInternationalText({ title: 'T', lang: 'ar', paragraphs: ['x'], embedFonts: true });
+        expect(loadFontDataMock).toHaveBeenCalledTimes(1);
+        expect(loadFontDataMock).toHaveBeenCalledWith('ar');
+    });
+
+    it('forwards print options and document metadata to the engine', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        await addInternationalText({ title: 'T', lang: 'ar', paragraphs: ['x'], print: { bleed: 8.5, marks: true }, metadata: { author: 'A', trapped: 'True' } });
+        const [params, layout] = buildDocumentPDFBytesMock.mock.calls[0] as [Record<string, unknown>, Record<string, unknown>];
+        expect(layout['print']).toEqual({ bleed: 8.5, marks: true });
+        expect(params['metadata']).toEqual({ author: 'A', trapped: 'True' });
+    });
+
+    it('rejects userUnit under pdfa1b before touching the engine', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        await expect(
+            addInternationalText({ title: 'T', lang: 'ar', paragraphs: ['x'], pdfA: 'pdfa1b', print: { userUnit: 2 } }),
+        ).rejects.toMatchObject({ code: 'PDF_A_COMPLIANCE_VIOLATION' });
+        expect(buildDocumentPDFBytesMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps the default engine call free of print / metadata keys', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        await addInternationalText({ title: 'T', lang: 'ar', paragraphs: ['x'] });
+        const [params, layout] = buildDocumentPDFBytesMock.mock.calls[0] as [Record<string, unknown>, Record<string, unknown>];
+        expect(Object.keys(params)).toEqual(['title', 'blocks', 'fontEntries']);
+        expect(Object.keys(layout).sort()).toEqual(['normalize', 'onDiagnostic']);
+    });
+
+    it('maps an engine PDF/A throw to PDF_A_COMPLIANCE_VIOLATION', async () => {
+        const { addInternationalText } = await import('../src/tools/add-international-text.js');
+        buildDocumentPDFBytesMock.mockImplementationOnce(() => {
+            throw new Error('pdfnative: tagged document violates PDF/A conformance');
+        });
+        await expect(addInternationalText({ title: 'T', lang: 'ar', paragraphs: ['x'], pdfA: 'pdfa2b', strict: true })).rejects.toMatchObject({
+            code: 'PDF_A_COMPLIANCE_VIOLATION',
+        });
+    });
+});

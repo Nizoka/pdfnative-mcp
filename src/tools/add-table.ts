@@ -27,6 +27,8 @@ import {
     ViewerPreferencesSchema,
     toViewerPreferences,
 } from '../doc-features.js';
+import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
+import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 const CELL_BORDER_STYLES = ['solid', 'dashed', 'dotted'] as const;
 const CELL_VALIGNS = ['top', 'middle', 'bottom'] as const;
@@ -175,6 +177,8 @@ export const ADD_TABLE_INPUT_SCHEMA = {
         },
         watermark: WATERMARK_INPUT_SCHEMA,
         viewerPreferences: VIEWER_PREFERENCES_INPUT_SCHEMA,
+        ...PRINT_INPUT_PROPERTIES,
+        ...DIAGNOSTIC_INPUT_PROPERTIES,
         outputMode: {
             type: 'string',
             enum: ['base64', 'file'],
@@ -217,6 +221,8 @@ const InputSchema = z.object({
     pdfA: PdfASchema.optional(),
     watermark: WatermarkSchema.optional(),
     viewerPreferences: ViewerPreferencesSchema.optional(),
+    ...PrintInputShape,
+    ...DiagnosticInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -226,8 +232,9 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, headers, rows, infoItems, footerText, autoFitColumns, clipCells, wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, cellBorders, cellVAlign, pdfA, watermark, viewerPreferences, outputMode, outputPath } = parsed.data;
+    const { title, headers, rows, infoItems, footerText, autoFitColumns, clipCells, wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, cellBorders, cellVAlign, pdfA, watermark, viewerPreferences, print, outputIntent, metadata, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
     assertWatermarkPdfACompatible(watermark, pdfA);
+    assertPrintPdfACompatible(print, pdfA);
 
     // Validate column count consistency: every row must have the same length as headers
     for (let i = 0; i < rows.length; i++) {
@@ -242,56 +249,74 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
     const smartTableField = wrap !== undefined || repeatHeader !== undefined || zebra !== undefined || caption !== undefined || minRowHeight !== undefined || cellPadding !== undefined || cellBorders !== undefined || cellVAlign !== undefined;
     const useDocumentBackend = autoFitColumns !== undefined || clipCells !== undefined || pdfA !== undefined || watermark !== undefined || smartTableField;
 
+    const collector = collectDiagnostics(strict);
     const layout = {
         ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
+        ...toPrintLayout({ print, outputIntent }),
+        ...collector.layout,
+    };
+    const docMetadata = toDocumentMetadata(metadata);
+    const fontEntries = await latinFontEntries(embedFonts);
+    const sharedParams = {
+        ...(docMetadata !== undefined ? { metadata: docMetadata } : {}),
+        ...(fontEntries.length > 0 ? { fontEntries } : {}),
     };
 
     let bytes: Uint8Array;
-    if (useDocumentBackend) {
-        const tableBlock: TableBlock = {
-            type: 'table',
-            headers,
-            rows: rows.map((cells) => ({ cells, type: '', pointed: false })),
-            ...(autoFitColumns !== undefined ? { autoFitColumns } : {}),
-            ...(clipCells !== undefined ? { clipCells } : {}),
-            ...(wrap !== undefined ? { wrap } : {}),
-            ...(repeatHeader !== undefined ? { repeatHeader } : {}),
-            ...(zebra !== undefined ? { zebra } : {}),
-            ...(caption !== undefined ? { caption } : {}),
-            ...(minRowHeight !== undefined ? { minRowHeight } : {}),
-            ...(cellPadding !== undefined ? { cellPadding } : {}),
-            ...(cellBorders !== undefined ? { cellBorders: toCellBorders(cellBorders) } : {}),
-            ...(cellVAlign !== undefined ? { cellVAlign } : {}),
-        };
-        const blocks: DocumentBlock[] = [];
-        if (infoItems !== undefined && infoItems.length > 0) {
-            for (const item of infoItems) {
-                blocks.push({ type: 'paragraph', text: `${item.label}: ${item.value}` });
-            }
-        }
-        blocks.push(tableBlock);
-        bytes = buildDocumentPDFBytes(
-            { title, blocks, ...(footerText !== undefined ? { footerText } : {}) },
-            {
-                ...(pdfA !== undefined ? { tagged: pdfA } : {}),
-                ...(watermark !== undefined ? { watermark: toWatermarkOptions(watermark) } : {}),
-                ...layout,
-            },
-        );
-    } else {
-        bytes = buildPDFBytes(
-            {
-                title,
-                infoItems: (infoItems ?? []).map((item) => ({ label: item.label, value: item.value })),
-                balanceText: '',
-                countText: '',
+    try {
+        if (useDocumentBackend) {
+            const tableBlock: TableBlock = {
+                type: 'table',
                 headers,
                 rows: rows.map((cells) => ({ cells, type: '', pointed: false })),
-                footerText: footerText ?? '',
-            },
-            layout,
-        );
+                ...(autoFitColumns !== undefined ? { autoFitColumns } : {}),
+                ...(clipCells !== undefined ? { clipCells } : {}),
+                ...(wrap !== undefined ? { wrap } : {}),
+                ...(repeatHeader !== undefined ? { repeatHeader } : {}),
+                ...(zebra !== undefined ? { zebra } : {}),
+                ...(caption !== undefined ? { caption } : {}),
+                ...(minRowHeight !== undefined ? { minRowHeight } : {}),
+                ...(cellPadding !== undefined ? { cellPadding } : {}),
+                ...(cellBorders !== undefined ? { cellBorders: toCellBorders(cellBorders) } : {}),
+                ...(cellVAlign !== undefined ? { cellVAlign } : {}),
+            };
+            const blocks: DocumentBlock[] = [];
+            if (infoItems !== undefined && infoItems.length > 0) {
+                for (const item of infoItems) {
+                    blocks.push({ type: 'paragraph', text: `${item.label}: ${item.value}` });
+                }
+            }
+            blocks.push(tableBlock);
+            bytes = buildDocumentPDFBytes(
+                { title, blocks, ...(footerText !== undefined ? { footerText } : {}), ...sharedParams },
+                {
+                    ...(pdfA !== undefined ? { tagged: pdfA } : {}),
+                    ...(watermark !== undefined ? { watermark: toWatermarkOptions(watermark) } : {}),
+                    ...layout,
+                },
+            );
+        } else {
+            bytes = buildPDFBytes(
+                {
+                    title,
+                    infoItems: (infoItems ?? []).map((item) => ({ label: item.label, value: item.value })),
+                    balanceText: '',
+                    countText: '',
+                    headers,
+                    rows: rows.map((cells) => ({ cells, type: '', pointed: false })),
+                    footerText: footerText ?? '',
+                    ...sharedParams,
+                },
+                layout,
+            );
+        }
+    } catch (err) {
+        throw mapBuildError(err, ADD_TABLE_NAME);
     }
 
-    return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
+    return withDiagnostics(
+        await emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) }),
+        collector,
+        includeDiagnostics,
+    );
 }

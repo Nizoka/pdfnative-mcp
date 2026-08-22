@@ -113,3 +113,27 @@ describe('prepare_signature_placeholder', () => {
         expect(pdfStr).toContain('/Contents <' + '0'.repeat(8192 * 2));
     });
 });
+
+describe('prepare_signature_placeholder print + diagnostics inputs (v1.6.0)', () => {
+    it('embedFonts + pdfA + includeDiagnostics yields a valid placeholder PDF with no font diagnostic', async () => {
+        const result = await prepareSignaturePlaceholder({ title: 'Contract', embedFonts: true, pdfA: 'pdfa2b', includeDiagnostics: true });
+        expect(result.mode).toBe('base64');
+        expect(decode(result.base64!)).toBe(PDF_HEADER);
+        expect(decodeAll(result.base64!)).toContain('/ByteRange');
+        expect(result.diagnostics!.map((d) => d.code)).not.toContain('PDFA_NO_FONT_ENTRIES');
+    });
+
+    it('strict + pdfA without embedFonts is rejected with PDF_A_COMPLIANCE_VIOLATION', async () => {
+        await expect(prepareSignaturePlaceholder({ title: 'Contract', pdfA: 'pdfa2b', strict: true })).rejects.toMatchObject({
+            code: 'PDF_A_COMPLIANCE_VIOLATION',
+        });
+    });
+
+    it('print bleed + metadata survive the placeholder injection', async () => {
+        const result = await prepareSignaturePlaceholder({ title: 'Contract', print: { bleed: 8.5 }, metadata: { author: 'A' } });
+        const text = decodeAll(result.base64!);
+        expect(text).toContain('/TrimBox');
+        expect(text).toContain('/Author (A)');
+        expect(text).toContain('/ByteRange');
+    });
+});

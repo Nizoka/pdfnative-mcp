@@ -10,6 +10,8 @@ import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
+import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
+import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 export const ADD_BARCODE_NAME = 'add_barcode';
 
@@ -64,6 +66,8 @@ export const ADD_BARCODE_INPUT_SCHEMA = {
             enum: [...PDF_A_ENUM],
             description: PDF_A_FIELD_DESCRIPTION,
         },
+        ...PRINT_INPUT_PROPERTIES,
+        ...DIAGNOSTIC_INPUT_PROPERTIES,
         outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
         outputPath: { type: 'string' },
     },
@@ -79,6 +83,8 @@ const InputSchema = z.object({
     height: z.number().min(30).max(500).default(200),
     ecLevel: z.enum(['L', 'M', 'Q', 'H']).default('M'),
     pdfA: PdfASchema.optional(),
+    ...PrintInputShape,
+    ...DiagnosticInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -88,7 +94,8 @@ export async function addBarcode(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { format, data, caption, title, width, height, ecLevel, pdfA, outputMode, outputPath } = parsed.data;
+    const { format, data, caption, title, width, height, ecLevel, pdfA, print, outputIntent, metadata, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
+    assertPrintPdfACompatible(print, pdfA);
 
     if (format === 'ean13' && !/^\d{12,13}$/.test(data)) {
         throw new ToolError('VALIDATION_ERROR', 'EAN-13 data must be 12 or 13 digits.');
@@ -108,6 +115,30 @@ export async function addBarcode(rawInput: unknown): Promise<OutputResult> {
         ...(format === 'qr' ? { ecLevel } : {}),
     });
 
-    const bytes = buildDocumentPDFBytes({ title, blocks }, pdfA !== undefined ? { tagged: pdfA } : {});
-    return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
+    const docMetadata = toDocumentMetadata(metadata);
+    const fontEntries = await latinFontEntries(embedFonts);
+    const collector = collectDiagnostics(strict);
+    let bytes: Uint8Array;
+    try {
+        bytes = buildDocumentPDFBytes(
+            {
+                title,
+                blocks,
+                ...(docMetadata !== undefined ? { metadata: docMetadata } : {}),
+                ...(fontEntries.length > 0 ? { fontEntries } : {}),
+            },
+            {
+                ...(pdfA !== undefined ? { tagged: pdfA } : {}),
+                ...toPrintLayout({ print, outputIntent }),
+                ...collector.layout,
+            },
+        );
+    } catch (err) {
+        throw mapBuildError(err, ADD_BARCODE_NAME);
+    }
+    return withDiagnostics(
+        await emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) }),
+        collector,
+        includeDiagnostics,
+    );
 }

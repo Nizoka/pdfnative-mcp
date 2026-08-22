@@ -20,6 +20,8 @@ import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { CHART_BODY_PROPERTIES, ChartBodySchema, toChartBlock } from '../chart.js';
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
+import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
+import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 export const ADD_CHART_NAME = 'add_chart';
 
@@ -39,6 +41,8 @@ export const ADD_CHART_INPUT_SCHEMA = {
             enum: [...PDF_A_ENUM],
             description: PDF_A_FIELD_DESCRIPTION,
         },
+        ...PRINT_INPUT_PROPERTIES,
+        ...DIAGNOSTIC_INPUT_PROPERTIES,
         outputMode: {
             type: 'string',
             enum: ['base64', 'file'],
@@ -52,6 +56,8 @@ export const ADD_CHART_INPUT_SCHEMA = {
 const InputSchema = ChartBodySchema.extend({
     intro: z.string().max(2000).optional(),
     pdfA: PdfASchema.optional(),
+    ...PrintInputShape,
+    ...DiagnosticInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -61,21 +67,43 @@ export async function addChart(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { intro, pdfA, outputMode, outputPath, ...chartBody } = parsed.data;
+    const { intro, pdfA, print, outputIntent, metadata, strict, includeDiagnostics, embedFonts, outputMode, outputPath, ...chartBody } = parsed.data;
+    assertPrintPdfACompatible(print, pdfA);
 
     const blocks: DocumentBlock[] = [];
     if (intro !== undefined) blocks.push({ type: 'paragraph', text: intro });
     blocks.push(toChartBlock(chartBody));
 
+    const docMetadata = toDocumentMetadata(metadata);
+    const fontEntries = await latinFontEntries(embedFonts);
+    const collector = collectDiagnostics(strict);
+
     let bytes: Uint8Array;
     try {
         bytes = buildDocumentPDFBytes(
-            { title: chartBody.title ?? 'Chart', blocks },
-            { ...(pdfA !== undefined ? { tagged: pdfA } : {}) },
+            {
+                title: chartBody.title ?? 'Chart',
+                blocks,
+                ...(docMetadata !== undefined ? { metadata: docMetadata } : {}),
+                ...(fontEntries.length > 0 ? { fontEntries } : {}),
+            },
+            {
+                ...(pdfA !== undefined ? { tagged: pdfA } : {}),
+                ...toPrintLayout({ print, outputIntent }),
+                ...collector.layout,
+            },
         );
     } catch (err) {
+        // PDF/A conformance and print-production failures keep their stable codes;
+        // everything else is a chart rendering failure, as before.
+        const mapped = mapBuildError(err, ADD_CHART_NAME);
+        if (mapped.code === 'PDF_A_COMPLIANCE_VIOLATION' || mapped.code === 'PRINT_ERROR') throw mapped;
         throw new ToolError('CHART_ERROR', `Failed to render chart: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
+    return withDiagnostics(
+        await emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) }),
+        collector,
+        includeDiagnostics,
+    );
 }

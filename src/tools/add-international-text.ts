@@ -32,6 +32,12 @@ import {
     ViewerPreferencesSchema,
     toViewerPreferences,
 } from '../doc-features.js';
+import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
+import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, mapBuildError, withDiagnostics } from '../diagnostics.js';
+
+// This tool always embeds the Noto fonts it renders with, so `embedFonts` is not exposed.
+const { strict: STRICT_PROPERTY, includeDiagnostics: INCLUDE_DIAGNOSTICS_PROPERTY } = DIAGNOSTIC_INPUT_PROPERTIES;
+const { strict: StrictShape, includeDiagnostics: IncludeDiagnosticsShape } = DiagnosticInputShape;
 
 export const ADD_INTERNATIONAL_TEXT_NAME = 'add_international_text';
 
@@ -129,6 +135,9 @@ export const ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA = {
                 "Unicode normalization form applied before shaping. Defaults to 'NFC' (recommended for international scripts: composes decomposed sequences for the widest glyph coverage). Override with 'NFD'/'NFKC'/'NFKD' only for specialised needs.",
         },
         viewerPreferences: VIEWER_PREFERENCES_INPUT_SCHEMA,
+        ...PRINT_INPUT_PROPERTIES,
+        strict: STRICT_PROPERTY,
+        includeDiagnostics: INCLUDE_DIAGNOSTICS_PROPERTY,
         outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
         outputPath: { type: 'string' },
     },
@@ -148,6 +157,9 @@ const InputSchema = z.object({
     pdfA: PdfASchema.optional(),
     normalize: NormalizeSchema.optional(),
     viewerPreferences: ViewerPreferencesSchema.optional(),
+    ...PrintInputShape,
+    strict: StrictShape,
+    includeDiagnostics: IncludeDiagnosticsShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -180,7 +192,8 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, lang, paragraphs, pdfA, normalize, viewerPreferences, outputMode, outputPath } = parsed.data;
+    const { title, lang, paragraphs, pdfA, normalize, viewerPreferences, print, outputIntent, metadata, strict, includeDiagnostics, outputMode, outputPath } = parsed.data;
+    assertPrintPdfACompatible(print, pdfA);
 
     const langs = normaliseLangs(lang);
     // Auto-register Noto Sans Latin fallback under PDF/A so non-WinAnsi Latin (smart
@@ -207,13 +220,26 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
         throw new ToolError('VALIDATION_ERROR', 'paragraphs must contain at least one non-empty line of text.');
     }
 
-    const bytes = buildDocumentPDFBytes(
-        { title, blocks, fontEntries },
-        {
-            normalize: normalize ?? 'NFC',
-            ...(pdfA !== undefined ? { tagged: pdfA } : {}),
-            ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
-        },
+    const docMetadata = toDocumentMetadata(metadata);
+    const collector = collectDiagnostics(strict);
+    let bytes: Uint8Array;
+    try {
+        bytes = buildDocumentPDFBytes(
+            { title, blocks, fontEntries, ...(docMetadata !== undefined ? { metadata: docMetadata } : {}) },
+            {
+                normalize: normalize ?? 'NFC',
+                ...(pdfA !== undefined ? { tagged: pdfA } : {}),
+                ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
+                ...toPrintLayout({ print, outputIntent }),
+                ...collector.layout,
+            },
+        );
+    } catch (err) {
+        throw mapBuildError(err, ADD_INTERNATIONAL_TEXT_NAME);
+    }
+    return withDiagnostics(
+        await emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) }),
+        collector,
+        includeDiagnostics,
     );
-    return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
 }

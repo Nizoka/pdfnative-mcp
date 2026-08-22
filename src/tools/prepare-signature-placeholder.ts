@@ -25,6 +25,8 @@ import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
+import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
+import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 export const PREPARE_SIGNATURE_PLACEHOLDER_NAME = 'prepare_signature_placeholder';
 
@@ -124,6 +126,8 @@ export const PREPARE_SIGNATURE_PLACEHOLDER_INPUT_SCHEMA = {
                 ],
             },
         },
+        ...PRINT_INPUT_PROPERTIES,
+        ...DIAGNOSTIC_INPUT_PROPERTIES,
         outputMode: {
             type: 'string',
             enum: ['base64', 'file'],
@@ -157,6 +161,8 @@ const InputSchema = z.object({
     pageIndex: z.number().int().min(0).optional(),
     pdfA: PdfASchema.optional(),
     blocks: z.array(BlockSchema).max(2000).optional(),
+    ...PrintInputShape,
+    ...DiagnosticInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -194,9 +200,16 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
         pageIndex,
         pdfA,
         blocks,
+        print,
+        outputIntent,
+        metadata,
+        strict,
+        includeDiagnostics,
+        embedFonts,
         outputMode,
         outputPath,
     } = parsed.data;
+    assertPrintPdfACompatible(print, pdfA);
 
     const contentBlocks: DocumentBlock[] = (blocks ?? []).map((b): DocumentBlock => {
         switch (b.type) {
@@ -211,10 +224,28 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
         contentBlocks.push({ type: 'paragraph', text: 'This document contains a digital signature field.' });
     }
 
-    const baseBytes = buildDocumentPDFBytes(
-        { title, blocks: contentBlocks },
-        pdfA !== undefined ? { tagged: pdfA } : {},
-    );
+    const docMetadata = toDocumentMetadata(metadata);
+    const fontEntries = await latinFontEntries(embedFonts);
+    const collector = collectDiagnostics(strict);
+
+    let baseBytes: Uint8Array;
+    try {
+        baseBytes = buildDocumentPDFBytes(
+            {
+                title,
+                blocks: contentBlocks,
+                ...(docMetadata !== undefined ? { metadata: docMetadata } : {}),
+                ...(fontEntries.length > 0 ? { fontEntries } : {}),
+            },
+            {
+                ...(pdfA !== undefined ? { tagged: pdfA } : {}),
+                ...toPrintLayout({ print, outputIntent }),
+                ...collector.layout,
+            },
+        );
+    } catch (err) {
+        throw mapBuildError(err, PREPARE_SIGNATURE_PLACEHOLDER_NAME);
+    }
 
     const placeholderOptions: AddSignaturePlaceholderOptions = {
         ...(fieldName !== undefined ? { fieldName } : {}),
@@ -228,8 +259,12 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
 
     const withPlaceholder = injectPlaceholderIntoBase(baseBytes, placeholderOptions);
 
-    return emitPdf(withPlaceholder, {
-        mode: outputMode,
-        ...(outputPath !== undefined ? { outputPath } : {}),
-    });
+    return withDiagnostics(
+        await emitPdf(withPlaceholder, {
+            mode: outputMode,
+            ...(outputPath !== undefined ? { outputPath } : {}),
+        }),
+        collector,
+        includeDiagnostics,
+    );
 }

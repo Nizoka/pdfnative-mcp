@@ -10,6 +10,8 @@ import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
+import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
+import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 export const EMBED_IMAGE_NAME = 'embed_image';
 
@@ -55,6 +57,8 @@ export const EMBED_IMAGE_INPUT_SCHEMA = {
             enum: [...PDF_A_ENUM],
             description: PDF_A_FIELD_DESCRIPTION,
         },
+        ...PRINT_INPUT_PROPERTIES,
+        ...DIAGNOSTIC_INPUT_PROPERTIES,
         outputMode: {
             type: 'string',
             enum: ['base64', 'file'],
@@ -78,6 +82,8 @@ const InputSchema = z.object({
     width: z.number().min(10).max(800).optional(),
     height: z.number().min(10).max(1000).optional(),
     pdfA: PdfASchema.optional(),
+    ...PrintInputShape,
+    ...DiagnosticInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -87,7 +93,8 @@ export async function embedImage(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, imageBase64, mimeType, caption, width, height, pdfA, outputMode, outputPath } = parsed.data;
+    const { title, imageBase64, mimeType, caption, width, height, pdfA, print, outputIntent, metadata, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
+    assertPrintPdfACompatible(print, pdfA);
 
     // Decode base64 to raw bytes
     let imageBytes: Uint8Array;
@@ -122,8 +129,11 @@ export async function embedImage(rawInput: unknown): Promise<OutputResult> {
         }
     }
 
+    const docMetadata = toDocumentMetadata(metadata);
+    const fontEntries = await latinFontEntries(embedFonts);
+    const collector = collectDiagnostics(strict);
+
     let bytes: Uint8Array;
-    /* v8 ignore start - buildDocumentPDFBytes only throws on internal pdfnative errors; defensive guard. */
     try {
         bytes = buildDocumentPDFBytes(
             {
@@ -139,14 +149,29 @@ export async function embedImage(rawInput: unknown): Promise<OutputResult> {
                         ? [{ type: 'paragraph' as const, text: caption }]
                         : []),
                 ],
+                ...(docMetadata !== undefined ? { metadata: docMetadata } : {}),
+                ...(fontEntries.length > 0 ? { fontEntries } : {}),
             },
-            pdfA !== undefined ? { tagged: pdfA } : {},
+            {
+                ...(pdfA !== undefined ? { tagged: pdfA } : {}),
+                ...toPrintLayout({ print, outputIntent }),
+                ...collector.layout,
+            },
         );
     } catch (err) {
+        // PDF/A conformance and print-production failures keep their stable codes;
+        // any other engine throw is an image decoding problem, as before.
+        const mapped = mapBuildError(err, EMBED_IMAGE_NAME);
+        if (mapped.code === 'PDF_A_COMPLIANCE_VIOLATION' || mapped.code === 'PRINT_ERROR') throw mapped;
+        /* v8 ignore start - buildDocumentPDFBytes only throws on internal pdfnative errors; defensive guard. */
         const msg = err instanceof Error ? err.message : String(err);
         throw new ToolError('VALIDATION_ERROR', `Failed to embed image: ${msg}`);
+        /* v8 ignore stop */
     }
-    /* v8 ignore stop */
 
-    return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
+    return withDiagnostics(
+        await emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) }),
+        collector,
+        includeDiagnostics,
+    );
 }

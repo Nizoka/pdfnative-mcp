@@ -10,6 +10,8 @@ import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
+import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
+import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 export const ADD_FORM_NAME = 'add_form';
 
@@ -105,6 +107,8 @@ export const ADD_FORM_INPUT_SCHEMA = {
             enum: [...PDF_A_ENUM],
             description: PDF_A_FIELD_DESCRIPTION,
         },
+        ...PRINT_INPUT_PROPERTIES,
+        ...DIAGNOSTIC_INPUT_PROPERTIES,
         outputMode: {
             type: 'string',
             enum: ['base64', 'file'],
@@ -140,6 +144,8 @@ const InputSchema = z.object({
     fields: z.array(FieldSchema).min(1).max(200),
     footerText: z.string().max(200).optional(),
     pdfA: PdfASchema.optional(),
+    ...PrintInputShape,
+    ...DiagnosticInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -149,7 +155,8 @@ export async function addForm(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, fields, footerText, pdfA, outputMode, outputPath } = parsed.data;
+    const { title, fields, footerText, pdfA, print, outputIntent, metadata, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
+    assertPrintPdfACompatible(print, pdfA);
 
     // Validate that radio/dropdown fields have options
     for (const field of fields) {
@@ -180,14 +187,33 @@ export async function addForm(rawInput: unknown): Promise<OutputResult> {
         }),
     );
 
-    const bytes = buildDocumentPDFBytes(
-        {
-            title,
-            blocks,
-            ...(footerText !== undefined ? { footerText } : {}),
-        },
-        pdfA !== undefined ? { tagged: pdfA } : {},
-    );
+    const docMetadata = toDocumentMetadata(metadata);
+    const fontEntries = await latinFontEntries(embedFonts);
+    const collector = collectDiagnostics(strict);
 
-    return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
+    let bytes: Uint8Array;
+    try {
+        bytes = buildDocumentPDFBytes(
+            {
+                title,
+                blocks,
+                ...(footerText !== undefined ? { footerText } : {}),
+                ...(docMetadata !== undefined ? { metadata: docMetadata } : {}),
+                ...(fontEntries.length > 0 ? { fontEntries } : {}),
+            },
+            {
+                ...(pdfA !== undefined ? { tagged: pdfA } : {}),
+                ...toPrintLayout({ print, outputIntent }),
+                ...collector.layout,
+            },
+        );
+    } catch (err) {
+        throw mapBuildError(err, ADD_FORM_NAME);
+    }
+
+    return withDiagnostics(
+        await emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) }),
+        collector,
+        includeDiagnostics,
+    );
 }

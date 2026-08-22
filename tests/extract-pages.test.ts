@@ -58,4 +58,18 @@ describe('extract_pages', () => {
             code: 'PASSWORD_REQUIRED',
         });
     });
+
+    it('preserves print page boxes and /UserUnit of the source pages (pdfnative 1.7)', async () => {
+        const { generateBasicPdf } = await import('../src/tools/generate-basic-pdf.js');
+        const src = await generateBasicPdf({
+            title: 'Print',
+            blocks: [{ type: 'paragraph', text: 'Page one.' }, { type: 'pageBreak' }, { type: 'paragraph', text: 'Page two.' }],
+            print: { bleed: 8.5, userUnit: 2 },
+        });
+        const result = await extractPagesTool({ pdfBase64: src.base64 as string, pages: [1] });
+        expect(assertValidPdf(result.base64 as string)).toBe(1);
+        const text = Buffer.from(result.base64 as string, 'base64').toString('latin1');
+        expect(text).toContain('/TrimBox');
+        expect(text).toContain('/UserUnit');
+    });
 });

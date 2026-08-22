@@ -1,0 +1,16 @@
+{
+  "description": "Print-production document (pdfnative 1.7 via generate_basic_pdf v1.6.0): a 3 mm bleed (8.5 pt) derives the TrimBox/BleedBox, `marks: true` draws crop + registration marks outside the trim, `metadata.trapped` records the /Trapped flag for the prepress workflow and `viewerPreferences.duplex` pre-sets double-sided printing in the Print dialog. Self-contained: runs end-to-end with no placeholders. Omit `print`, `metadata` and the duplex preference for byte-stable office output.",
+  "tool": "generate_basic_pdf",
+  "arguments": {
+    "title": "Product Leaflet",
+    "print": { "bleed": 8.5, "marks": true },
+    "metadata": { "author": "Marketing", "subject": "Spring leaflet", "keywords": "leaflet, print, bleed", "trapped": "True" },
+    "viewerPreferences": { "duplex": "duplexFlipLongEdge" },
+    "blocks": [
+      { "type": "heading", "text": "Product Leaflet", "level": 1 },
+      { "type": "paragraph", "text": "This page carries a 3 mm bleed with crop and registration marks so the print shop can trim it accurately." },
+      { "type": "heading", "text": "Highlights", "level": 2 },
+      { "type": "list", "style": "bullet", "items": ["TrimBox and BleedBox set from the bleed shorthand", "Printer's marks drawn outside the trim", "/Trapped flag and duplex default recorded"] }
+    ]
+  }
+}

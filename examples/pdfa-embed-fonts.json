@@ -1,0 +1,15 @@
+{
+  "description": "Conformant PDF/A-2b with embedded fonts (pdfnative 1.7 via generate_basic_pdf v1.6.0). `embedFonts: true` embeds Noto Sans Latin instead of relying on the viewer's base-14 Helvetica, which ISO 19005 §6.2.11.4.1 requires for a valid PDF/A claim; `includeDiagnostics: true` echoes the conformance diagnostics (expected empty here) in the structured result. Add `strict: true` to fail the call instead of producing a non-conformant file. Self-contained: runs end-to-end with no placeholders.",
+  "tool": "generate_basic_pdf",
+  "arguments": {
+    "title": "Archival Record",
+    "pdfA": "pdfa2b",
+    "embedFonts": true,
+    "includeDiagnostics": true,
+    "blocks": [
+      { "type": "heading", "text": "Archival Record", "level": 1 },
+      { "type": "paragraph", "text": "This document claims PDF/A-2b conformance with every font embedded, so veraPDF accepts it." },
+      { "type": "list", "style": "numbered", "items": ["Tagged structure tree", "sRGB OutputIntent", "XMP metadata", "Embedded Noto Sans Latin"] }
+    ]
+  }
+}

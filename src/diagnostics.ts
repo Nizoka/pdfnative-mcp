@@ -102,7 +102,7 @@ export function collectDiagnostics(strict: boolean | undefined): DiagnosticColle
 }
 
 const LATIN_FONT_LANG = 'latin';
-const LATIN_FONT_FILE = 'noto-sans-latin-data.js';
+const LATIN_FONT_FILE = 'noto-sans-data.js';
 let latinRegistered = false;
 
 /**

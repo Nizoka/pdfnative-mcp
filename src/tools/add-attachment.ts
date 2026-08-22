@@ -28,6 +28,8 @@ import { z } from 'zod';
 
 import { ToolError } from '../errors.js';
 import { emitPdf, type OutputResult } from '../output.js';
+import { PRINT_INPUT_PROPERTIES, PrintInputShape, toDocumentMetadata, toPrintLayout } from '../print.js';
+import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 export const ADD_ATTACHMENT_NAME = 'add_attachment';
 
@@ -83,6 +85,8 @@ export const ADD_ATTACHMENT_INPUT_SCHEMA = {
                 },
             },
         },
+        ...PRINT_INPUT_PROPERTIES,
+        ...DIAGNOSTIC_INPUT_PROPERTIES,
         outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
         outputPath: { type: 'string' },
     },
@@ -104,6 +108,8 @@ const InputSchema = z.object({
         )
         .min(1)
         .max(20),
+    ...PrintInputShape,
+    ...DiagnosticInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -133,7 +139,7 @@ export async function addAttachment(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, blocks, footerText, attachments, outputMode, outputPath } = parsed.data;
+    const { title, blocks, footerText, attachments, print, outputIntent, metadata, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
 
     const docBlocks: DocumentBlock[] =
         blocks !== undefined && blocks.length > 0
@@ -148,6 +154,10 @@ export async function addAttachment(rawInput: unknown): Promise<OutputResult> {
         ...(a.description !== undefined ? { description: a.description } : {}),
     }));
 
+    const docMetadata = toDocumentMetadata(metadata);
+    const fontEntries = await latinFontEntries(embedFonts);
+    const collector = collectDiagnostics(strict);
+
     let bytes: Uint8Array;
     try {
         bytes = buildDocumentPDFBytes(
@@ -155,13 +165,28 @@ export async function addAttachment(rawInput: unknown): Promise<OutputResult> {
                 title,
                 blocks: docBlocks,
                 ...(footerText !== undefined ? { footerText } : {}),
+                ...(docMetadata !== undefined ? { metadata: docMetadata } : {}),
+                ...(fontEntries.length > 0 ? { fontEntries } : {}),
             },
-            { tagged: 'pdfa3b', attachments: pdfAttachments },
+            {
+                tagged: 'pdfa3b',
+                attachments: pdfAttachments,
+                ...toPrintLayout({ print, outputIntent }),
+                ...collector.layout,
+            },
         );
     } catch (err) {
+        // PDF/A conformance and print-production failures keep their stable codes;
+        // any other engine throw is an attachment build failure, as before.
+        const mapped = mapBuildError(err, ADD_ATTACHMENT_NAME);
+        if (mapped.code === 'PDF_A_COMPLIANCE_VIOLATION' || mapped.code === 'PRINT_ERROR') throw mapped;
         const message = err instanceof Error ? err.message : String(err);
         throw new ToolError('ATTACHMENT_BUILD_FAILED', message);
     }
 
-    return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
+    return withDiagnostics(
+        await emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) }),
+        collector,
+        includeDiagnostics,
+    );
 }

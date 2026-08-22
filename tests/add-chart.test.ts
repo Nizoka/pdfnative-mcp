@@ -102,3 +102,28 @@ describe('add_chart', () => {
         assertValidPdf(new Uint8Array(bytes), 1);
     });
 });
+
+describe('add_chart print + diagnostics inputs (v1.6.0)', () => {
+    const CHART = { chartType: 'bar', title: 'Sales', series: [{ label: 'Q1', values: [1, 2, 3] }], categories: ['a', 'b', 'c'] } as const;
+
+    it('embedFonts + pdfA + includeDiagnostics yields a valid PDF with no font diagnostic', async () => {
+        const result = await addChart({ ...CHART, embedFonts: true, pdfA: 'pdfa2b', includeDiagnostics: true });
+        assertValidPdf(result.base64 as string);
+        expect(result.diagnostics!.map((d) => d.code)).not.toContain('PDFA_NO_FONT_ENTRIES');
+    });
+
+    it('strict + pdfA without embedFonts keeps the stable PDF_A_COMPLIANCE_VIOLATION code (not CHART_ERROR)', async () => {
+        await expect(addChart({ ...CHART, pdfA: 'pdfa2b', strict: true })).rejects.toMatchObject({ code: 'PDF_A_COMPLIANCE_VIOLATION' });
+    });
+
+    it('print bleed + metadata reach the output', async () => {
+        const result = await addChart({ ...CHART, print: { bleed: 8.5, marks: true }, metadata: { author: 'A' } });
+        const text = Buffer.from(result.base64 as string, 'base64').toString('latin1');
+        expect(text).toContain('/TrimBox');
+        expect(text).toContain('/Author (A)');
+    });
+
+    it('marks without a TrimBox surfaces as PRINT_ERROR', async () => {
+        await expect(addChart({ ...CHART, print: { marks: true } })).rejects.toMatchObject({ code: 'PRINT_ERROR' });
+    });
+});

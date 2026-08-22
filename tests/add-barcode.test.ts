@@ -75,3 +75,22 @@ describe('add_barcode', () => {
         assertValidPdf(new Uint8Array(bytes), 1);
     });
 });
+
+describe('add_barcode print + diagnostics inputs (v1.6.0)', () => {
+    it('embedFonts + pdfA + includeDiagnostics yields a valid PDF with no font diagnostic', async () => {
+        const result = await addBarcode({ format: 'qr', data: 'https://example.com', caption: 'Scan me', embedFonts: true, pdfA: 'pdfa2b', includeDiagnostics: true });
+        assertValidPdf(result.base64 as string);
+        expect(result.diagnostics!.map((d) => d.code)).not.toContain('PDFA_NO_FONT_ENTRIES');
+    });
+
+    it('strict + pdfA without embedFonts is rejected with PDF_A_COMPLIANCE_VIOLATION', async () => {
+        await expect(addBarcode({ format: 'qr', data: 'x', pdfA: 'pdfa2b', strict: true })).rejects.toMatchObject({ code: 'PDF_A_COMPLIANCE_VIOLATION' });
+    });
+
+    it('print bleed + metadata reach the output', async () => {
+        const result = await addBarcode({ format: 'qr', data: 'x', print: { bleed: 8.5 }, metadata: { keywords: 'qr' } });
+        const text = Buffer.from(result.base64 as string, 'base64').toString('latin1');
+        expect(text).toContain('/TrimBox');
+        expect(text).toContain('/Keywords (qr)');
+    });
+});

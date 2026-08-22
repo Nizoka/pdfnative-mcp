@@ -226,6 +226,7 @@ export function toPageLabels(value: z.infer<typeof PageLabelsSchema>): readonly 
 const PAGE_LAYOUTS = ['singlePage', 'oneColumn', 'twoColumnLeft', 'twoColumnRight', 'twoPageLeft', 'twoPageRight'] as const;
 const PAGE_MODES = ['useNone', 'useOutlines', 'useThumbs', 'fullScreen', 'useOC', 'useAttachments'] as const;
 const NON_FULLSCREEN_PAGE_MODES = ['useNone', 'useOutlines', 'useThumbs', 'useOC'] as const;
+const DUPLEX_MODES = ['simplex', 'duplexFlipShortEdge', 'duplexFlipLongEdge'] as const;
 
 export const VIEWER_PREFERENCES_INPUT_SCHEMA = {
     type: 'object',
@@ -243,6 +244,24 @@ export const VIEWER_PREFERENCES_INPUT_SCHEMA = {
         nonFullScreenPageMode: { type: 'string', enum: [...NON_FULLSCREEN_PAGE_MODES] },
         direction: { type: 'string', enum: ['l2r', 'r2l'] },
         printScaling: { type: 'string', enum: ['none', 'appDefault'] },
+        duplex: {
+            type: 'string',
+            enum: [...DUPLEX_MODES],
+            description: 'Print-dialog paper handling default (/Duplex): single-sided or double-sided flipping on the short/long edge.',
+        },
+        pickTrayByPDFSize: { type: 'boolean', description: 'Ask the printer to pick the input tray from the PDF page size (/PickTrayByPDFSize).' },
+        printPageRange: {
+            type: 'array',
+            maxItems: 100,
+            description: 'Default page ranges for the Print dialog (/PrintPageRange) as inclusive 1-based [first, last] pairs, e.g. [[1, 4], [7, 7]].',
+            items: { type: 'array', minItems: 2, maxItems: 2, items: { type: 'integer', minimum: 1 } },
+        },
+        numCopies: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 1000,
+            description: 'Default number of copies for the Print dialog (/NumCopies; viewers honour 2-5 per ISO 32000 Table 150).',
+        },
     },
 } as const;
 
@@ -258,6 +277,13 @@ export const ViewerPreferencesSchema = z.object({
     nonFullScreenPageMode: z.enum(NON_FULLSCREEN_PAGE_MODES).optional(),
     direction: z.enum(['l2r', 'r2l']).optional(),
     printScaling: z.enum(['none', 'appDefault']).optional(),
+    duplex: z.enum(DUPLEX_MODES).optional(),
+    pickTrayByPDFSize: z.boolean().optional(),
+    printPageRange: z
+        .array(z.tuple([z.number().int().min(1), z.number().int().min(1)]))
+        .max(100)
+        .optional(),
+    numCopies: z.number().int().min(1).max(1000).optional(),
 });
 
 /** Maps validated viewer-preference input to `PdfLayoutOptions.viewerPreferences`. */
@@ -274,5 +300,11 @@ export function toViewerPreferences(value: z.infer<typeof ViewerPreferencesSchem
         ...(value.nonFullScreenPageMode !== undefined ? { nonFullScreenPageMode: value.nonFullScreenPageMode } : {}),
         ...(value.direction !== undefined ? { direction: value.direction } : {}),
         ...(value.printScaling !== undefined ? { printScaling: value.printScaling } : {}),
+        ...(value.duplex !== undefined ? { duplex: value.duplex } : {}),
+        ...(value.pickTrayByPDFSize !== undefined ? { pickTrayByPDFSize: value.pickTrayByPDFSize } : {}),
+        ...(value.printPageRange !== undefined
+            ? { printPageRange: value.printPageRange.map(([first, last]): readonly [number, number] => [first, last]) }
+            : {}),
+        ...(value.numCopies !== undefined ? { numCopies: value.numCopies } : {}),
     };
 }
