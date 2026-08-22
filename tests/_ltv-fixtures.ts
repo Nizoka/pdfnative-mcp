@@ -664,7 +664,12 @@ export interface LadderOptions {
     readonly reason?: string;
     /** Forwarded to `addValidationInfo` (default `true` = OCSP first). */
     readonly preferOcsp?: boolean;
+    /** /Sig /M and CMS signing-time. Pinned by default so the ladder is byte-deterministic. */
+    readonly signingTime?: Date;
 }
+
+/** Default, pinned signing time (the engine otherwise uses the wall clock). */
+export const MOCK_SIGNING_TIME = new Date('2026-01-01T00:00:00Z');
 
 function resolvePki(opts?: LadderOptions): MockPki {
     return opts?.pki ?? createMockPki();
@@ -682,7 +687,11 @@ export function placeholderForPades(pdfBytes: Uint8Array, opts?: LadderOptions):
             'rsa-sha256',
             { timestamp: true },
         ),
-        metadata: { subFilter: 'ETSI.CAdES.detached', ...(opts?.reason !== undefined ? { reason: opts.reason } : {}) },
+        metadata: {
+            subFilter: 'ETSI.CAdES.detached',
+            signingTime: opts?.signingTime ?? MOCK_SIGNING_TIME,
+            ...(opts?.reason !== undefined ? { reason: opts.reason } : {}),
+        },
     });
 }
 
@@ -695,6 +704,7 @@ export function signedBB(pdfBytes: Uint8Array, opts?: LadderOptions): Uint8Array
         rsaKey: pki.signer.rsaKey,
         algorithm: 'rsa-sha256',
         profile: 'pades',
+        signingTime: opts?.signingTime ?? MOCK_SIGNING_TIME,
     });
 }
 
@@ -707,6 +717,7 @@ export async function signedBT(pdfBytes: Uint8Array, opts?: LadderOptions): Prom
         rsaKey: pki.signer.rsaKey,
         algorithm: 'rsa-sha256',
         profile: 'pades',
+        signingTime: opts?.signingTime ?? MOCK_SIGNING_TIME,
         timestampProvider: opts?.timestampProvider ?? createMockTimestampProvider(pki),
     });
 }
