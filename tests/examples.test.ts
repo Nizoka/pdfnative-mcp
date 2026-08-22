@@ -12,9 +12,10 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { createServer, ensureCompressionReady } from '../src/server.js';
+import { ensureCompressionReady } from '../src/server.js';
+import { connectLegacy, type McpTestClient } from './_mcp-harness.js';
 import { assertValidPdf } from './_pdf-assert.js';
 
 const EXAMPLES_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'examples');
@@ -30,10 +31,6 @@ interface ExampleFile {
     readonly steps?: ReadonlyArray<ExampleStep>;
 }
 
-type CallHandler = (req: unknown) => Promise<unknown>;
-interface ServerInternals {
-    _requestHandlers: Map<string, CallHandler>;
-}
 interface CallResponse {
     isError?: boolean;
     content: Array<{ type: string; text?: string; resource?: { blob?: string; mimeType?: string } }>;
@@ -62,17 +59,19 @@ const exampleFiles = readdirSync(EXAMPLES_DIR)
     .sort();
 
 let knownTools: Set<string>;
-let callHandler: CallHandler;
+let client: McpTestClient;
 
 describe('examples/*.json', () => {
     beforeAll(async () => {
         delete process.env['PDFNATIVE_MCP_OUTPUT_DIR'];
         await ensureCompressionReady();
-        const server = createServer() as unknown as ServerInternals;
-        const listHandler = server._requestHandlers.get('tools/list');
-        const list = (await listHandler!({ method: 'tools/list', params: {} })) as { tools: Array<{ name: string }> };
+        client = await connectLegacy();
+        const list = await client.listTools();
         knownTools = new Set(list.tools.map((t) => t.name));
-        callHandler = server._requestHandlers.get('tools/call')!;
+    });
+
+    afterAll(async () => {
+        await client.close();
     });
 
     it('discovers at least the four canonical examples', () => {
@@ -109,10 +108,7 @@ describe('examples/*.json', () => {
                     return;
                 }
                 const step = steps[0];
-                const response = (await callHandler({
-                    method: 'tools/call',
-                    params: { name: step.tool, arguments: step.arguments },
-                })) as CallResponse;
+                const response = (await client.callTool(step.tool, step.arguments)) as CallResponse;
 
                 expect(response.isError, `${file}: ${response.content[0]?.text ?? ''}`).not.toBe(true);
 

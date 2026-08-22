@@ -12,6 +12,7 @@ import { inspectPdf } from '../src/tools/inspect-pdf.js';
 import { createServer, ensureCompressionReady } from '../src/server.js';
 import { assertValidPdf } from './_pdf-assert.js';
 import { makePdfBase64 } from './_pagetree-fixtures.js';
+import { connectLegacy } from './_mcp-harness.js';
 import { makeEncryptedPdfBase64 } from './_encrypted-fixtures.js';
 
 const ENV_KEY = 'PDFNATIVE_MCP_OUTPUT_DIR';
@@ -83,16 +84,16 @@ describe('encrypt_pdf', () => {
         const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfnative-enccache-'));
         process.env['PDFNATIVE_MCP_CACHE_DIR'] = cacheDir;
         try {
-            const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
-            const call = server._requestHandlers.get('tools/call')!;
+            const client = await connectLegacy(createServer());
             const src = await makePdfBase64(1, 'Doc');
             const args = { pdfBase64: src, ownerPassword: 'owner', userPassword: 'user' };
             const blobOf = (r: unknown): string => {
                 const res = r as { content: Array<{ type: string; resource?: { blob?: string } }> };
                 return res.content.find((c) => c.type === 'resource')?.resource?.blob ?? '';
             };
-            const a = blobOf(await call({ method: 'tools/call', params: { name: 'encrypt_pdf', arguments: args } }));
-            const b = blobOf(await call({ method: 'tools/call', params: { name: 'encrypt_pdf', arguments: args } }));
+            const a = blobOf(await client.callTool('encrypt_pdf', args));
+            const b = blobOf(await client.callTool('encrypt_pdf', args));
+            await client.close();
             expect(a.length).toBeGreaterThan(0);
             expect(a).not.toBe(b);
         } finally {

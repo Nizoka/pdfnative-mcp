@@ -111,12 +111,10 @@ describe('MCP resources', () => {
         const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfnative-res-'));
         process.env[ENV_KEY] = dir;
         const { createServer } = await import('../src/server.js');
-        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
-        const call = server._requestHandlers.get('tools/call')!;
-        const res = (await call({
-            method: 'tools/call',
-            params: { name: 'generate_basic_pdf', arguments: { title: 'R', blocks: [{ type: 'paragraph', text: 'hi' }], outputMode: 'file', outputPath: 'sub/r.pdf' } },
-        })) as { content: Array<{ type: string; uri?: string; name?: string; title?: string }> };
+        const { connectLegacy } = await import('./_mcp-harness.js');
+        const client = await connectLegacy(createServer());
+        const res = (await client.callTool('generate_basic_pdf', { title: 'R', blocks: [{ type: 'paragraph', text: 'hi' }], outputMode: 'file', outputPath: 'sub/r.pdf' })) as { content: Array<{ type: string; uri?: string; name?: string; title?: string }> };
+        await client.close();
         const link = res.content.find((c) => c.type === 'resource_link');
         expect(link).toBeDefined();
         expect(link!.uri).toBe(`${RESOURCE_URI_PREFIX}sub/r.pdf`);

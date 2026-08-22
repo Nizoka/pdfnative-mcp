@@ -3,21 +3,24 @@
  * `Server` instance and exposes a `createServer()` factory so the runtime
  * (CLI, tests, embedded host) can choose how to connect a transport.
  */
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+// MCP TypeScript SDK v2 (`@modelcontextprotocol/server`, spec 2026-07-28 with a
+// legacy 2025-xx fallback). We deliberately stay on the low-level `Server` +
+// method-string `setRequestHandler` surface: `McpServer.registerTool` requires
+// Standard-Schema inputs and validates `structuredContent` against the advertised
+// `outputSchema`, which would break the hand-written JSON Schemas, the
+// `verbosity`/`fields` projections and the `isError` contract this server promises.
 import {
-    CallToolRequestSchema,
-    ListToolsRequestSchema,
-    ListPromptsRequestSchema,
-    GetPromptRequestSchema,
-    ListResourcesRequestSchema,
-    ListResourceTemplatesRequestSchema,
-    ReadResourceRequestSchema,
-    type CallToolRequest,
+    Server,
+    ProtocolError,
+    ProtocolErrorCode,
+    ResourceNotFoundError,
+    type CacheHint,
     type CallToolResult,
-    type GetPromptRequest,
     type GetPromptResult,
-    type ReadResourceRequest,
-} from '@modelcontextprotocol/sdk/types.js';
+    type ListToolsResult,
+    type ServerOptions,
+    type Tool,
+} from '@modelcontextprotocol/server';
 import { initCrypto, initNodeCompression } from 'pdfnative';
 
 import { ToolError } from './errors.js';
@@ -190,7 +193,23 @@ const SERVER_DESCRIPTION =
  * make a cached response unsafe to serve. Independent from SERVER_VERSION
  * (which tracks the npm package).
  */
-const TOOL_API_VERSION = '1.5.0';
+const TOOL_API_VERSION = '1.6.0';
+
+/**
+ * MCP 2026-07-28 cache hints (`ttlMs` / `cacheScope`) emitted on the cacheable
+ * results. The catalogue (tools, prompts, discovery) is static for a given
+ * package version; the sandbox resource listing and generated PDFs are live,
+ * per-host user data and must never be cached by shared intermediaries.
+ * 2025-era clients never see these fields.
+ */
+export const SERVER_CACHE_HINTS = {
+    'tools/list': { ttlMs: 86_400_000, cacheScope: 'public' },
+    'prompts/list': { ttlMs: 86_400_000, cacheScope: 'public' },
+    'server/discover': { ttlMs: 3_600_000, cacheScope: 'public' },
+    'resources/list': { ttlMs: 0, cacheScope: 'private' },
+    'resources/templates/list': { ttlMs: 0, cacheScope: 'private' },
+    'resources/read': { ttlMs: 0, cacheScope: 'private' },
+} as const satisfies Record<string, CacheHint>;
 
 /**
  * Tools whose output must never be persisted to the opt-in response cache
@@ -991,18 +1010,81 @@ const PROMPTS: readonly PromptDefinition[] = [
 
 const PROMPT_INDEX: ReadonlyMap<string, PromptDefinition> = new Map(PROMPTS.map((p) => [p.name, p]));
 
+/** Wire-level `tools/list` payload (deterministic order = registration order, per MCP 2026-07-28 guidance). */
+export function listToolsPayload(): ListToolsResult {
+    return { tools: TOOLS.map(describeTool) };
+}
+
+function describeTool(t: ToolDefinition): Tool {
+    return {
+        name: t.name,
+        title: t.title,
+        description: t.description,
+        inputSchema: t.inputSchema as Tool['inputSchema'],
+        ...(t.outputSchema !== undefined ? { outputSchema: t.outputSchema as Tool['outputSchema'] } : {}),
+        ...(t.annotations !== undefined ? { annotations: t.annotations } : {}),
+        _meta: {
+            apiVersion: TOOL_API_VERSION,
+            ...(t.examples !== undefined ? { examples: t.examples } : {}),
+        },
+    };
+}
+
+/**
+ * Execute one tool call exactly as the `tools/call` handler does (cache lookup,
+ * handler, result shaping, error → `isError`). Transport-agnostic so tests and
+ * the baseline tooling can exercise the contract without a connection.
+ */
+export async function callToolDirect(name: string, args: unknown): Promise<CallToolResult> {
+    const tool = TOOL_INDEX.get(name);
+    if (tool === undefined) {
+        return {
+            content: [{ type: 'text', text: `Unknown tool: ${name}` }],
+            isError: true,
+        };
+    }
+    try {
+        const input = args ?? {};
+        // Content-addressed cache (opt-in via PDFNATIVE_MCP_CACHE_DIR).
+        // We skip caching for outputMode='file' since the filesystem write is itself an effect,
+        // and for the encryption tools so decrypted/protected bytes are never persisted at rest.
+        const cacheable = !isFileOutput(input) && !NON_CACHEABLE_TOOLS.has(name);
+        const cacheKey = cacheable ? { tool: name, apiVersion: TOOL_API_VERSION } : null;
+        if (cacheKey !== null) {
+            const hit = getCached<unknown>(cacheKey.tool, cacheKey.apiVersion, input);
+            if (hit !== null) {
+                return dispatchOutput(hit, name, input);
+            }
+        }
+        const output = await tool.handler(input);
+        if (cacheKey !== null) {
+            setCached(cacheKey.tool, cacheKey.apiVersion, input, output);
+        }
+        return dispatchOutput(output, name, input);
+    } catch (err) {
+        return buildErrorResult(err, name);
+    }
+}
+
+/**
+ * Build a fresh, connection-less `Server`. Cheap and side-effect free, so the
+ * HTTP entry point can call it once per request (MCP 2026-07-28 is stateless)
+ * while stdio pins a single instance per process. Handlers assume
+ * `ensureCompressionReady()` has resolved (the CLI awaits it before serving).
+ */
 export function createServer(): Server {
     const server = new Server(
         { name: SERVER_NAME, version: SERVER_VERSION, title: SERVER_TITLE, description: SERVER_DESCRIPTION },
         {
             capabilities: { tools: {}, prompts: {}, resources: {} },
             instructions: SERVER_INSTRUCTIONS,
-        },
+            cacheHints: SERVER_CACHE_HINTS,
+        } satisfies ServerOptions,
     );
 
     // Native MCP resources: expose sandboxed generated PDFs as re-referenceable
     // pdfnative://output/… URIs (empty when file output is disabled).
-    server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+    server.setRequestHandler('resources/list', async () => ({
         resources: (await listResources()).map((r) => ({
             uri: r.uri,
             name: r.name,
@@ -1013,22 +1095,32 @@ export function createServer(): Server {
         })),
     }));
 
-    server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({
+    server.setRequestHandler('resources/templates/list', async () => ({
         resourceTemplates: listResourceTemplates(),
     }));
 
-    server.setRequestHandler(ReadResourceRequestSchema, async (request: ReadResourceRequest) => ({
-        contents: [await readResource(request.params.uri)],
-    }));
+    server.setRequestHandler('resources/read', async (request) => {
+        const uri = request.params.uri;
+        try {
+            return { contents: [await readResource(uri)] };
+        } catch (err) {
+            // Spec 2026-07-28: resource-not-found is -32602 (Invalid params) on every revision.
+            if (err instanceof ToolError) {
+                if (err.code === 'UNKNOWN_RESOURCE') throw new ResourceNotFoundError(uri, err.message);
+                throw new ProtocolError(ProtocolErrorCode.InvalidParams, `[${err.code}] ${err.message}`);
+            }
+            throw err;
+        }
+    });
 
-    server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+    server.setRequestHandler('prompts/list', async () => ({
         prompts: PROMPTS.map((p) => ({ name: p.name, title: p.title, description: p.description })),
     }));
 
-    server.setRequestHandler(GetPromptRequestSchema, async (request: GetPromptRequest): Promise<GetPromptResult> => {
+    server.setRequestHandler('prompts/get', async (request): Promise<GetPromptResult> => {
         const prompt = PROMPT_INDEX.get(request.params.name);
         if (prompt === undefined) {
-            throw new ToolError('UNKNOWN_PROMPT', `Unknown prompt: ${request.params.name}`);
+            throw new ProtocolError(ProtocolErrorCode.InvalidParams, `[UNKNOWN_PROMPT] Unknown prompt: ${request.params.name}`);
         }
         return {
             description: prompt.description,
@@ -1041,51 +1133,15 @@ export function createServer(): Server {
         };
     });
 
-    server.setRequestHandler(ListToolsRequestSchema, async () => ({
-        tools: TOOLS.map((t) => ({
-            name: t.name,
-            title: t.title,
-            description: t.description,
-            inputSchema: t.inputSchema as Record<string, unknown>,
-            ...(t.outputSchema !== undefined ? { outputSchema: t.outputSchema as Record<string, unknown> } : {}),
-            ...(t.annotations !== undefined ? { annotations: t.annotations } : {}),
-            _meta: {
-                apiVersion: TOOL_API_VERSION,
-                ...(t.examples !== undefined ? { examples: t.examples } : {}),
-            },
-        })),
-    }));
+    server.setRequestHandler('tools/list', async () => listToolsPayload());
 
-    server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest): Promise<CallToolResult> => {
+    server.setRequestHandler('tools/call', async (request): Promise<CallToolResult> => {
         const { name, arguments: args } = request.params;
+        const result = await callToolDirect(name, args);
         const tool = TOOL_INDEX.get(name);
-        if (tool === undefined) {
-            return {
-                content: [{ type: 'text', text: `Unknown tool: ${name}` }],
-                isError: true,
-            };
-        }
-        try {
-            const input = args ?? {};
-            // Content-addressed cache (opt-in via PDFNATIVE_MCP_CACHE_DIR).
-            // We skip caching for outputMode='file' since the filesystem write is itself an effect,
-            // and for the encryption tools so decrypted/protected bytes are never persisted at rest.
-            const cacheable = !isFileOutput(input) && !NON_CACHEABLE_TOOLS.has(name);
-            const cacheKey = cacheable ? { tool: name, apiVersion: TOOL_API_VERSION } : null;
-            if (cacheKey !== null) {
-                const hit = getCached<unknown>(cacheKey.tool, cacheKey.apiVersion, input);
-                if (hit !== null) {
-                    return dispatchOutput(hit, name, input);
-                }
-            }
-            const output = await tool.handler(input);
-            if (cacheKey !== null) {
-                setCached(cacheKey.tool, cacheKey.apiVersion, input, output);
-            }
-            return dispatchOutput(output, name, input);
-        } catch (err) {
-            return buildErrorResult(err, name);
-        }
+        // Identity for object-shaped structuredContent; keeps the wire projection the
+        // SDK expects for the negotiated protocol revision.
+        return server.projectCallToolResult(result, tool?.outputSchema as Record<string, unknown> | undefined);
     });
 
     return server;

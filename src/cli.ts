@@ -1,12 +1,20 @@
 #!/usr/bin/env node
 /**
  * CLI entry — wires the MCP server to a stdio transport (default) or a
- * Streamable HTTP transport when PDFNATIVE_MCP_PORT is set.
+ * Streamable HTTP endpoint when PDFNATIVE_MCP_PORT is set.
+ *
+ * Protocol: MCP 2026-07-28 (stateless, `server/discover`, `subscriptions/listen`)
+ * with automatic fallback to the 2025-era `initialize` handshake, so both
+ * current and legacy clients (Claude Desktop, Cursor, Continue, …) are served
+ * by the same binary.
  *
  * Transport selection:
  *   - stdio (default): suitable for local host integration (Claude Desktop, Cursor, etc.)
  *   - HTTP: set PDFNATIVE_MCP_PORT=<port> to expose the MCP endpoint on that port.
- *           Requests must be POST to /mcp. Useful for remote or containerised deployments.
+ *           Requests are POST /mcp (2026-07-28 clients send `Mcp-Method` / `Mcp-Name`
+ *           headers and the `_meta` envelope; 2025-era clients use `initialize`).
+ *           GET/DELETE answer 405 (stateless serving; no SSE resumability).
+ *           Bound to 127.0.0.1 only; foreign Host/Origin headers are rejected (403).
  *
  * @example Claude Desktop config (stdio)
  * ```json
@@ -15,7 +23,7 @@
  *     "pdfnative": {
  *       "command": "npx",
  *       "args": ["-y", "pdfnative-mcp"],
- *       "env": { "PDFNATIVE_MPC_OUTPUT_DIR": "/Users/me/Documents/mcp-pdfs" }
+ *       "env": { "PDFNATIVE_MCP_OUTPUT_DIR": "/Users/me/Documents/mcp-pdfs" }
  *     }
  *   }
  * }
@@ -24,94 +32,100 @@
  * @example HTTP mode
  * ```bash
  * PDFNATIVE_MCP_PORT=3000 npx pdfnative-mcp
- * # Then connect via: http://localhost:3000/mcp
+ * # Then connect via: http://127.0.0.1:3000/mcp
  * ```
  */
 import { createServer, ensureCompressionReady } from './server.js';
 
+function log(line: string): void {
+    process.stderr.write(`[pdfnative-mcp] ${line}\n`);
+}
+
 async function main(): Promise<void> {
     await ensureCompressionReady();
 
-    const server = createServer();
+    const factory = (): ReturnType<typeof createServer> => createServer();
+    const onerror = (err: Error): void => log(`transport error: ${err.message}`);
     const portEnv = process.env['PDFNATIVE_MCP_PORT'];
     const port = portEnv !== undefined ? parseInt(portEnv, 10) : NaN;
 
     if (!Number.isNaN(port) && port > 0 && port < 65536) {
         // --- HTTP / Streamable HTTP transport ---
-        const { StreamableHTTPServerTransport } = await import('@modelcontextprotocol/sdk/server/streamableHttp.js');
+        const { createMcpHandler } = await import('@modelcontextprotocol/server');
+        const { guardLoopback, sendWebResponse, toWebRequest } = await import('./http.js');
         const { createServer: createHttpServer } = await import('node:http');
 
-        // DNS-rebinding / Origin protection (MCP Security Best Practices): the endpoint
-        // binds to 127.0.0.1 only, so we pin the Host and Origin headers to the loopback
-        // authority. This makes a malicious web page unable to reach the local server via a
-        // rebound DNS name — the transport answers 403 to any foreign Host/Origin.
-        const transport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: undefined,
-            enableDnsRebindingProtection: true,
-            allowedHosts: [`127.0.0.1:${port}`, `localhost:${port}`],
-            allowedOrigins: [`http://127.0.0.1:${port}`, `http://localhost:${port}`],
+        // Both eras: 2026-07-28 requests are served by a fresh per-request instance;
+        // 2025-era requests fall back to the stateless streamable-HTTP idiom.
+        const handler = createMcpHandler(factory, { legacy: 'stateless', onerror });
+        const origin = `http://127.0.0.1:${port}`;
+
+        const httpServer = createHttpServer((req, res) => {
+            void (async () => {
+                try {
+                    const path = new URL(req.url ?? '/', origin).pathname;
+                    if (path !== '/mcp') {
+                        res.writeHead(404, { 'Content-Type': 'text/plain' });
+                        res.end('Not Found. MCP endpoint is POST /mcp');
+                        return;
+                    }
+                    const request = await toWebRequest(req, origin);
+                    const response = guardLoopback(request) ?? (await handler.fetch(request));
+                    await sendWebResponse(res, response);
+                } catch (err) {
+                    onerror(err instanceof Error ? err : new Error(String(err)));
+                    if (!res.headersSent) {
+                        res.writeHead(500, { 'Content-Type': 'text/plain' });
+                    }
+                    res.end();
+                }
+            })();
         });
 
         const shutdown = async (signal: string): Promise<void> => {
-            process.stderr.write(`\n[pdfnative-mcp] received ${signal}, shutting down...\n`);
+            log(`received ${signal}, shutting down...`);
             try {
-                await server.close();
+                await handler.close();
+                httpServer.close();
             } finally {
                 process.exit(0);
             }
         };
-
         process.on('SIGINT', () => void shutdown('SIGINT'));
         process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
-        const httpServer = createHttpServer(async (req, res) => {
-            if (req.url === '/mcp' && req.method === 'POST') {
-                await transport.handleRequest(req, res);
-            } else if (req.url === '/mcp' && req.method === 'GET') {
-                await transport.handleRequest(req, res);
-            } else if (req.url === '/mcp' && req.method === 'DELETE') {
-                await transport.handleRequest(req, res);
-            } else {
-                res.writeHead(404, { 'Content-Type': 'text/plain' });
-                res.end('Not Found. MCP endpoint is POST /mcp');
-            }
-        });
-
-        await server.connect(transport);
-
         await new Promise<void>((resolve, reject) => {
             httpServer.listen(port, '127.0.0.1', () => {
-                process.stderr.write(`[pdfnative-mcp] ready (HTTP transport) on http://127.0.0.1:${port}/mcp\n`);
+                log(`ready (HTTP transport, MCP 2026-07-28 + legacy) on ${origin}/mcp`);
                 resolve();
             });
             httpServer.once('error', reject);
         });
     } else {
         // --- stdio transport (default) ---
-        const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
+        const { serveStdio } = await import('@modelcontextprotocol/server/stdio');
 
-        const transport = new StdioServerTransport();
+        // The opening exchange pins the protocol era for this process
+        // (`server/discover` probe → 2026-07-28, `initialize` → legacy).
+        const handle = serveStdio(factory, { legacy: 'serve', onerror });
 
         const shutdown = async (signal: string): Promise<void> => {
-            process.stderr.write(`\n[pdfnative-mcp] received ${signal}, shutting down...\n`);
+            log(`received ${signal}, shutting down...`);
             try {
-                await server.close();
+                await handle.close();
             } finally {
                 process.exit(0);
             }
         };
-
         process.on('SIGINT', () => void shutdown('SIGINT'));
         process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
-        await server.connect(transport);
-        process.stderr.write('[pdfnative-mcp] ready (stdio transport)\n');
+        log('ready (stdio transport, MCP 2026-07-28 + legacy)');
     }
 }
 
 main().catch((err: unknown) => {
     const message = err instanceof Error ? err.stack ?? err.message : String(err);
-    process.stderr.write(`[pdfnative-mcp] fatal: ${message}\n`);
+    log(`fatal: ${message}`);
     process.exit(1);
 });
-
