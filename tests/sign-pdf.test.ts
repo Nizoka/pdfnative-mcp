@@ -18,6 +18,8 @@ vi.mock('pdfnative', () => ({
     parseRsaPrivateKey: parseRsaPrivateKeyMock,
     signPdfBytes: signPdfBytesMock,
     addSignaturePlaceholder: addSignaturePlaceholderMock,
+    signPdfBytesWithTimestamp: vi.fn(async () => new Uint8Array([0x25, 0x50, 0x44, 0x46])),
+    estimateContentsSize: vi.fn(() => 16384),
     openPdf: openPdfMock,
     isRef: (v: unknown) => v !== null && typeof v === 'object' && 'num' in (v as object),
     isDict: (v: unknown) => v instanceof Map || (v !== null && typeof v === 'object' && 'get' in (v as object) && typeof (v as { get?: unknown }).get === 'function'),

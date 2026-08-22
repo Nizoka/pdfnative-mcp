@@ -20,8 +20,20 @@ import type { CryptoProvider, SignatureAlgorithm } from 'pdfnative';
 
 /** Describes the private key material to import into `node:crypto`. */
 export type NodeCryptoKeySpec =
-    | { readonly algorithm: 'rsa-sha256'; readonly der: Uint8Array; readonly keyType: 'pkcs1' | 'pkcs8' }
+    | { readonly algorithm: 'rsa-sha256' | 'rsa-sha384' | 'rsa-sha512'; readonly der: Uint8Array; readonly keyType: 'pkcs1' | 'pkcs8' }
     | { readonly algorithm: 'ecdsa-sha256'; readonly der: Uint8Array; readonly keyType: 'sec1' | 'pkcs8' };
+
+/** Node digest name implied by a CMS signature algorithm (pdfnative ≥ 1.7 digest agility). */
+export function digestForAlgorithm(algorithm: SignatureAlgorithm): 'sha256' | 'sha384' | 'sha512' {
+    switch (algorithm) {
+        case 'rsa-sha384':
+            return 'sha384';
+        case 'rsa-sha512':
+            return 'sha512';
+        default:
+            return 'sha256';
+    }
+}
 
 function importKey(der: Uint8Array, keyType: 'pkcs1' | 'sec1' | 'pkcs8'): KeyObject | null {
     try {
@@ -38,7 +50,7 @@ function importKey(der: Uint8Array, keyType: 'pkcs1' | 'sec1' | 'pkcs8'): KeyObj
  */
 export function buildNodeCryptoProvider(spec: NodeCryptoKeySpec): CryptoProvider | null {
     let key: KeyObject | null;
-    if (spec.algorithm === 'rsa-sha256') {
+    if (spec.algorithm !== 'ecdsa-sha256') {
         key = importKey(spec.der, spec.keyType);
     } else {
         // Accept either SEC1 (RFC 5915) or PKCS#8 EC keys regardless of the hint.
@@ -49,9 +61,11 @@ export function buildNodeCryptoProvider(spec: NodeCryptoKeySpec): CryptoProvider
 
     return {
         sign(tbs: Uint8Array, algorithm: SignatureAlgorithm): Uint8Array {
-            if (algorithm === 'rsa-sha256') {
-                // RSASSA-PKCS1-v1_5 over SHA-256(tbs).
-                return new Uint8Array(nodeSign('sha256', tbs, boundKey));
+            if (algorithm !== 'ecdsa-sha256') {
+                // RSASSA-PKCS1-v1_5 over SHA-256/384/512(tbs) — the digest MUST match the
+                // algorithm suffix, otherwise the CMS digestAlgorithms set lies about the
+                // signature and every verifier rejects it.
+                return new Uint8Array(nodeSign(digestForAlgorithm(algorithm), tbs, boundKey));
             }
             // ECDSA P-256 over SHA-256(tbs), DER-encoded (CMS requirement).
             return new Uint8Array(nodeSign('sha256', tbs, { key: boundKey, dsaEncoding: 'der' }));
