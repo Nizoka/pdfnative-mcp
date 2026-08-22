@@ -32,6 +32,7 @@ import {
     DRAFT_ISSUE_WORKFLOW,
 } from './governance.js';
 import { type OutputResult, type MultiOutputResult } from './output.js';
+import { DIAGNOSTICS_OUTPUT_PROPERTY } from './diagnostics.js';
 import { readFields, readVerbosity, selectFields } from './projection.js';
 import {
     GENERATE_BASIC_PDF_NAME,
@@ -287,6 +288,12 @@ const PDF_OUTPUT_SCHEMA = {
         mode: { type: 'string', enum: ['base64', 'file'] },
         sizeBytes: { type: 'integer', minimum: 0 },
         filePath: { type: 'string', description: "Absolute sandboxed file path (when mode='file')." },
+        ...DIAGNOSTICS_OUTPUT_PROPERTY,
+        summary: {
+            type: 'object',
+            description: 'Tool-specific summary (e.g. add_ltv material counts). Only present when the tool produces one.',
+            additionalProperties: true,
+        },
     },
 } as const;
 
@@ -892,6 +899,8 @@ function buildSuccessResult(output: OutputResult, toolName: string): CallToolRes
                 mode: output.mode,
                 sizeBytes: output.sizeBytes,
                 filePath: output.filePath,
+                ...(output.diagnostics !== undefined ? { diagnostics: output.diagnostics } : {}),
+                ...(output.summary !== undefined ? { summary: output.summary } : {}),
             },
         };
     }
@@ -913,6 +922,8 @@ function buildSuccessResult(output: OutputResult, toolName: string): CallToolRes
         structuredContent: {
             mode: output.mode,
             sizeBytes: output.sizeBytes,
+            ...(output.diagnostics !== undefined ? { diagnostics: output.diagnostics } : {}),
+            ...(output.summary !== undefined ? { summary: output.summary } : {}),
         },
     };
 }
