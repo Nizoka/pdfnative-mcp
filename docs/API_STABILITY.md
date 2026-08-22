@@ -9,7 +9,7 @@
 
 Every tool emits `_meta.apiVersion` in the `ListTools` response.
 
-Current value: **`1.5.0`** (stable, since pdfnative-mcp 1.5.0).
+Current value: **`1.6.0`** (stable, since pdfnative-mcp 1.6.0).
 
 The tool API version is **independent of the npm release version**.
 Server releases that ship only documentation, refactoring, or non-breaking ergonomic improvements (richer descriptions, additional `_meta.examples`, new optional output fields) **do not** bump `_meta.apiVersion`.
@@ -17,12 +17,23 @@ Server releases that ship only documentation, refactoring, or non-breaking ergon
 A bump of `_meta.apiVersion` happens **only** in the cases listed in §3.
 
 > **MCP protocol alignment.** The tool API version above is orthogonal to the MCP
-> wire-protocol revision. The server runs on `@modelcontextprotocol/sdk` ^1.29, which
-> negotiates the latest revision (**2025-11-25**, falling back to `2025-06-18` /
-> `2025-03-26`). Tool schemas are JSON Schema **2020-12** (the current default dialect),
-> `serverInfo` advertises `title` + `description`, and input-validation failures are
-> returned as tool-execution errors (`isError: true`) — none of which affect
+> wire-protocol revision. Since pdfnative-mcp 1.6.0 the server runs on the MCP TypeScript
+> SDK v2 (`@modelcontextprotocol/server` ^2.0.0) and speaks **MCP 2026-07-28** — stateless
+> serving, `server/discover`, `resultType`, `ttlMs` / `cacheScope` cache hints, the `_meta`
+> `serverInfo` envelope, `Mcp-Method` / `Mcp-Name` headers over HTTP — with automatic
+> fallback to the legacy `initialize` handshake for `2025-11-25`, `2025-06-18` and
+> `2025-03-26` clients on both stdio and HTTP. The `tools/call` payload (`content`,
+> `structuredContent`, `isError`) is identical on both paths. Tool schemas are JSON Schema
+> **2020-12**, `serverInfo` advertises `title` + `description`, and input-validation
+> failures are returned as tool-execution errors (`isError: true`) — none of which affect
 > `_meta.apiVersion`.
+>
+> **One transport-level correction in 1.6.0:** `resources/read` on an unknown URI now
+> answers the JSON-RPC error code **`-32602`** (Invalid params), which the 2026-07-28
+> specification mandates for resource-not-found on every protocol revision. Previously the
+> SDK 1.x path surfaced it as a generic error. This is a protocol-level error code, not a
+> `ToolError` `code` (the `UNKNOWN_RESOURCE` tool code is unchanged and still carried in the
+> message), so it is outside the §2 matrix.
 
 ---
 
@@ -76,13 +87,88 @@ When a tool, field or error code is scheduled for removal:
 
 ## 5. Per-tool stability matrix
 
-All 24 tools shipped through pdfnative-mcp 1.5.0 are at `_meta.apiVersion = '1.5.0'` and are considered **stable**:
+All 27 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6.0'` and are considered **stable**:
 
 `generate_basic_pdf`, `add_barcode`, `add_international_text`, `add_table`, `add_form`,
 `embed_image`, `prepare_signature_placeholder`, `sign_pdf`, `verify_pdf`, `validate_pdf`,
 `inspect_pdf`, `add_attachment`, `extract_attachments`, `extract_text`,
 `merge_pdfs`, `split_pdf`, `extract_pages`, `annotate_pdf`, `draft_governance_issue`,
-`read_form_fields`, `fill_form`, `add_chart`, `encrypt_pdf`, `decrypt_pdf`.
+`read_form_fields`, `fill_form`, `add_chart`, `encrypt_pdf`, `decrypt_pdf`,
+`update_metadata`, `add_ltv`, `timestamp_pdf`.
+
+> **v1.6.0 minor bump rationale:** three **new tools** were added on pdfnative 1.7 —
+> `add_ltv` (PAdES B-LT: `/DSS` + `/VRI` via `addValidationInfo` / `embedValidationInfo`),
+> `timestamp_pdf` (PAdES B-LTA: `/DocTimeStamp` via `addDocumentTimestamp`) and
+> `update_metadata` (incremental `/Info` + XMP rewrite via `PdfModifier.updateMetadata`).
+>
+> Existing tools gained **optional inputs** with backward-compatible defaults:
+> - every document-producing tool (`generate_basic_pdf`, `add_barcode`, `add_international_text`,
+>   `add_table`, `add_form`, `embed_image`, `prepare_signature_placeholder`, `add_attachment`,
+>   `add_chart`): `print` (boxes / `bleed` / `marks` / `userUnit`), `outputIntent`, `metadata`,
+>   `strict`, `includeDiagnostics`, and `embedFonts` (not on `add_international_text`, which
+>   always embeds); `viewerPreferences` accepts `duplex`, `pickTrayByPDFSize`, `printPageRange`,
+>   `numCopies`;
+> - `add_chart` and the `generate_basic_pdf` `chart` block: kinds `stackedBar` / `stackedBarH` /
+>   `area` / `scatter` (new enum values), per-series `xValues` / `yAxis`, `axis.scale`, `axis2`,
+>   `xAxis`, `dataLabels`, `labelStride`, `labelRotation`, `width`, `height`;
+> - `sign_pdf`: `profile`, `timestamp`, `fieldName`, `allowMultiple`, `certChainDerBase64`,
+>   and `algorithm` values `rsa-sha384` / `rsa-sha512`;
+> - `prepare_signature_placeholder`: `subFilter`, `reserveTimestamp`;
+> - `inspect_pdf`: `signatures`, and `check` values `dss` / `docTimestamp` / `trapped`;
+> - `verify_pdf`: `ltv`.
+>
+> **Output fields** were added: `structuredContent.diagnostics[]` on every PDF-producing
+> tool (only when `includeDiagnostics: true`) and `structuredContent.summary` on `add_ltv`;
+> `verify_pdf` per-signature `isDocTimestamp` (document timestamps only) and the `ltv` extras
+> (`profile`, `timestamp`, `revocation`, `ltvLevel`, document-level `dss` / `ltvLevel` /
+> `caveats`, opt-in); `inspect_pdf` `dss`, `trapped`, `docTimestampCount` (presence-gated),
+> `signatures[]` (opt-in) and `perPage[].trimBox` / `bleedBox` / `artBox` / `cropBox` /
+> `userUnit` (only when set on the page, and only with `pages: true`). Two additions land in
+> **default** output: `verify_pdf` signatures now always carry `subFilter` (a new key, `null`
+> when absent), and `inspect_pdf` `checks` carries three extra `false` keys (`dss`,
+> `docTimestamp`, `trapped`) whenever `check` is used — the same additive precedent as the
+> `placeholder` / `attachments` keys in v1.0.0. Both are "new optional output field" changes
+> per §3; no existing key changed type or meaning.
+>
+> **New error codes** (additive): `TSA_NOT_CONFIGURED`, `TSA_REJECTED`,
+> `REVOCATION_NOT_CONFIGURED`, `NETWORK_HOST_NOT_ALLOWED`, `NETWORK_ERROR`, `LTV_NO_SIGNATURE`,
+> `LTV_EMPTY`, `LTV_MATERIAL_INVALID`, `LTV_ERROR`, `PLACEHOLDER_AMBIGUOUS`,
+> `SIGNATURE_FIELD_NOT_FOUND`, `PRINT_ERROR`, `METADATA_ERROR`, `GENERATION_FAILED` (generic
+> engine throw during a build). Existing codes gained **new triggers** without changing their
+> meaning: `PDF_A_COMPLIANCE_VIOLATION` (escalated engine diagnostics under `strict: true`;
+> `print.userUnit` under `pdfa1b`), `CHART_ERROR` (engine cross-field rules, now also for the
+> `generate_basic_pdf` `chart` block), `ENCRYPTED_SOURCE` (`update_metadata`, `add_ltv`,
+> `timestamp_pdf`).
+>
+> **Two bug fixes change bytes for inputs that were previously wrong:**
+> 1. Signer metadata (`signerName` / `reason` / `location` / `contactInfo`) passed to
+>    `sign_pdf` or `prepare_signature_placeholder` never reached the `/Sig` dictionary on
+>    pdfnative < 1.7 (the engine dropped it). It is now baked at placeholder time, so a PDF
+>    signed with those inputs differs from v1.5.0 output — the previous output silently lost
+>    caller data.
+> 2. `verify_pdf` reported `allValid: false` on PAdES B-LTA documents because a
+>    `/DocTimeStamp` was parsed as a CMS signature. Document timestamps are now verified as
+>    RFC 3161 tokens and never flip `allValid`. Inputs that were correctly verified before are
+>    unaffected.
+>
+> **Engine-inherited byte changes (pdfnative 1.6 → 1.7), default inputs:** measured against
+> v1.5.0 with a fixed-input baseline (dates and trailer `/ID` normalised). Plain documents,
+> barcodes, tables, images, charts without overlapping labels, merge / split / extract,
+> decrypt and every read-only tool are byte-identical. The following differ, and in each case
+> the previous bytes were deficient: AcroForm `/Helv` now carries a `/ToUnicode` CMap
+> (`add_form`, `fill_form` — text was not reliably extractable); incremental outputs regenerate
+> `/ID[1]` and use consistent EOL framing (`prepare_signature_placeholder`, `annotate_pdf`,
+> `fill_form` — ISO 32000-1 §14.4 expects a fresh second `/ID` element on update); CMS
+> attributes are emitted in canonical DER order (`sign_pdf` — strict verifiers reject
+> non-canonical SET OF ordering); Arabic / Persian / Hebrew runs follow UAX #9 for digit order,
+> mirroring and ALEF joining (`add_international_text` — the old shaping was incorrect);
+> charts whose category labels overlap are thinned automatically (`labelStride: 1` restores the
+> old drawing — the old output was unreadable); tagged base-14 documents under PDF/A emit the
+> shared WinAnsi `/ToUnicode` CMap (`generate_basic_pdf` / `add_attachment` with `pdfA` —
+> required for text extraction under ISO 19005). Per §3 these are correctness fixes, not
+> "default value changes", and the full evidence table ships in the v1.6.0 release notes.
+>
+> The MCP SDK v2 migration itself is byte-transparent on every tool result.
 
 > **v1.5.0 minor bump rationale:** five **new tools** were added — `add_chart`
 > (native vector charts on pdfnative 1.6's `ChartBlock`), `read_form_fields` and
@@ -155,7 +241,7 @@ All 24 tools shipped through pdfnative-mcp 1.5.0 are at `_meta.apiVersion = '1.5
 > satisfy the full `outputSchema` (which describes the default `'full'` shape). This is an
 > opt-in token-saving feature; the `outputSchema` contract continues to describe full output.
 
-Page-tree tools `merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative v1.4.0's page-tree API; `annotate_pdf` shipped in v1.4.0 on pdfnative v1.5.0's annotation writer; charts (`add_chart`), form fill/flatten (`read_form_fields`, `fill_form`) and the encrypted round-trip (`encrypt_pdf`, `decrypt_pdf`, `password`/`encrypt` on the page-tree and read-only tools) shipped in v1.5.0 on pdfnative v1.6.0. `redact_pdf` stays **deferred by design** (pdfnative can overlay/flatten but not remove content — an overlay-only redaction would create false security) and will be added with the same stability guarantees once pdfnative exports a content-removal API.
+Page-tree tools `merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative v1.4.0's page-tree API; `annotate_pdf` shipped in v1.4.0 on pdfnative v1.5.0's annotation writer; charts (`add_chart`), form fill/flatten (`read_form_fields`, `fill_form`) and the encrypted round-trip (`encrypt_pdf`, `decrypt_pdf`, `password`/`encrypt` on the page-tree and read-only tools) shipped in v1.5.0 on pdfnative v1.6.0; the PAdES LTV ladder (`add_ltv`, `timestamp_pdf`, `sign_pdf` `profile` / `timestamp`), `update_metadata`, print production and charts v2 shipped in v1.6.0 on pdfnative v1.7.0. `redact_pdf` stays **deferred by design** (pdfnative can overlay/flatten but not remove content — an overlay-only redaction would create false security) and will be added with the same stability guarantees once pdfnative exports a content-removal API. Native ECDSA verification also stays deferred: pdfnative still does not export `ecdsaVerifyHash`, so `verify_pdf` keeps its local P-256 implementation (no contract impact).
 
 ---
 

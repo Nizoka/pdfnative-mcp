@@ -2,11 +2,12 @@
 
 ## Supported versions
 
-The latest published `0.x` minor on npm receives security patches. Older versions are unsupported once a new minor lands.
+The latest published minor on npm receives security patches. Older versions are unsupported once a new minor lands.
 
 | Version  | Supported          |
 | -------- | ------------------ |
-| `0.1.x`  | :white_check_mark: |
+| `1.6.x`  | :white_check_mark: |
+| `< 1.6`  | :x:                |
 
 ## Reporting a vulnerability
 
@@ -23,23 +24,50 @@ You will receive an acknowledgement within **72 hours**. We aim to ship a fix an
 
 ## Threat model
 
-`pdfnative-mcp` is designed to run as a local MCP server, spawned by a trusted host (Claude Desktop, Cursor, etc.) and communicating over stdio. The threat model assumes:
+`pdfnative-mcp` is designed to run as a local MCP server, spawned by a trusted host (Claude Desktop, Cursor, etc.) and communicating over stdio (or a loopback-only Streamable HTTP endpoint when `PDFNATIVE_MCP_PORT` is set). The threat model assumes:
 
 - The **host process is trusted** (the user installed it themselves).
+- The **operator** who sets the environment variables is trusted.
 - The **LLM controlling the host is untrusted** — it may send arbitrary, malicious tool arguments.
-- The **filesystem outside `PDFNATIVE_MPC_OUTPUT_DIR` must remain inaccessible**.
+- **PDF inputs are untrusted** — including any certificate, URL or extension they carry.
+- The **filesystem outside `PDFNATIVE_MCP_OUTPUT_DIR` must remain inaccessible**.
 
 In particular we defend against:
 
 - **Path traversal** (`..`, absolute paths, NUL bytes, non-`.pdf` extensions).
 - **Arbitrary file overwrite** — `wx` flag refuses to overwrite existing files.
-- **Resource exhaustion** — strict `min`/`max` bounds on every input field; 50 MB cap on output size.
+- **Resource exhaustion** — strict `min`/`max` bounds on every input field; 50 MB cap on output size; response caps and timeouts on every network fetch.
 - **Prototype pollution** — `additionalProperties: false` on every JSON Schema; Zod `.strict()` semantics.
+- **DNS rebinding** against the HTTP transport — bound to `127.0.0.1`, foreign `Host` / `Origin` answered with 403, `GET` / `DELETE` with 405.
+- **Server-side request forgery** through certificate-supplied URLs — see *Network egress* below.
 
 We do **not** currently defend against:
 
 - A maliciously-crafted PDF input to `sign_pdf` causing a crash inside `pdfnative` (the upstream library is responsible for parser hardening — please report such issues to both projects).
 - Side-channel attacks on the user-supplied private key material in `sign_pdf`.
+- A compromised or malicious **operator-configured** TSA / OCSP / CRL endpoint (the operator chose it; timestamp tokens are still verified for status, imprint and nonce before they are embedded).
+
+## Network egress
+
+The server makes **no outbound network call by default**. The only egress it can ever perform goes to the RFC 3161 / OCSP / CRL endpoints the **operator** configured in the environment for PAdES long-term validation — never to a URL supplied by a tool argument, never to GitHub, never for telemetry. This is enforced in one module (`src/network.ts`); no other code path opens a socket.
+
+| Variable | Role |
+| --- | --- |
+| `PDFNATIVE_MCP_TSA_URL` | RFC 3161 authority used by `sign_pdf timestamp: true` and `timestamp_pdf`. Unset → `TSA_NOT_CONFIGURED`, no request. |
+| `PDFNATIVE_MCP_TSA_AUTH` | **Secret.** Optional `Authorization` header value for the TSA. Never logged, never echoed in errors (network errors report only the error class / HTTP status). |
+| `PDFNATIVE_MCP_REVOCATION` | `ocsp` / `crl` / `ocsp,crl` — enables `add_ltv mode: 'online'`. Unset → `REVOCATION_NOT_CONFIGURED`. |
+| `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS` | Allow-list for OCSP / CRL responders (`host`, `host:port`, `*.suffix`). **Mandatory** with `PDFNATIVE_MCP_REVOCATION`. |
+| `PDFNATIVE_MCP_NETWORK_TIMEOUT_MS` | Per-request timeout, 1000–120000 ms (default 10000). |
+
+OCSP and CRL URLs come from the AIA / CRL-distribution-point extensions of **untrusted certificates inside the PDF** — a classic SSRF vector. A certificate-supplied URL is fetched only when:
+
+- its host matches the operator allow-list (bare wildcards and paths are rejected as entries);
+- the scheme is `http:` or `https:` and the URL carries no embedded credentials;
+- redirects are never followed (`redirect: 'error'`);
+- the host is not a loopback, link-local, private (RFC 1918), unique-local, CGNAT, unspecified or multicast address literal — including decimal / octal / hex spellings and IPv4-mapped IPv6 — unless that literal is allow-listed **verbatim** (a wildcard never unlocks an internal range);
+- the response stays under the cap (TSA 256 KiB, OCSP 1 MiB, CRL 16 MiB) and within the timeout.
+
+The TSA URL is operator-trusted, so only the scheme and credential checks apply to it. Providers are constructed per call and passed through pdfnative's per-call options — the process-wide provider setters are never used, so concurrent requests share nothing. `add_ltv mode: 'offline'` embeds caller-supplied DER material with zero network access (every blob is parsed before it is written). The server's instructions report the egress policy as endpoint kinds only, never URLs or secrets.
 
 ## Disclosure history
 

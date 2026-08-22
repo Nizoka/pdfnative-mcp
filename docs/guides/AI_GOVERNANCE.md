@@ -14,13 +14,18 @@ It is surfaced to agents through the `draft_governance_issue` tool and the
 
 ## 1. The one rule
 
-**The pdfnative-mcp server contains no code path that can write to GitHub or make
-any outbound network call.** It cannot open an issue, comment, PR, or release. It
-produces a **local draft** plus a **compliance report** and stops. A human must
-review the draft and submit it themselves, under their own GitHub identity.
+**The pdfnative-mcp server contains no code path that can write to GitHub, and makes
+no outbound network call by default.** It cannot open an issue, comment, PR, or
+release. It produces a **local draft** plus a **compliance report** and stops. A human
+must review the draft and submit it themselves, under their own GitHub identity.
 
-This is a guarantee **by construction**, not merely by policy: there is no HTTP
-client, no `fetch`, and no GitHub SDK anywhere in the server.
+This is a guarantee **by construction**, not merely by policy: there is no GitHub SDK
+anywhere in the server, and the only egress it can ever perform goes to the RFC 3161 /
+OCSP / CRL endpoints the **operator** configured in the environment for PAdES
+long-term validation (`PDFNATIVE_MCP_TSA_URL`, `PDFNATIVE_MCP_REVOCATION`,
+`PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS`, all in `src/network.ts`) — never to a URL
+supplied by a tool argument, never to GitHub, never for telemetry. Without that
+configuration the server opens no socket of its own.
 
 ---
 
@@ -143,7 +148,8 @@ tool never disagree. `tests/governance.test.ts` asserts that alignment.
 
 - Open, edit, comment on, or close a GitHub issue or PR.
 - Trigger a release.
-- Make any outbound network request or emit telemetry.
+- Make any outbound network request other than to the operator-configured TSA / OCSP /
+  CRL endpoints (never to a URL from a tool argument), or emit telemetry.
 - Persist your draft anywhere except the opt-in `PDFNATIVE_MCP_OUTPUT_DIR` sandbox
   when you explicitly ask for `outputMode: 'file'`.
 

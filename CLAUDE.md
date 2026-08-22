@@ -9,8 +9,9 @@ is about *contributing to* the codebase, not *using* the server.
 
 `pdfnative-mcp` is a thin, faithful **Model Context Protocol** server wrapping the
 zero-dependency [`pdfnative`](https://github.com/Nizoka/pdfnative) PDF engine.
-TypeScript (strict, ESM-only), Node ≥ 22, `@modelcontextprotocol/sdk`. **24 tools**,
-MCP prompts + resources. Current release: **1.5.0** (on pdfnative 1.6.0).
+TypeScript (strict, ESM-only), Node ≥ 22, `@modelcontextprotocol/server` (MCP SDK v2,
+protocol 2026-07-28 with automatic 2025-era fallback). **27 tools**, MCP prompts +
+resources. Current release: **1.6.0** (on pdfnative 1.7.0).
 
 ## Commands
 
@@ -21,6 +22,7 @@ npm run lint           # eslint src
 npm test               # vitest run
 npm run test:coverage  # vitest run --coverage  (enforces thresholds)
 npm run examples:check # runs examples/*.json live through the tools/call handler
+npm run validate:pdfa  # advisory: veraPDF over a generated PDF/A corpus (skips when veraPDF is absent; non-blocking in CI)
 ```
 
 **Quality gate (run before every commit/PR):**
@@ -29,25 +31,26 @@ npm run examples:check # runs examples/*.json live through the tools/call handle
 npm run typecheck:all && npm run lint && npm run test && npm run test:coverage && npm run build
 ```
 
-Coverage thresholds (global, in `vitest.config.ts`): statements 88 · branches 75 ·
-functions 85 · lines 90. New code must keep the aggregate above these.
+Coverage thresholds (global, in `vitest.config.ts`): statements 89 · branches 80 ·
+functions 90 · lines 91. New code must keep the aggregate above these; never lower them.
 
 ## Architecture map
 
-- `src/cli.ts` — entry point (stdio by default; Streamable HTTP when `PDFNATIVE_MCP_PORT` is set).
-- `src/server.ts` — the `TOOLS` registry (with MCP `annotations`), request handlers, `dispatchOutput` (duck-typed result → content builder), `SERVER_INSTRUCTIONS`, and the `resources` / `prompts` capabilities. `TOOL_API_VERSION` lives here.
+- `src/cli.ts` — entry point (stdio via `serveStdio` by default; Streamable HTTP via `createMcpHandler` when `PDFNATIVE_MCP_PORT` is set; both with the SDK's legacy fallback).
+- `src/http.ts` — Node `http` ↔ Web `Request`/`Response` bridge and the Host/Origin loopback guard for the HTTP transport.
+- `src/server.ts` — the `TOOLS` registry (with MCP `annotations`), request handlers on the low-level `Server` (not `McpServer.registerTool`, which would validate `structuredContent` and break the projections), `dispatchOutput` (duck-typed result → content builder), `SERVER_INSTRUCTIONS`, `SERVER_CACHE_HINTS`, and the `resources` / `prompts` capabilities. `TOOL_API_VERSION` lives here.
 - `src/tools/<name>.ts` — one file per tool: a hand-written JSON Schema `as const`, a **parallel Zod schema** (kept in lock-step), and the handler.
-- Shared schema/util modules: `src/encryption.ts` (password + `encrypt` schema, `mapDecryptError`), `src/chart.ts` (`ChartBlock` schema + `toChartBlock`), `src/pagetree.ts` (`mapPageTreeError`), `src/pdfa.ts`, `src/doc-features.ts`, `src/watermark.ts`, `src/projection.ts` (token-frugal `verbosity`/`fields`), `src/output.ts` (sandboxed file write), `src/resources.ts`.
-- `tests/` — one `*.test.ts` per tool/module; shared fixtures are `_`-prefixed (`_pdf-assert.ts`, `_cert-fixtures.ts`, `_pagetree-fixtures.ts`, `_encrypted-fixtures.ts`).
+- Shared schema/util modules: `src/network.ts` (operator-configured TSA / OCSP / CRL providers + SSRF guard — the **only** egress path), `src/print.ts` (print-production `print` / `outputIntent` / `metadata` schema + mappers), `src/diagnostics.ts` (PDF/A diagnostics sink, `strict` / `includeDiagnostics` / `embedFonts`, `mapBuildError`), `src/encryption.ts` (password + `encrypt` schema, `mapDecryptError`), `src/chart.ts` (charts v2 schema + `toChartBlock`), `src/cms.ts` (CMS parser), `src/pdf-introspection.ts` (signature widgets, `/DSS`, page boxes), `src/pagetree.ts` (`mapPageTreeError`), `src/pdfa.ts`, `src/doc-features.ts`, `src/watermark.ts`, `src/projection.ts` (token-frugal `verbosity`/`fields`), `src/output.ts` (sandboxed file write), `src/resources.ts`.
+- `tests/` — one `*.test.ts` per tool/module; shared fixtures are `_`-prefixed (`_pdf-assert.ts`, `_cert-fixtures.ts`, `_pagetree-fixtures.ts`, `_encrypted-fixtures.ts`, `_ltv-fixtures.ts` (offline mock PKI + RFC 3161 / OCSP / CRL providers), `_tsa-server.ts` (loopback TSA), `_http-fixture.ts`, `_mcp-harness.ts`). `tests/http-modern.test.ts` asserts the MCP 2026-07-28 conformance.
 
 ## Non-negotiable conventions
 
-1. **Zero new runtime dependencies.** Only `pdfnative`, `@modelcontextprotocol/sdk`, `zod`. Adding one is a governance blocker (`.github/AGENT_RULES.md`).
+1. **Zero new runtime dependencies.** Only `pdfnative`, `@modelcontextprotocol/server`, `zod`. Adding one is a governance blocker (`.github/AGENT_RULES.md`).
 2. **Faithful thin wrapper.** Surface pdfnative behaviour honestly; don't reimplement engine features on raw primitives, and don't over-promise (e.g. `encrypt_pdf`/`decrypt_pdf` rebuild the page tree and drop signatures/AcroForm — say so).
 3. **Strict TypeScript.** No `any` (use `unknown` + narrowing). No unused locals/params.
 4. **Validate every input** at the boundary with Zod; keep the JSON Schema and Zod schema aligned (they are hand-kept in sync).
 5. **Additive & byte-identical.** Default responses for existing tools stay byte-identical across releases; new behaviour is opt-in. New inputs get backward-compatible defaults. See `docs/API_STABILITY.md` before touching any schema or error code — a schema/error change may require a `TOOL_API_VERSION` bump.
-6. **Security.** Never write outside `PDFNATIVE_MCP_OUTPUT_DIR` (use `src/output.ts` helpers — they reject absolute paths, traversal, NUL bytes, non-`.pdf`). Never log or echo passwords, keys, or certificate material.
+6. **Security.** Never write outside `PDFNATIVE_MCP_OUTPUT_DIR` (use `src/output.ts` helpers — they reject absolute paths, traversal, NUL bytes, non-`.pdf`). Never log or echo passwords, keys, certificate material, or `PDFNATIVE_MCP_TSA_AUTH`. Never add an egress path outside `src/network.ts`, and never let a tool argument supply a URL — endpoints come only from the operator environment.
 7. **Version lock-step.** `tests/metadata.test.ts` asserts `package.json`, `src/version.ts`, and `server.json` agree. Update all together.
 
 ## Adding a tool (the pattern)
@@ -66,8 +69,12 @@ functions 85 · lines 90. New code must keep the aggregate above these.
 
 ## Human-in-the-loop governance
 
-This server is a **draftsman, never an autonomous submitter**. It makes no outbound
-network calls and has no GitHub write path. To propose an upstream change, use the
+This server is a **draftsman, never an autonomous submitter**. It has no GitHub write
+path and makes no outbound network call by default: the only egress it can ever
+perform goes to the RFC 3161 / OCSP / CRL endpoints the operator configured
+(`PDFNATIVE_MCP_TSA_URL`, `PDFNATIVE_MCP_REVOCATION`,
+`PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS`) — never to a URL supplied by a tool argument,
+never to GitHub, never for telemetry. To propose an upstream change, use the
 `draft_governance_issue` tool (or `npm run verify:issue`) to produce a local,
 policy-checked draft — a human reviews and submits it. See
 [`docs/guides/AI_GOVERNANCE.md`](docs/guides/AI_GOVERNANCE.md) and

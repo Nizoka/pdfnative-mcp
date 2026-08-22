@@ -13,54 +13,61 @@ invocations live under [examples/](examples/).
 
 ---
 
-## 1. Tool catalogue (24 tools)
+## 1. Tool catalogue (27 tools)
 
 | # | Tool | Use it for | Read-only |
 |---|------|-----------|:---:|
-| 1 | `generate_basic_pdf` | Plain documents (headings, paragraphs, nested lists, **`chart` blocks**). Optional `pdfA`, `watermark`, `normalize`, `outline` (bookmarks), `pageLabels`, `viewerPreferences`. | |
-| 2 | `add_barcode` | QR / Code 128 / EAN-13 / Data Matrix / PDF417. | |
-| 3 | `add_international_text` | 24 scripts + colour emoji, BiDi + OpenType shaping. Optional `normalize` (default `NFC`), `viewerPreferences`. | |
-| 4 | `add_table` | Tabular reports (wrap, repeatHeader, zebra, caption, `cellBorders`, `cellVAlign`…). Optional `watermark`, `viewerPreferences`. | |
-| 5 | `add_form` | Create a **new** interactive AcroForm (text, checkbox, radio, dropdown). | |
+| 1 | `generate_basic_pdf` | Plain documents (headings, paragraphs, nested lists, **`chart` blocks**). Optional `pdfA`, `watermark`, `normalize`, `outline` (bookmarks), `pageLabels`, `viewerPreferences`, `print`, `metadata`, `outputIntent`, `embedFonts`, `strict`, `includeDiagnostics`. | |
+| 2 | `add_barcode` | QR / Code 128 / EAN-13 / Data Matrix / PDF417. Same print / PDF/A options³. | |
+| 3 | `add_international_text` | 24 scripts + colour emoji (flag / ZWJ sequences), BiDi + OpenType shaping. Optional `normalize` (default `NFC`), `viewerPreferences`, `print`, `metadata`, `strict`, `includeDiagnostics` (fonts are always embedded, so no `embedFonts`). | |
+| 4 | `add_table` | Tabular reports (wrap, repeatHeader, zebra, caption, `cellBorders`, `cellVAlign`…). Optional `watermark`, `viewerPreferences`, print / PDF/A options³. | |
+| 5 | `add_form` | Create a **new** interactive AcroForm (text, checkbox, radio, dropdown). Print / PDF/A options³. | |
 | 6 | `read_form_fields` | Enumerate an **existing** AcroForm's fields (name, type, value, widgets). Supports `password`. | ✓ |
 | 7 | `fill_form` | Fill / flatten an **existing** AcroForm (incremental update). Supports `password`. | |
-| 8 | `add_chart` | Native vector charts (bar / barH / line / pie / donut), PDF/A-safe. | |
-| 9 | `embed_image` | Embed a JPEG/PNG into a titled PDF. | |
-| 10 | `prepare_signature_placeholder` | Customize the `/Sig` placeholder before signing. | |
-| 11 | `sign_pdf` | PAdES CMS signature (RSA-SHA256 / ECDSA-P256), constant-time via `node:crypto`. Auto-injects a placeholder. | |
-| 12 | `verify_pdf` | Verify every PAdES signature (integrity + value + chain). Supports `password`. | ✓ |
-| 13 | `validate_pdf` | PDF/UA (ISO 14289-1) structural conformance. | ✓ |
-| 14 | `inspect_pdf` | Metadata: version, pages, encryption (+ `encryptionInfo`), PDF/A, signatures, attachments. Supports `password`. | ✓ |
-| 15 | `add_attachment` | PDF/A-3 with embedded files (Factur-X / ZUGFeRD). | |
-| 16 | `extract_attachments` | Read embedded files back out (byte-for-byte). Supports `password`. | ✓ |
-| 17 | `extract_text` | Unicode text extraction (resolves `/ToUnicode`), optional positioned `runs`. Supports `password`. | ✓ |
-| 18 | `merge_pdfs` | Concatenate 2–50 PDFs into one (page-tree API). Optional `password` / `encrypt`. | |
-| 19 | `split_pdf` | Split a PDF into one document per page range (multi-output). Optional `password` / `encrypt`. | |
-| 20 | `extract_pages` | Pull an arbitrary page subset into a single PDF. Optional `password` / `encrypt`. | ✓¹ |
-| 21 | `encrypt_pdf` | Re-secure a PDF with AES-128 / AES-256 (owner/user passwords, permissions, rotation). | |
-| 22 | `decrypt_pdf` | Emit an unencrypted copy of an RC4 / AES-128 / AES-256 document. | |
-| 23 | `annotate_pdf` | Add markup annotations (highlight, sticky note, square/circle, line, freetext). Visual overlay only — does **not** redact underlying content. | |
-| 24 | `draft_governance_issue` | Draft a governance-compliant GitHub issue for **human** review. Produces a local draft + compliance report; **never submits**, no network. | ✓² |
+| 8 | `add_chart` | Native vector charts v2 (bar / barH / stackedBar / stackedBarH / line / area / scatter / pie / donut; `axis2`, log / time scales, `dataLabels`, `labelStride`), PDF/A-safe. Print / PDF/A options³. | |
+| 9 | `embed_image` | Embed a JPEG/PNG into a titled PDF. Print / PDF/A options³. | |
+| 10 | `prepare_signature_placeholder` | Customize the `/Sig` placeholder before signing (signer metadata, `subFilter`, `reserveTimestamp`, `placeholderBytes`). Print / PDF/A options³. | |
+| 11 | `sign_pdf` | PAdES B-B / B-T CMS signature (RSA-SHA256/384/512, ECDSA-P256; `profile:'pades'`, `timestamp`, `certChainDerBase64`, `fieldName`, `allowMultiple`), constant-time via `node:crypto`. Auto-injects a placeholder. | |
+| 12 | `add_ltv` | PAdES B-LT: embed `/DSS` + `/VRI` (certs, OCSP, CRLs). `mode:'online'` via the operator provider, `mode:'offline'` with caller-supplied DER material. | |
+| 13 | `timestamp_pdf` | PAdES B-LTA: append an RFC 3161 `/DocTimeStamp` from the operator TSA; re-run to extend the chain. | |
+| 14 | `verify_pdf` | Verify every PAdES signature and document timestamp (integrity + value + chain). `ltv:true` adds profile / timestamp / revocation / `ltvLevel`. Supports `password`. | ✓ |
+| 15 | `validate_pdf` | PDF/UA (ISO 14289-1) structural conformance. | ✓ |
+| 16 | `inspect_pdf` | Metadata: version, pages (+ boxes), encryption (+ `encryptionInfo`), PDF/A, signatures (+ `signatures:true` inventory, `dss`, `docTimestampCount`), `trapped`, attachments. Supports `password`. | ✓ |
+| 17 | `update_metadata` | Rewrite `/Info` title / author / subject / keywords (+ XMP) of an **existing** PDF (incremental update; unencrypted only). | |
+| 18 | `add_attachment` | PDF/A-3 with embedded files (Factur-X / ZUGFeRD). Print / PDF/A options³. | |
+| 19 | `extract_attachments` | Read embedded files back out (byte-for-byte). Supports `password`. | ✓ |
+| 20 | `extract_text` | Unicode text extraction (resolves `/ToUnicode`), optional positioned `runs`. Supports `password`. | ✓ |
+| 21 | `merge_pdfs` | Concatenate 2–50 PDFs into one (page-tree API; page boxes preserved). Optional `password` / `encrypt`. | |
+| 22 | `split_pdf` | Split a PDF into one document per page range (multi-output). Optional `password` / `encrypt`. | |
+| 23 | `extract_pages` | Pull an arbitrary page subset into a single PDF. Optional `password` / `encrypt`. | ✓¹ |
+| 24 | `encrypt_pdf` | Re-secure a PDF with AES-128 / AES-256 (owner/user passwords, permissions, rotation). | |
+| 25 | `decrypt_pdf` | Emit an unencrypted copy of an RC4 / AES-128 / AES-256 document. | |
+| 26 | `annotate_pdf` | Add markup annotations (highlight, sticky note, square/circle, line, freetext). Visual overlay only — does **not** redact underlying content. | |
+| 27 | `draft_governance_issue` | Draft a governance-compliant GitHub issue for **human** review. Produces a local draft + compliance report; **never submits**, no network. | ✓² |
 
 ¹ `extract_pages` only reads the source, but it produces a new PDF, so it is not annotated `readOnlyHint`.
 ² `draft_governance_issue` is read-only in the default inline mode; `outputMode:'file'` writes a `.md` into the sandbox, so its `readOnlyHint` is `false`.
+³ Print / PDF/A options (v1.6.0, every document-producing tool): `print` (`bleed` shorthand or `trimBox` / `bleedBox` / `artBox` / `cropBox`, `marks`, `userUnit`), `metadata` (`author`, `subject`, `keywords`, `trapped`), `outputIntent` (custom RGB ICC), `embedFonts`, `strict`, `includeDiagnostics`. `viewerPreferences` also takes `duplex`, `pickTrayByPDFSize`, `printPageRange`, `numCopies`. All optional; defaults stay byte-identical.
 
 ## 2. Decision tree
 
 ```
 Need a NEW PDF?
  ├─ has embedded files (Factur-X/ZUGFeRD)? → add_attachment
- ├─ a chart (bar/line/pie/donut)?          → add_chart
+ ├─ a chart (bar/stacked/line/area/scatter/pie/donut)? → add_chart  (axis2 for a right axis, xAxis.type 'linear'|'time' + xValues, axis.scale 'log')
  ├─ a table/report?                        → add_table
  ├─ non-Latin text / emoji?                → add_international_text
  ├─ a barcode/QR?                          → add_barcode
  ├─ an image?                              → embed_image
  ├─ a NEW interactive form?                → add_form
  └─ otherwise                              → generate_basic_pdf  (supports `chart` blocks)
+ Print-ready (bleed, crop marks, boxes)?   → add `print: { bleed, marks }` (+ `metadata.trapped`) to any tool above; `userUnit` not under pdfa1b
+ VALID PDF/A claim (veraPDF)?              → add `embedFonts: true` (+ `strict: true` to fail instead of warn, `includeDiagnostics: true` to see why)
 Work with an EXISTING form?
  ├─ list its fields?                       → read_form_fields
  └─ fill / flatten it?                     → fill_form
 Annotate an existing PDF (overlay)?       → annotate_pdf
+Change title/author/subject/keywords of an existing PDF? → update_metadata (incremental; sign again afterwards if needed)
 Combine / carve existing PDFs?
  ├─ join several into one?                 → merge_pdfs   (password / encrypt optional)
  ├─ split into per-range documents?        → split_pdf    (password / encrypt optional)
@@ -69,9 +76,15 @@ Encryption?
  ├─ protect a PDF?                         → encrypt_pdf
  ├─ get an unencrypted copy?               → decrypt_pdf
  └─ just READ an encrypted PDF?            → pass `password` to inspect_pdf / extract_text / …
-Need to SIGN?            → sign_pdf  (then verify_pdf)
+Need to SIGN?  (PAdES ladder, ETSI EN 319 142-1)
+ ├─ B-B  basic signature                   → sign_pdf  (profile:'pades' recommended; rsa-sha256/384/512 or ecdsa-sha256)
+ ├─ B-T  + signature timestamp             → sign_pdf with timestamp:true          (needs PDFNATIVE_MCP_TSA_URL)
+ ├─ B-LT + certs / OCSP / CRL in /DSS      → add_ltv   mode:'online' (needs PDFNATIVE_MCP_REVOCATION + allow-list) or mode:'offline' (caller-supplied DER, zero network)
+ ├─ B-LTA + archival document timestamp    → timestamp_pdf  (needs the TSA; re-run before the TSA cert expires)
+ ├─ several signatures?                    → sign_pdf with fieldName (+ allowMultiple:true for the 2nd, 3rd …)
+ └─ check the level reached                → verify_pdf with ltv:true  (ltvLevel B-B / B-T / B-LT / B-LTA)
 Need to READ a PDF?      (all accept `password` for encrypted sources)
- ├─ metadata/structure?  → inspect_pdf
+ ├─ metadata/structure?  → inspect_pdf  (pages:true → boxes; signatures:true → field inventory; check:['dss','docTimestamp','trapped'])
  ├─ signatures valid?    → verify_pdf
  ├─ PDF/UA conformant?   → validate_pdf
  ├─ embedded files?      → extract_attachments
@@ -93,7 +106,8 @@ Smallest "signed & valid?" probe: `{ pdfBase64, verbosity: 'summary', fields: ['
 
 Generated PDFs (base64 mode) are delivered **once** as an embedded `resource`
 content block (`data:application/pdf;base64,…`), not duplicated into
-`structuredContent` (which is `{ mode, sizeBytes }`).
+`structuredContent` (which is `{ mode, sizeBytes }`, plus `diagnostics[]` when
+`includeDiagnostics:true` and a `summary` object for `add_ltv`).
 
 ## 4. Output modes & environment
 
@@ -101,20 +115,41 @@ content block (`data:application/pdf;base64,…`), not duplicated into
 - `outputMode: 'file'` — writes inside `PDFNATIVE_MCP_OUTPUT_DIR`. `outputPath`
   must be **relative**, end in `.pdf`, no traversal / absolute paths / NUL bytes.
 - `PDFNATIVE_MCP_OUTPUT_DIR` — sandbox root for file output (unset = file mode disabled).
-- `PDFNATIVE_MCP_CACHE_DIR` — opt-in SHA-256 cache (1 h TTL, 256 MiB LRU).
+- `PDFNATIVE_MCP_CACHE_DIR` — opt-in SHA-256 cache (1 h TTL, 256 MiB LRU). Never
+  caches `encrypt_pdf` / `decrypt_pdf` / `add_ltv` / `timestamp_pdf` / `update_metadata`
+  or `sign_pdf` with `timestamp:true` (time- or network-dependent).
+- `PDFNATIVE_MCP_TSA_URL` — RFC 3161 TSA for `sign_pdf timestamp:true` and `timestamp_pdf`
+  (unset ⇒ `TSA_NOT_CONFIGURED`). `PDFNATIVE_MCP_TSA_AUTH` — optional `Authorization`
+  header value (secret, never echoed).
+- `PDFNATIVE_MCP_REVOCATION` — `ocsp` | `crl` | `ocsp,crl` for `add_ltv mode:'online'`
+  (unset ⇒ `REVOCATION_NOT_CONFIGURED`); requires `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS`
+  (comma-separated `host`, `host:port`, `*.suffix`).
+- `PDFNATIVE_MCP_NETWORK_TIMEOUT_MS` — per-request timeout, 1000–120000 (default 10000).
 
-**Privacy:** no telemetry, no outbound network calls — document bytes only ever
-flow back in the JSON-RPC response. The optional HTTP transport
-(`PDFNATIVE_MCP_PORT`) binds `127.0.0.1` only and enables DNS-rebinding
-protection (foreign `Host`/`Origin` → 403). Embedded files are passed through
-verbatim — the server never executes, renders, or scans them, so scan untrusted
-attachments in the caller.
+**Privacy / network policy:** no telemetry; outbound network is **none by default** —
+the only egress the server can ever perform goes to the operator-configured TSA /
+OCSP / CRL endpoints above, never to a URL supplied by a tool argument, never to
+GitHub. Document bytes only ever flow back in the JSON-RPC response (a timestamp
+request sends only a digest to the TSA; OCSP / CRL requests carry certificate
+identifiers). The optional HTTP transport (`PDFNATIVE_MCP_PORT`) binds `127.0.0.1`
+only and enables DNS-rebinding protection (foreign `Host`/`Origin` → 403; `GET` /
+`DELETE` → 405). Embedded files are passed through verbatim — the server never
+executes, renders, or scans them, so scan untrusted attachments in the caller.
+
+**Protocol:** MCP 2026-07-28 (stateless, `server/discover`, `resultType`, cache
+hints) on the MCP TypeScript SDK v2, with automatic fallback to the 2025-era
+`initialize` handshake on stdio and HTTP — existing hosts need no change.
 
 ## 5. Recipes
 
 - **Factur-X round-trip:** `add_attachment` → `inspect_pdf` → `extract_attachments` → *(optional)* `validate_pdf`.
 - **Sign & verify:** `sign_pdf` → `verify_pdf` (add `trustedRootsDerBase64` for chain trust).
+- **Sign with timestamp + LTV (PAdES B-LTA):** `sign_pdf` `{ profile: 'pades', timestamp: true, certChainDerBase64: [...] }` → `add_ltv` `{ mode: 'online' }` (or `{ mode: 'offline', certificatesDerBase64, ocspResponsesDerBase64, crlsDerBase64 }` when air-gapped) → `timestamp_pdf` → `verify_pdf` `{ ltv: true }` and read `ltvLevel`. The operator must set `PDFNATIVE_MCP_TSA_URL` (+ `PDFNATIVE_MCP_REVOCATION` / `..._ALLOWED_HOSTS` for online LTV); see [docs/guides/LTV.md](docs/guides/LTV.md).
 - **Author PDF/A:** `generate_basic_pdf` / `add_table` with `pdfA: 'pdfa2b'` → `validate_pdf`.
+- **Valid PDF/A claim with embedFonts:** any document tool with `pdfA: 'pdfa2b', embedFonts: true, strict: true` — without `embedFonts` the Latin text uses unembedded base-14 Helvetica and veraPDF rejects the claim (`includeDiagnostics: true` surfaces `PDFA_NO_FONT_ENTRIES`). Optional local check: `npm run validate:pdfa`.
+- **Print-ready with bleed and marks:** `generate_basic_pdf` / `add_table` / … with `print: { bleed: 8.5, marks: true }, metadata: { trapped: 'False' }` (or explicit `trimBox` / `bleedBox` / `artBox` / `cropBox`; `userUnit` for formats above 14400 pt, not under `pdfa1b`) → `inspect_pdf` `{ pages: true }` to read the boxes back. Boxes survive `merge_pdfs` / `split_pdf` / `extract_pages` — but the XMP packet (and therefore a PDF/A claim) does not: page-tree tools rebuild the document without it. See [docs/guides/PRINT.md](docs/guides/PRINT.md).
+- **Stacked / area / scatter / dual-axis chart:** `add_chart` with `chartType: 'stackedBar'` (or `'area'`); scatter needs `xValues` on every series plus `xAxis: { type: 'linear' }` (or `'time'` with ISO-8601 dates); a second series with `yAxis: 'right'` draws `axis2`; `axis: { scale: 'log' }` needs strictly positive, non-stacked data; `dataLabels: true` prints values; crowded labels are thinned automatically (`labelStride: 1` forces all). See [docs/guides/CHARTS.md](docs/guides/CHARTS.md).
+- **Update metadata of an existing PDF:** `update_metadata` `{ author, keywords, modDate }` (incremental; pin `modDate` for reproducible bytes) → `sign_pdf` / `timestamp_pdf` again if the latest revision must be signed.
 - **Watermarked report:** `add_table` with `watermark: { text: 'CONFIDENTIAL', opacity: 0.2 }`.
 - **Bookmarked report:** `generate_basic_pdf` with `outline: 'auto'` + `pageLabels` + `viewerPreferences: { pageMode: 'useOutlines' }`.
 - **Assemble / carve:** generate parts → `merge_pdfs`; or `split_pdf` (per range) / `extract_pages` (one subset) → `inspect_pdf` to confirm the page count.
@@ -131,7 +166,21 @@ attachments in the caller.
 |--------|---------|-----|
 | `VALIDATION_ERROR` | Zod rejected the input | Re-read the field schema (message lists the path). |
 | `PDF_PARSE_FAILED` | Input PDF malformed/truncated | Re-encode the base64; confirm it opens in a reader. |
-| `PDF_A_COMPLIANCE_VIOLATION` | Watermark `opacity < 1.0` (incl. 0.15 default) under `pdfA:'pdfa1b'` | Use `opacity:1.0`, or target `pdfa2b`/`pdfa3b` (allow transparency). |
+| `PDF_A_COMPLIANCE_VIOLATION` | Watermark `opacity < 1.0` under `pdfA:'pdfa1b'`; `strict:true` and the engine raised a PDF/A diagnostic (e.g. `PDFA_NO_FONT_ENTRIES`); `print.userUnit` under `pdfa1b` | Use `opacity:1.0` or `pdfa2b`+; add `embedFonts:true`; drop `userUnit` or target `pdfa2b`+. |
+| `PRINT_ERROR` | Engine rejected `print` / `outputIntent` (box outside MediaBox, marks without a TrimBox, non-RGB ICC) | Fix the box coordinates / supply `bleed` or `trimBox` / use an RGB ICC profile. |
+| `METADATA_ERROR` | `update_metadata` could not rewrite `/Info` | Check the PDF opens; report with a reproduction if it persists. |
+| `GENERATION_FAILED` | Generic engine throw while building a document | The message carries the engine text; fix the input it names. |
+| `TSA_NOT_CONFIGURED` | `sign_pdf timestamp:true` / `timestamp_pdf` without `PDFNATIVE_MCP_TSA_URL` (or not an absolute URL) | Operator sets the TSA variables; no request is made otherwise. |
+| `TSA_REJECTED` | TSA answered with a failure status, wrong imprint or nonce | Check the TSA endpoint / auth; raise `placeholderBytes` if the token is large. |
+| `REVOCATION_NOT_CONFIGURED` | `add_ltv mode:'online'` without `PDFNATIVE_MCP_REVOCATION` + `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS` | Operator configures both, or use `mode:'offline'` with exported material. |
+| `NETWORK_HOST_NOT_ALLOWED` | Certificate-advertised OCSP / CRL URL is not allow-listed, not http(s), has credentials, or targets an internal address | Add the responder host to the allow-list (verbatim for IP literals). |
+| `NETWORK_ERROR` | TSA / OCSP / CRL request failed (timeout, HTTP error, response cap, invalid timeout / allow-list value) | Check connectivity and the env values; message never contains secrets. |
+| `LTV_NO_SIGNATURE` | `add_ltv` on a PDF without a signed signature | Run `sign_pdf` first. |
+| `LTV_EMPTY` | Online collection yielded nothing (self-signed chain, no AIA / CRL-DP) | Use `mode:'offline'` with material you hold, or a CA-issued certificate. |
+| `LTV_MATERIAL_INVALID` | An offline DER blob (cert / OCSP / CRL) did not parse | Export DER (not PEM); check the field index in the message. |
+| `LTV_ERROR` | Other `add_ltv` / `timestamp_pdf` failure | Message carries the engine text. |
+| `PLACEHOLDER_AMBIGUOUS` | Several unsigned placeholders and no `fieldName` | Pass `fieldName` (list them with `inspect_pdf signatures:true`). |
+| `SIGNATURE_FIELD_NOT_FOUND` | `fieldName` matched no signature field | Check the name via `inspect_pdf signatures:true`. |
 | `MISSING_PLACEHOLDER` | `sign_pdf` w/ `autoInjectPlaceholder:false` on unplaceheld PDF | Keep the default `true`, or run `prepare_signature_placeholder`. |
 | `PASSWORD_REQUIRED` | Encrypted source, no `password` supplied (read-only or page-tree tools) | Pass the `password` input (user or owner). |
 | `PASSWORD_INVALID` | Supplied `password` did not open the document | Check the password; either user or owner works. |
@@ -140,9 +189,9 @@ attachments in the caller.
 | `FORM_FIELD_NOT_FOUND` | `fill_form` value key matched no field | Use `read_form_fields`, or `onUnknownField:'ignore'`. |
 | `FORM_VALUE_TYPE_ERROR` | Wrong value type / choice not in options | Match the field type; use a valid option. |
 | `FORM_UNSUPPORTED` | Tried to fill/flatten a signature field | Sign with `sign_pdf` instead. |
-| `CHART_ERROR` | `add_chart` failed to render | Check `series`/`chartType`; hex colours only. |
+| `CHART_ERROR` | Chart (`add_chart` or a `generate_basic_pdf` `chart` block) failed an engine cross-field rule: log scale with non-positive values, scatter without `xValues`, `xValues` length mismatch, `yAxis:'right'` on pie, … | The message carries the remedy; hex colours only. |
 | `EXTRACTION_UNSUPPORTED` | (legacy) retained for compatibility | Encrypted reads now use `password` instead. |
-| `ENCRYPTED_SOURCE` | Retained by `annotate_pdf` (no `password` input) | Decrypt with `decrypt_pdf` first, or use a password-aware tool. |
+| `ENCRYPTED_SOURCE` | Encrypted input on `annotate_pdf`, `update_metadata`, `add_ltv`, `timestamp_pdf` (no `password` input) | Decrypt with `decrypt_pdf` first, or use a password-aware tool. |
 | `ATTACHMENT_NOT_FOUND` | `extract_attachments` `filename` matched nothing | Drop `filename` or list names via `inspect_pdf`. |
 | `ATTACHMENT_TOO_LARGE` | `add_attachment` payload > 8 MiB | Shrink/split the payload. |
 | `OUTPUT_TOO_LARGE` | PDF > 50 MiB, or extraction > 16 MiB/file · 32 MiB total | Reduce content; for extraction use `includeData:false` or `filename`. |
@@ -158,8 +207,13 @@ attachments in the caller.
   and the scoped rules under [.github/instructions/](.github/instructions/).
 - Strict TypeScript (no `any`); validate every tool input at the boundary with Zod,
   keeping the hand-written JSON Schema and the Zod schema aligned.
-- Never write outside `PDFNATIVE_MCP_OUTPUT_DIR`; never echo key/cert material in
-  errors or logs.
+- Never write outside `PDFNATIVE_MCP_OUTPUT_DIR`; never echo key/cert material or
+  the `PDFNATIVE_MCP_TSA_AUTH` secret in errors or logs.
+- Never add an outbound network path: egress is limited to `src/network.ts`
+  (operator-configured TSA / OCSP / CRL, SSRF guard) and URLs never come from tool
+  arguments.
+- Optional advisory check for PDF/A output: `npm run validate:pdfa` (veraPDF;
+  mirrored by the non-blocking `verapdf.yml` CI job).
 - Quality gate (all PRs):
 
   ```

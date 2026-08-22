@@ -8,8 +8,10 @@ pdfnative-mcp has **three** form tools. Pick by intent:
 | **Inspect** the fields of an existing form | `read_form_fields` (read-only) |
 | **Fill / flatten** an existing form | `fill_form` |
 
-`read_form_fields` and `fill_form` are new in **v1.5.0** (pdfnative v1.6.0's
-`readFormFields` / `fillForm` / `flattenForm`). They operate on *existing*
+`read_form_fields` and `fill_form` arrived in **v1.5.0** (pdfnative's
+`readFormFields` / `fillForm` / `flattenForm`; since pdfnative 1.7 the AcroForm
+`/Helv` font carries a `/ToUnicode` CMap, so filled text extracts reliably). They
+operate on *existing*
 AcroForms — a template made by `add_form`, or any third-party fillable PDF.
 
 ## The typical flow

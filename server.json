@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.github.Nizoka/pdfnative-mcp",
-  "description": "Production-grade MCP server for PDF generation, PDF/A archival, PDF/UA structural validation, native vector charts, digital signatures (PAdES sign + verify, constant-time node:crypto), encryption round-trip (decrypt + AES-128/256 re-encrypt), AcroForm fill & flatten, page-tree ops (merge / split / extract), markup annotations, Factur-X invoices, Unicode text extraction with positioned runs, PDF introspection, MCP resources for generated PDFs, and human-in-the-loop AI-governance issue drafting. 24 tools, 24 scripts, zero runtime dependencies beyond pdfnative and the MCP SDK.",
+  "description": "Production-grade MCP server for PDF generation, PDF/A archival (embedded fonts + conformance diagnostics), PDF/UA structural validation, native vector charts v2 (stacked / area / scatter, dual axis, log & time scales), digital signatures with the full PAdES long-term-validation ladder (B-B / B-T / B-LT / B-LTA: RFC 3161 timestamps, /DSS, document timestamps; sign + verify, constant-time node:crypto), print production (page boxes, bleed, printer's marks, /Trapped, ICC output intent), document-metadata updates, encryption round-trip (decrypt + AES-128/256 re-encrypt), AcroForm fill & flatten, page-tree ops (merge / split / extract), markup annotations, Factur-X invoices, Unicode text extraction with positioned runs, PDF introspection, MCP resources for generated PDFs, and human-in-the-loop AI-governance issue drafting. MCP 2026-07-28 with automatic 2025-era fallback. 27 tools, 24 scripts, no outbound network by default, zero runtime dependencies beyond pdfnative and the MCP SDK.",
   "repository": {
     "url": "https://github.com/Nizoka/pdfnative-mcp",
     "source": "github"
@@ -35,7 +35,38 @@
         },
         {
           "name": "PDFNATIVE_MCP_PORT",
-          "description": "Bind to an HTTP port instead of stdio (Streamable HTTP MCP transport).",
+          "description": "Bind to an HTTP port instead of stdio (Streamable HTTP MCP transport, loopback only).",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "number"
+        },
+        {
+          "name": "PDFNATIVE_MCP_TSA_URL",
+          "description": "Absolute http(s) URL of the RFC 3161 timestamp authority used by sign_pdf timestamp=true and timestamp_pdf (PAdES B-T / B-LTA). When unset those calls fail with TSA_NOT_CONFIGURED and no network request is made. The server never makes an outbound call except to operator-configured TSA / OCSP / CRL endpoints; tool arguments can never supply a URL.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "PDFNATIVE_MCP_TSA_AUTH",
+          "description": "Optional Authorization header value sent to the TSA (e.g. 'Basic …' or 'Bearer …'). Never logged or echoed in error messages.",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "PDFNATIVE_MCP_REVOCATION",
+          "description": "'ocsp', 'crl' or 'ocsp,crl' — enables online OCSP / CRL collection for add_ltv mode='online' (PAdES B-LT). When unset that mode fails with REVOCATION_NOT_CONFIGURED; add_ltv mode='offline' embeds caller-supplied material with zero network access. Requires PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS",
+          "description": "Comma-separated allow-list of OCSP / CRL responder hosts ('host', 'host:port' or '*.suffix'). Mandatory when PDFNATIVE_MCP_REVOCATION is set: responder URLs come from untrusted certificates inside the PDF and are fetched only when the host matches (http(s) only, no credentials, no redirects, internal address literals rejected unless listed verbatim).",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "PDFNATIVE_MCP_NETWORK_TIMEOUT_MS",
+          "description": "Per-request timeout for TSA / OCSP / CRL calls in milliseconds, 1000-120000 (default 10000).",
           "isRequired": false,
           "isSecret": false,
           "format": "number"

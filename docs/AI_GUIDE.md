@@ -1,7 +1,7 @@
 # AI Agent Guide — pdfnative-mcp
 
 > **Read this first if you are an AI agent (Copilot, Claude, Cursor, Continue, Zed, Windsurf, Cline, Roo Code, …) about to call pdfnative-mcp.**
-> It tells you which of the 24 tools to pick and how to avoid the common retry loops.
+> It tells you which of the 27 tools to pick and how to avoid the common retry loops.
 
 The server also returns the same decision tree in `serverInfo.instructions`. The full reference lives in [`KNOWLEDGE_BASE.md`](KNOWLEDGE_BASE.md); the stability charter in [`API_STABILITY.md`](API_STABILITY.md). Worked invocations are in [`../examples/`](../examples).
 
@@ -50,6 +50,24 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
   - ECDSA scalar form: `ecPrivateScalarHex` = 64 hex chars (raw P-256 `d`)
 - After signing, call `verify_pdf` to confirm. Without `trustedRootsDerBase64`, `chainTrust` is `'self-signed'` or `'unverified'` — that is expected.
 - RSA and EC-DER keys sign through a constant-time `node:crypto` provider (with a transparent pure-JS fallback); the raw-scalar `ecPrivateScalarHex` path uses the pure-JS signer. Signatures are interoperable either way.
+- **v1.6.0 (pdfnative 1.7):** `profile: 'pades'` gives an ETSI EN 319 142-1 baseline signature (`ETSI.CAdES.detached`, ESS signing-certificate-v2); `algorithm` also accepts `rsa-sha384` / `rsa-sha512`; `certChainDerBase64` carries intermediates. `timestamp: true` (B-T) needs the operator-configured `PDFNATIVE_MCP_TSA_URL` — otherwise `TSA_NOT_CONFIGURED`, no request is made.
+- Signer metadata (`signerName`, `reason`, `location`, `contactInfo`) is **baked into the placeholder** (earlier engines dropped it): when you pre-built the placeholder with `prepare_signature_placeholder`, set them there.
+- Several unsigned placeholders → pass `fieldName` (else `PLACEHOLDER_AMBIGUOUS`); to add a second signature next to an existing one, pass `allowMultiple: true` + a fresh `fieldName`.
+
+### Long-term validation (PAdES ladder)
+- B-B `sign_pdf` → B-T `sign_pdf timestamp: true` → B-LT `add_ltv` → B-LTA `timestamp_pdf`. `verify_pdf ltv: true` reports `ltvLevel` and per-signature `profile` / `timestamp` / `revocation`.
+- `add_ltv mode: 'online'` (default) needs `PDFNATIVE_MCP_REVOCATION` + `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS` on the server (`REVOCATION_NOT_CONFIGURED` otherwise). `mode: 'offline'` embeds DER certificates / OCSP responses / CRLs you supply — zero network, for air-gapped pipelines. Self-signed chains yield nothing online (`LTV_EMPTY`).
+- `timestamp_pdf` re-runs extend the chain (`DocTimeStamp1`, `DocTimeStamp2`, …); raise `placeholderBytes` for TSAs that return large chains (`TSA_REJECTED` / `LTV_ERROR`).
+- Document timestamps never flip `allValid`; `verify_pdf` reads revocation status from embedded `/DSS` material only. See [`guides/LTV.md`](guides/LTV.md).
+
+### Print production
+- Every document tool accepts `print: { bleed }` (TrimBox = MediaBox inset, BleedBox = MediaBox) or explicit `trimBox` / `bleedBox` / `artBox` / `cropBox` (points, inside the MediaBox), `marks: true | { crop, registration, length, offset, weight }` (needs a TrimBox), and `userUnit` (not under `pdfa1b`). `bleed` and `trimBox` are mutually exclusive.
+- `metadata: { author, subject, keywords, trapped }` writes `/Info` (+ XMP under PDF/A); `outputIntent` replaces the built-in sRGB intent with your RGB ICC profile (CMYK profiles are rejected → `PRINT_ERROR`).
+- Read the boxes back with `inspect_pdf pages: true`; they survive `merge_pdfs` / `split_pdf` / `extract_pages`. See [`guides/PRINT.md`](guides/PRINT.md).
+
+### Charts v2
+- Kinds: `bar`, `barH`, `stackedBar`, `stackedBarH`, `line`, `area`, `scatter`, `pie`, `donut`. `scatter` (and `line` / `area` on a `linear` / `time` x axis) needs per-series `xValues`. `yAxis: 'right'` on a series draws the secondary `axis2`. `axis.scale: 'log'` requires strictly positive, non-stacked data. Engine cross-field violations come back as `CHART_ERROR` with the remedy.
+- Overlapping category labels are thinned automatically; `labelStride: 1` restores every label, `labelRotation` disables the stride. See [`guides/CHARTS.md`](guides/CHARTS.md).
 
 ### Combining / carving PDFs (page-tree)
 - `merge_pdfs` joins 2–50 PDFs (`pdfsBase64[]`) into one. `split_pdf` cuts one PDF into one document per `ranges[]` entry (`{ start, end? }`, 0-based inclusive). `extract_pages` keeps an arbitrary `pages[]` subset (0-based) in a single PDF.
@@ -85,6 +103,8 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 - The Euro sign `€` and other CP-1252 symbols render and extract correctly (pdfnative 1.3). Do **not** substitute `EUR` for `€`.
 - Wrapped table cells get unique per-line MCIDs automatically — tagged tables are PDF/UA-safe.
 - After generating a tagged/PDF-A document, call `validate_pdf` to assert PDF/UA structural conformance.
+- **Honesty note (v1.6.0):** the Latin document tools render text through the viewer's base-14 Helvetica, which is **not embedded** — veraPDF rejects such a PDF/A claim (ISO 19005 §6.2.11.4.1). For a valid claim pass `embedFonts: true` (Noto Sans Latin, about 0.3 MiB; `add_international_text` always embeds). `strict: true` fails with `PDF_A_COMPLIANCE_VIOLATION` instead of producing a non-conformant file; `includeDiagnostics: true` echoes the engine diagnostics (e.g. `PDFA_NO_FONT_ENTRIES`) in `structuredContent.diagnostics`.
+- `print.userUnit` is rejected under `pdfa1b`.
 - See [`guides/PDFA.md`](guides/PDFA.md) for the per-tool capability matrix.
 
 ### International text
@@ -98,7 +118,7 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 - Encrypted sources are rejected with `ENCRYPTED_SOURCE`; out-of-range `page` indices are rejected by validation.
 
 ### Drafting a GitHub issue (human-in-the-loop)
-- `draft_governance_issue` produces a **local** draft `.md` + a machine-readable compliance report. It **never** submits to GitHub and makes **no** outbound network call — you are a draftsman; a human is the only gate that submits.
+- `draft_governance_issue` produces a **local** draft `.md` + a machine-readable compliance report. It **never** submits to GitHub and makes **no** network call — you are a draftsman; a human is the only gate that submits. (The server's only possible egress is the operator-configured TSA / OCSP / CRL endpoints used by the LTV tools; tool arguments can never supply a URL.)
 - Always set `duplicateSearchPerformed: true` (after actually searching) and include a `reproduction: { command, result }`. Proposing a runtime dependency, omitting the reproduction, or `duplicateSearchPerformed: false` is rejected with `GOVERNANCE_VIOLATION`.
 - Read the `governance_contract` and `draft_issue_workflow` MCP prompts first; the full contract is in [`guides/AI_GOVERNANCE.md`](guides/AI_GOVERNANCE.md).
 
@@ -119,7 +139,11 @@ The four read-only tools — `inspect_pdf`, `verify_pdf`, `validate_pdf`, `extra
 
 Defaults are unchanged: omit both and you get the full v1.1.0-identical response. Smallest "is this PDF signed and valid?" probe: `{ pdfBase64, verbosity: 'summary', fields: ['allValid'] }`.
 
-> **PDF bytes delivery:** generated PDFs (base64 mode) are returned **once** as an embedded `resource` content block (a `data:application/pdf;base64,…` URI), not duplicated into `structuredContent` (which is `{ mode, sizeBytes }`). Read the bytes from the resource block.
+> **PDF bytes delivery:** generated PDFs (base64 mode) are returned **once** as an embedded `resource` content block (a `data:application/pdf;base64,…` URI), not duplicated into `structuredContent` (which is `{ mode, sizeBytes }`, plus `diagnostics[]` when `includeDiagnostics: true` and a `summary` for `add_ltv`). Read the bytes from the resource block.
+
+### Protocol (v1.6.0)
+- The server speaks MCP 2026-07-28 (stateless, `server/discover`, `resultType`, cache hints) and falls back automatically to the 2025-era `initialize` handshake. Whatever your host negotiates, the `tools/call` payload is the same.
+- `tools/list` and `prompts/list` are safe to cache for 24 h (`cacheScope: 'public'`); `resources/*` results are private and must not be cached.
 
 ### File output mode
 - `outputMode: 'file'` only works if the host process set `PDFNATIVE_MCP_OUTPUT_DIR`. Otherwise the call returns `SecurityError`.
@@ -139,9 +163,28 @@ Defaults are unchanged: omit both and you get the full v1.1.0-identical response
 1. `sign_pdf` — pass `certDerBase64` + one key form; the `/Sig` placeholder is auto-injected.
 2. `verify_pdf` — confirm `allValid: true`. Supply `trustedRootsDerBase64` to upgrade `chainTrust` from `self-signed`/`unverified` to `trusted`.
 
+### Sign with timestamp + LTV (B-LTA)
+1. `sign_pdf` with `profile: 'pades'`, `timestamp: true`, `certChainDerBase64: [intermediates]`.
+2. `add_ltv` with `mode: 'online'` (operator provider) or `mode: 'offline'` + exported DER material.
+3. `timestamp_pdf` — document timestamp; repeat before the TSA certificate expires.
+4. `verify_pdf` with `ltv: true` — expect `ltvLevel: 'B-LTA'` and `allValid: true`.
+
 ### Authoring a PDF/A document
-1. `generate_basic_pdf` (or `add_table` / `add_international_text`) with `pdfA: 'pdfa2b'`.
+1. `generate_basic_pdf` (or `add_table` / `add_international_text`) with `pdfA: 'pdfa2b'` and `embedFonts: true` (+ `strict: true` to fail on any conformance diagnostic).
 2. `validate_pdf` — assert `valid: true` for PDF/UA structure before delivery.
+3. *(optional, contributors)* `npm run validate:pdfa` — advisory veraPDF run on the generated corpus.
+
+### Print-ready with bleed and marks
+1. `generate_basic_pdf` / `add_table` / `add_chart` / … with `print: { bleed: 8.5, marks: true }` and `metadata: { trapped: 'False' }`.
+2. `inspect_pdf` with `pages: true` — read `trimBox` / `bleedBox` back; `check: ['trapped']` asserts the flag.
+
+### Stacked / area / scatter / dual-axis chart
+1. `add_chart` with `chartType: 'stackedBar'` (or `'area'`, `'scatter'` + `xValues` + `xAxis: { type: 'linear' | 'time' }`); bind a series to `yAxis: 'right'` and configure `axis2` for a dual-axis chart; `dataLabels: true` prints values.
+2. *(optional)* `inspect_pdf` to confirm the document, or `validate_pdf` when `pdfA` is set (the chart carries `/Figure` + `/Alt`).
+
+### Update metadata of an existing PDF
+1. `update_metadata` with `author` / `keywords` / … (pin `modDate` for reproducible bytes).
+2. `sign_pdf` / `timestamp_pdf` again if the latest revision must be signed — the update is an unsigned incremental revision.
 
 ### Watermarked report
 1. `add_table` with `watermark: { text: 'CONFIDENTIAL', opacity: 0.2 }`.
@@ -168,7 +211,7 @@ Defaults are unchanged: omit both and you get the full v1.1.0-identical response
 ## 4. Self-documenting metadata
 
 Every tool ships:
-- `_meta.apiVersion` = `'1.5.0'` — see [`API_STABILITY.md`](API_STABILITY.md).
+- `_meta.apiVersion` = `'1.6.0'` — see [`API_STABILITY.md`](API_STABILITY.md).
 - `_meta.examples`   — at least one worked example per tool. Inspect the `ListTools` response to discover them.
 
 You can rely on these fields when negotiating capabilities before calling a tool.
@@ -183,7 +226,17 @@ The MCP error response always includes a `code` and a message:
 |---|---|---|
 | `VALIDATION_ERROR` | Zod rejected the input | Re-read the field’s schema (the message lists the offending path). |
 | `PDF_PARSE_FAILED` | Input PDF is malformed or truncated | Re-encode the base64; verify the source PDF opens in a normal reader. |
-| `PDF_A_COMPLIANCE_VIOLATION` | `generate_basic_pdf` / `add_table` watermark with `opacity < 1.0` (incl. the 0.15 default) under `pdfA: 'pdfa1b'` | Set `watermark.opacity: 1.0`, or target `pdfa2b` / `pdfa3b` (which allow transparency). |
+| `PDF_A_COMPLIANCE_VIOLATION` | Watermark `opacity < 1.0` under `pdfa1b`; `strict: true` with an engine PDF/A diagnostic (e.g. unembedded Helvetica); `print.userUnit` under `pdfa1b` | Set `opacity: 1.0` or `pdfa2b`+; add `embedFonts: true`; drop `userUnit` or use `pdfa2b`+. |
+| `PRINT_ERROR` | Engine rejected `print` / `outputIntent` (box outside MediaBox, marks without TrimBox, non-RGB ICC) | Fix the boxes, supply `bleed` / `trimBox`, use an RGB ICC profile. |
+| `CHART_ERROR` | Chart cross-field rule violated (log scale with non-positive values, scatter without `xValues`, …) | The message carries the remedy. |
+| `METADATA_ERROR` | `update_metadata` could not rewrite `/Info` | Confirm the PDF opens; report with a reproduction if it persists. |
+| `GENERATION_FAILED` | Generic engine throw while building | The message carries the engine text. |
+| `TSA_NOT_CONFIGURED` / `TSA_REJECTED` | No `PDFNATIVE_MCP_TSA_URL`, or the TSA answered with a failure / bad imprint / bad nonce | Operator configures the TSA; check auth; raise `placeholderBytes`. |
+| `REVOCATION_NOT_CONFIGURED` | `add_ltv mode: 'online'` without `PDFNATIVE_MCP_REVOCATION` + allow-list | Operator configures both, or use `mode: 'offline'`. |
+| `NETWORK_HOST_NOT_ALLOWED` / `NETWORK_ERROR` | Responder URL not allow-listed / internal address, or the request failed (timeout, HTTP status, size cap) | Allow-list the host verbatim; check connectivity and env values. |
+| `LTV_NO_SIGNATURE` / `LTV_EMPTY` / `LTV_MATERIAL_INVALID` / `LTV_ERROR` | No signed signature; nothing collectable; offline DER blob does not parse; other LTV failure | Sign first; use offline material; export DER not PEM. |
+| `PLACEHOLDER_AMBIGUOUS` / `SIGNATURE_FIELD_NOT_FOUND` | Several unsigned placeholders without `fieldName`, or `fieldName` unknown | List fields with `inspect_pdf signatures: true` and pass `fieldName`. |
+| `ENCRYPTED_SOURCE` | Encrypted input on `annotate_pdf`, `update_metadata`, `add_ltv`, `timestamp_pdf` | `decrypt_pdf` first. |
 | `MISSING_PLACEHOLDER` | `sign_pdf` called with `autoInjectPlaceholder: false` on a PDF without `/Sig` | Set `autoInjectPlaceholder: true` (the default) or call `prepare_signature_placeholder` first. |
 | `EXTRACTION_UNSUPPORTED` | Encrypted PDF passed to `extract_text` / `extract_attachments` | Decrypt the PDF outside the server first. |
 | `ATTACHMENT_NOT_FOUND` | `extract_attachments` `filename` filter matched no embedded file | Omit `filename`, or call `inspect_pdf` to list the real attachment names. |

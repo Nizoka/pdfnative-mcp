@@ -1,6 +1,6 @@
 # Encryption guide (for AI agents)
 
-pdfnative-mcp v1.5.0 (on pdfnative v1.6.0's Standard Security Handler) can **read**
+Since pdfnative-mcp v1.5.0 (pdfnative's Standard Security Handler) the server can **read**
 encrypted PDFs, **decrypt** them, and **re-encrypt** with AES. RC4 is decrypted on
 read but **never emitted** for new output.
 
@@ -63,6 +63,7 @@ pass `password` to ingest encrypted sources and `encrypt` to protect the result
 | `PASSWORD_INVALID` | Supplied `password` did not open the document. |
 | `ENCRYPTION_UNSUPPORTED` | The document uses a security handler this server cannot open. |
 | `ENCRYPTION_ERROR` | Re-encryption failed (e.g. no Web Crypto CSPRNG available). |
+| `ENCRYPTED_SOURCE` | Encrypted input on a tool without a `password` input: `annotate_pdf`, `update_metadata`, `add_ltv`, `timestamp_pdf` (v1.6.0). Run `decrypt_pdf` first. |
 
 ## Safety notes
 

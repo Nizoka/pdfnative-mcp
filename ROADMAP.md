@@ -109,7 +109,24 @@ Priorities may shift based on community feedback and sponsorship.
 - [x] **Native MCP resources** — generated PDFs (file mode) exposed as `pdfnative://output/…` resource URIs (`resources/list` + `resources/read`) with `resource_link` in results. (Previously long-term.)
 - [x] **Tool annotations** — every tool advertises `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`.
 
-_v1.5.0 is the active release. `redact_pdf` stays **deferred** by design (overlay/flatten ≠ content removal)._
+### v1.6.0 — PAdES LTV ladder, print production, charts v2, MCP 2026-07-28, pdfnative 1.7
+
+- [x] **pdfnative v1.7.0** — dependency bump `^1.6.0` → `^1.7.0` (additive; engine byte changes documented in the release notes).
+- [x] **MCP SDK v2 / MCP 2026-07-28** — migrated from `@modelcontextprotocol/sdk` 1.x to `@modelcontextprotocol/server` ^2.0.0: stateless serving, `server/discover`, `resultType`, `ttlMs` / `cacheScope` cache hints, `_meta` serverInfo, `Mcp-Method` / `Mcp-Name` headers on HTTP, resource-not-found as `-32602`; automatic fallback to the 2025-era `initialize` handshake on stdio and HTTP so existing hosts keep working unchanged.
+- [x] **Tool `add_ltv`** — PAdES B-LT: embed `/DSS` + `/VRI` with certificates and OCSP / CRL material, `mode: 'online'` (operator provider) or `mode: 'offline'` (caller-supplied DER, zero network). **25th tool.**
+- [x] **Tool `timestamp_pdf`** — PAdES B-LTA: RFC 3161 `/DocTimeStamp` from the operator TSA; re-run to extend the archival chain. **26th tool.**
+- [x] **Tool `update_metadata`** — incremental `/Info` + XMP rewrite (title / author / subject / keywords) on existing PDFs. **27th tool.**
+- [x] **`sign_pdf` PAdES ladder** — `profile: 'pades'` (ETSI EN 319 142-1 baseline), `timestamp: true` (B-T), RSA-SHA384/512, `certChainDerBase64`, `fieldName` / `allowMultiple` for multiple signatures; `prepare_signature_placeholder` gains `subFilter` / `reserveTimestamp`; `verify_pdf ltv: true` reports profile, timestamp, revocation status and `ltvLevel`.
+- [x] **Network charter** — no egress by default; only operator-configured TSA / OCSP / CRL endpoints (`PDFNATIVE_MCP_TSA_URL`, `PDFNATIVE_MCP_TSA_AUTH`, `PDFNATIVE_MCP_REVOCATION`, `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS`, `PDFNATIVE_MCP_NETWORK_TIMEOUT_MS`) behind an SSRF guard; URLs never come from tool arguments. Mirrored in `.github/ai-governance.json` / `AGENT_RULES.md`.
+- [x] **Print production** — `print` (TrimBox / BleedBox / ArtBox / CropBox, `bleed` shorthand, crop + registration `marks`, `/UserUnit`), `metadata` (`/Author` / `/Subject` / `/Keywords` / `/Trapped`), `outputIntent` (custom RGB ICC) on every document tool; `viewerPreferences` print-dialog defaults; `inspect_pdf pages: true` reports the boxes; merge / split / extract preserve them.
+- [x] **Charts v2** — `stackedBar` / `stackedBarH` / `area` / `scatter`, secondary axis (`axis2`), `axis.scale: 'log'`, `xAxis.type: 'linear' | 'time'`, `dataLabels`, `labelStride` (automatic) / `labelRotation`; engine cross-field rules surfaced as `CHART_ERROR`.
+- [x] **Honest PDF/A** — `embedFonts` (Noto Sans Latin; base-14 Helvetica is not embedded), `strict` (fail instead of warn), `includeDiagnostics` (`structuredContent.diagnostics`) on every document tool; advisory veraPDF script (`npm run validate:pdfa`) and a non-blocking CI workflow.
+- [x] **`inspect_pdf` signature inventory** — `signatures: true`, `dss` / `docTimestampCount` / `trapped`, new `check` values `dss` / `docTimestamp` / `trapped`.
+- [x] **Colour-emoji sequences** — flag and ZWJ sequences render as single glyphs (engine; no API change).
+- [x] **Fix: signer metadata** — `signerName` / `reason` / `location` / `contactInfo` never reached the `/Sig` dictionary on pdfnative < 1.7; now baked at placeholder time.
+- [x] **Fix: `verify_pdf` on B-LTA documents** — `/DocTimeStamp` entries are verified as RFC 3161 tokens and no longer flip `allValid`.
+
+_v1.6.0 is the active release. `redact_pdf` stays **deferred** by design (overlay/flatten ≠ content removal)._
 
 ---
 
@@ -117,15 +134,16 @@ _v1.5.0 is the active release. `redact_pdf` stays **deferred** by design (overla
 
 ### Blocked upstream
 
-The page-tree tools, the annotation writer, and (in v1.5.0) the encrypted
-round-trip, charts and form fill/flatten have all shipped on their respective
-pdfnative exports. The remaining items stay **blocked/deferred**: pdfnative does
-not yet export a content-*removal* API, and implementing one on raw primitives
-would contradict this project's faithful, thin-wrapper philosophy.
+The page-tree tools, the annotation writer, the encrypted round-trip, charts,
+form fill/flatten and (in v1.6.0) the full PAdES LTV ladder, print production
+and metadata updates have all shipped on their respective pdfnative exports. The
+remaining items stay **blocked/deferred**: pdfnative does not yet export a
+content-*removal* API, and implementing one on raw primitives would contradict
+this project's faithful, thin-wrapper philosophy.
 
 - [ ] **Tool `redact_pdf`** — **deferred by design.** pdfnative can overlay annotations and flatten forms, but not *remove* page content; an overlay-only "redaction" would leave the original bytes intact and create false security, which fails this project's honesty bar. Blocked on an upstream true content-removal API (tracked as a `draft_governance_issue` feature request).
-- [ ] **`verify_pdf` native ECDSA verify** — replace the local P-256 verifier once pdfnative exports `ecdsaVerifyHash` (still internal-only in 1.6.0).
-- [ ] **Per-tool HTTP page-by-page streaming** — once MCP allows partial structuredContent envelopes (pdfnative 1.6 already provides `streamMergedPdfs` / `streamSplitPdf` / `streamExtractPages`).
+- [ ] **`verify_pdf` native ECDSA verify** — replace the local P-256 verifier once pdfnative exports `ecdsaVerifyHash` (still internal-only in 1.7.0).
+- [ ] **Per-tool HTTP page-by-page streaming** — MCP 2026-07-28 still has no partial `structuredContent` envelope (results are `resultType: 'complete'` only), so large results stay single-shot; pdfnative already provides `streamMergedPdfs` / `streamSplitPdf` / `streamExtractPages`.
 
 ### Long-Term
 

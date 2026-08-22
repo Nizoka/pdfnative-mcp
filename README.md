@@ -7,7 +7,8 @@
 [![Node version](https://img.shields.io/node/v/pdfnative-mcp.svg?logo=node.js)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/Nizoka/pdfnative-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Nizoka/pdfnative-mcp/actions/workflows/ci.yml)
-[![MCP](https://img.shields.io/badge/MCP-1.x-6f42c1.svg)](https://modelcontextprotocol.io)
+[![MCP](https://img.shields.io/badge/MCP-2026--07--28-6f42c1.svg)](https://modelcontextprotocol.io)
+[![pdfnative](https://img.shields.io/badge/pdfnative-1.7-0a7e8c.svg)](https://github.com/Nizoka/pdfnative)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Nizoka/pdfnative-mcp/badge)](https://scorecard.dev/viewer/?uri=github.com/Nizoka/pdfnative-mcp)
 [![CodeQL](https://github.com/Nizoka/pdfnative-mcp/actions/workflows/codeql.yml/badge.svg)](https://github.com/Nizoka/pdfnative-mcp/actions/workflows/codeql.yml)
@@ -16,34 +17,50 @@
 
 ## ✨ Features
 
-`pdfnative-mcp` exposes **24 production-grade tools** to any MCP host:
+`pdfnative-mcp` exposes **27 production-grade tools** to any MCP host:
 
 | Tool                               | Purpose                                                                                          |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `generate_basic_pdf`               | Multi-page A4 documents from structured blocks (headings, paragraphs, lists, page breaks). Embedded newlines auto-split into paragraphs. Optional `pdfA`. |
+| `generate_basic_pdf`               | Multi-page A4 documents from structured blocks (headings, paragraphs, lists, charts, page breaks). Embedded newlines auto-split into paragraphs. Optional `pdfA`, `print`, `metadata`, `embedFonts`. |
 | `add_barcode`                      | QR Code, Code 128, EAN-13, Data Matrix, PDF417 — embedded in a single-page PDF.                 |
-| `add_international_text`           | 24 scripts (incl. **Latin** & COLRv1 **colour emoji**) with BiDi & OpenType shaping; multi-lang per document. |
+| `add_international_text`           | 24 scripts (incl. **Latin** & COLRv1 **colour emoji** with flag / ZWJ sequences) with BiDi & OpenType shaping; multi-lang per document. |
 | `add_table`                        | Tabular reports with smart fields (wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding). |
 | `add_form`                         | Create a **new** interactive AcroForm PDF with text fields, checkboxes, radio buttons, dropdowns. |
-| `read_form_fields` *(new in v1.5.0)* | Read-only enumeration of an **existing** AcroForm's field tree (names, types, values, widgets).  |
-| `fill_form` *(new in v1.5.0)*      | Fill and/or flatten an **existing** AcroForm (non-destructive incremental update).              |
-| `add_chart` *(new in v1.5.0)*      | Native vector charts — bar / horizontal-bar / line / pie / donut (pure PDF path operators, PDF/A-safe). |
+| `read_form_fields`                 | Read-only enumeration of an **existing** AcroForm's field tree (names, types, values, widgets).  |
+| `fill_form`                        | Fill and/or flatten an **existing** AcroForm (non-destructive incremental update).              |
+| `add_chart`                        | Native vector charts v2 — bar / barH / stackedBar / stackedBarH / line / area / scatter / pie / donut, secondary axis, log & time scales, data labels (pure PDF path operators, PDF/A-safe). |
 | `embed_image`                      | Embed a JPEG or PNG image (base64) into a titled PDF document.                                  |
-| `prepare_signature_placeholder`    | Step 1 of the two-step sign workflow — create a PDF with a `/Sig` AcroForm placeholder.        |
-| `sign_pdf`                         | Apply a PAdES-compatible CMS signature (RSA-SHA256 / ECDSA-SHA256 P-256). Auto-injects a placeholder when needed. |
-| `verify_pdf`                       | Verify every PAdES signature in a PDF (integrity + signature value + optional chain trust).      |
-| `validate_pdf` *(new in v1.1.0)*   | Validate a Tagged PDF for PDF/UA (ISO 14289-1) structural conformance (read-only).              |
+| `prepare_signature_placeholder`    | Optional step 1 of the sign workflow — create a PDF with a `/Sig` placeholder (signer metadata, `subFilter`, `reserveTimestamp` baked in). |
+| `sign_pdf`                         | PAdES B-B / B-T CMS signature (RSA-SHA256/384/512, ECDSA-SHA256 P-256; `profile: 'pades'`, `timestamp`, `certChainDerBase64`, multiple signatures). Auto-injects a placeholder when needed. |
+| `add_ltv` *(new in v1.6.0)*        | PAdES B-LT — embed a `/DSS` with certificates + OCSP/CRL material (operator-configured provider, or caller-supplied offline material). |
+| `timestamp_pdf` *(new in v1.6.0)*  | PAdES B-LTA — append an RFC 3161 `/DocTimeStamp` from the operator-configured TSA; re-run to extend the archival chain. |
+| `verify_pdf`                       | Verify every PAdES signature and document timestamp (integrity + signature value + optional chain trust); `ltv: true` reports the B-B…B-LTA level. |
+| `validate_pdf`                     | Validate a Tagged PDF for PDF/UA (ISO 14289-1) structural conformance (read-only).              |
 | `add_attachment`                   | Generate a PDF/A-3 document with embedded files (Factur-X / ZUGFeRD invoices).                  |
 | `extract_attachments`              | Read-only extraction of embedded files (Factur-X / ZUGFeRD XML round-trip) with byte-for-byte payloads. |
 | `extract_text`                     | Unicode text extraction (resolves `/ToUnicode`) with optional positioned runs; opens encrypted PDFs via `password`. |
-| `inspect_pdf`                      | Read-only inspection: PDF version, page count, encryption (+ precise `encryptionInfo`), PDF/A claim, signatures, attachments, placeholder state. |
-| `encrypt_pdf` *(new in v1.5.0)*    | Re-secure a PDF with AES-128 / AES-256 (owner/user passwords, permissions, password rotation).  |
-| `decrypt_pdf` *(new in v1.5.0)*    | Emit an unencrypted copy of an RC4 / AES-128 / AES-256 document.                                |
-| `merge_pdfs` *(new in v1.3.0)*     | Concatenate 2–50 PDFs into one via pdfnative's page-tree API.                                  |
-| `split_pdf` *(new in v1.3.0)*      | Split one PDF into one document per page range (multi-output).                                  |
-| `extract_pages` *(new in v1.3.0)*  | Pull an arbitrary page subset into a single PDF.                                               |
-| `annotate_pdf` *(new in v1.4.0)*   | Add markup annotations (highlight, note, square/circle, line, freetext) as a visual overlay — **not** a redaction. |
-| `draft_governance_issue` *(new in v1.4.0)* | Draft a governance-compliant GitHub issue locally for **human** review; never submits, no network. |
+| `inspect_pdf`                      | Read-only inspection: PDF version, page count, encryption (+ precise `encryptionInfo`), PDF/A claim, signatures (+ inventory, `/DSS`, document timestamps), page boxes, `/Trapped`, attachments, placeholder state. |
+| `update_metadata` *(new in v1.6.0)* | Rewrite `/Info` title / author / subject / keywords (+ XMP) of an **existing** PDF as an incremental update. |
+| `encrypt_pdf`                      | Re-secure a PDF with AES-128 / AES-256 (owner/user passwords, permissions, password rotation).  |
+| `decrypt_pdf`                      | Emit an unencrypted copy of an RC4 / AES-128 / AES-256 document.                                |
+| `merge_pdfs`                       | Concatenate 2–50 PDFs into one via pdfnative's page-tree API (page boxes preserved).            |
+| `split_pdf`                        | Split one PDF into one document per page range (multi-output).                                  |
+| `extract_pages`                    | Pull an arbitrary page subset into a single PDF.                                               |
+| `annotate_pdf`                     | Add markup annotations (highlight, note, square/circle, line, freetext) as a visual overlay — **not** a redaction. |
+| `draft_governance_issue`           | Draft a governance-compliant GitHub issue locally for **human** review; never submits, no network. |
+
+**New in v1.6.0:**
+
+- 🔏 **PAdES long-term validation ladder** — `sign_pdf` gains `profile: 'pades'` (ETSI EN 319 142-1 baseline, ESS signing-certificate-v2, `ETSI.CAdES.detached`), `timestamp: true` (B-T, RFC 3161), RSA-SHA384/512, `certChainDerBase64`, `fieldName` / `allowMultiple` for several signatures; new `add_ltv` embeds a `/DSS` (B-LT, `mode: 'online'` through the operator provider or `mode: 'offline'` with caller-supplied DER material); new `timestamp_pdf` appends a `/DocTimeStamp` (B-LTA). `verify_pdf ltv: true` reports profile, timestamp, revocation status and `ltvLevel`. See [`docs/guides/LTV.md`](docs/guides/LTV.md).
+- 🌐 **Network charter** — no outbound request by default. The only egress the server can ever perform goes to the RFC 3161 / OCSP / CRL endpoints the operator configured (`PDFNATIVE_MCP_TSA_URL`, `PDFNATIVE_MCP_REVOCATION`, `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS`), behind an SSRF guard; tool arguments can never supply a URL.
+- 🖨️ **Print production** — every document tool accepts `print` (TrimBox / BleedBox / ArtBox / CropBox or the `bleed` shorthand, crop + registration `marks`, `/UserUnit`), `metadata` (`/Author`, `/Subject`, `/Keywords`, `/Trapped`) and `outputIntent` (custom RGB ICC for PDF/A); `viewerPreferences` gains `duplex`, `pickTrayByPDFSize`, `printPageRange`, `numCopies`. `inspect_pdf pages: true` reports the boxes; merge / split / extract preserve them. See [`docs/guides/PRINT.md`](docs/guides/PRINT.md).
+- ✍️ **`update_metadata`** — rewrite `/Info` + XMP of an existing PDF as an incremental update (earlier revisions and signatures preserved verbatim).
+- 📊 **Charts v2** — `stackedBar` / `stackedBarH` / `area` / `scatter`, secondary right axis (`axis2`), `axis.scale: 'log'`, `xAxis.type: 'linear' | 'time'`, `dataLabels`, `labelStride` / `labelRotation`; overlapping category labels are thinned automatically.
+- 📜 **Honest PDF/A** — `embedFonts: true` embeds Noto Sans Latin (base-14 Helvetica is not embedded, so a PDF/A claim on plain Latin text is rejected by veraPDF), `strict: true` fails instead of producing a non-conformant file, `includeDiagnostics: true` echoes engine diagnostics. Advisory local veraPDF script (`npm run validate:pdfa`) and a non-blocking CI workflow.
+- 🧰 **`inspect_pdf`** — `signatures: true` inventory, `dss` / `docTimestampCount` / `trapped` (presence-gated), new `check` values `dss`, `docTimestamp`, `trapped`.
+- 🐛 **Fixes** — signer metadata (`signerName` / `reason` / `location` / `contactInfo`) never reached the `/Sig` dictionary on pdfnative < 1.7; it is now baked at placeholder time. `verify_pdf` no longer reports `allValid: false` on B-LTA documents (a `/DocTimeStamp` was parsed as a CMS signature).
+- 🔌 **MCP 2026-07-28** on the MCP TypeScript SDK v2 (`@modelcontextprotocol/server`) with automatic fallback to the 2025-era `initialize` handshake — existing hosts keep working unchanged. See [MCP protocol compliance](#-mcp-protocol-compliance).
+- ⬆ **Engine upgrade** — [pdfnative **v1.7.0**](https://github.com/Nizoka/pdfnative) (LTV, print production, charts v2, digest agility, flag / ZWJ emoji sequences, UAX #9 fixes).
 
 **New in v1.5.0:**
 
@@ -57,7 +74,7 @@
 
 **New in v1.4.0:**
 
-- 🤝 **AI governance + human-in-the-loop** — `draft_governance_issue` lets an agent draft a fully compliant GitHub issue **locally** (draft `.md` + machine-readable compliance report). The agent is a *draftsman, never an autonomous submitter*: a human is the only gate, and the server makes **zero** GitHub writes and no outbound network calls. Backed by the `governance_contract` and `draft_issue_workflow` MCP prompts.
+- 🤝 **AI governance + human-in-the-loop** — `draft_governance_issue` lets an agent draft a fully compliant GitHub issue **locally** (draft `.md` + machine-readable compliance report). The agent is a *draftsman, never an autonomous submitter*: a human is the only gate, and the server makes **zero** GitHub writes (and, since v1.6.0, no outbound call other than to operator-configured TSA / OCSP / CRL endpoints). Backed by the `governance_contract` and `draft_issue_workflow` MCP prompts.
 - ✏️ **Markup annotations** — `annotate_pdf` overlays highlight, sticky-note, underline, strikeout, squiggly, square, circle, line, and freetext annotations on an existing PDF via incremental update. It is a *visual review layer, not a redaction* — underlying bytes remain.
 - 🔢 **Page labels in `inspect_pdf`** — read-only surfacing of `/PageLabels` ranges (roman, decimal, prefixed).
 - ∑ **Math / scientific script** — `add_international_text` accepts `lang: 'math'` (explicit, like `emoji`) to embed the Noto Sans Math face on demand.
@@ -100,11 +117,11 @@
 - 🆕 **AI agent guide:** [`docs/AI_GUIDE.md`](docs/AI_GUIDE.md) — decision tree + common pitfalls. See also the root [`AGENTS.md`](AGENTS.md) operations manual.
 - 🆕 **PDF/A authoring guide:** [`docs/guides/PDFA.md`](docs/guides/PDFA.md).
 - 🛠 **Env-var rename:** `PDFNATIVE_MCP_OUTPUT_DIR` (was `PDFNATIVE_MPC_OUTPUT_DIR`; old name still works with a one-shot deprecation warning).
-- ✅ **Now shipped:** `merge_pdfs`, `split_pdf`, `extract_pages` (v1.3.0), `annotate_pdf` (v1.4.0), and the `add_chart` / `read_form_fields` / `fill_form` / `encrypt_pdf` / `decrypt_pdf` tools plus the encrypted round-trip and native MCP resources (v1.5.0). `redact_pdf` stays **deferred** — pdfnative can overlay/flatten but not *remove* page content, and an overlay-only "redaction" would create false security, so it is intentionally not shipped (tracked as an upstream content-removal request).
+- ✅ **Now shipped:** `merge_pdfs`, `split_pdf`, `extract_pages` (v1.3.0), `annotate_pdf` (v1.4.0), the `add_chart` / `read_form_fields` / `fill_form` / `encrypt_pdf` / `decrypt_pdf` tools plus the encrypted round-trip and native MCP resources (v1.5.0), and `add_ltv` / `timestamp_pdf` / `update_metadata` plus print production and charts v2 (v1.6.0). `redact_pdf` stays **deferred** — pdfnative can overlay/flatten but not *remove* page content, and an overlay-only "redaction" would create false security, so it is intentionally not shipped (tracked as an upstream content-removal request).
 
 All tools support two output modes:
 
-- **`base64`** *(default)* — the generated PDF is returned **once** as an embedded `resource` content block (a `data:application/pdf;base64,…` URI); `structuredContent` carries only `{ mode, sizeBytes }`.
+- **`base64`** *(default)* — the generated PDF is returned **once** as an embedded `resource` content block (a `data:application/pdf;base64,…` URI); `structuredContent` carries only `{ mode, sizeBytes }` (plus `diagnostics[]` when `includeDiagnostics: true`, and a `summary` for `add_ltv`).
 - **`file`** — the PDF is written to a sandboxed directory configured via `PDFNATIVE_MCP_OUTPUT_DIR`. File output is disabled unless this variable is set; absolute paths, path traversal, non-`.pdf` extensions, and NUL bytes are all rejected.
 
 > **Upgrading from v1.1.0:** the only behaviour change is that base64-mode bytes are
@@ -192,11 +209,30 @@ Any MCP-compatible client that supports stdio servers will work. Use the same `c
 
 ### 🌐 Supported AI Ecosystem & Clients
 
-`pdfnative-mcp` is designed for MCP-native environments and works with clients that support MCP over stdio.
+`pdfnative-mcp` is designed for MCP-native environments and works with clients that support MCP over stdio or Streamable HTTP.
 
 Community-verified compatibility includes:
 
 - **[Ontheia](https://ontheia.ai)** — a self-hosted, open-source AI agent platform (privacy-first). Reported as working out of the box in [issue #41](https://github.com/Nizoka/pdfnative-mcp/issues/41) and listed on Ontheia's [compatible MCP servers page](https://docs.ontheia.ai/en/getting-started/03_compatible-mcp-servers/).
+
+### 🔌 MCP protocol compliance
+
+Since v1.6.0 the server is built on the MCP TypeScript SDK v2 (`@modelcontextprotocol/server`) and speaks **MCP 2026-07-28**:
+
+- **Stateless serving** — `server/discover` replaces the session handshake; every result carries `resultType` and the `_meta` `serverInfo` envelope. Over HTTP, 2026-07-28 clients send `Mcp-Method` / `Mcp-Name` headers with each `POST /mcp`.
+- **Cache hints** — `tools/list` and `prompts/list` are `public` with a 24 h `ttlMs`, `server/discover` is `public` for 1 h, and `resources/list` / `resources/templates/list` / `resources/read` are `private` with `ttlMs: 0` (generated PDFs are per-host user data).
+- **Resource errors** — an unknown resource URI is reported as JSON-RPC `-32602` (Invalid params), as the 2026-07-28 specification requires.
+- **Automatic legacy fallback** — a client that opens with `initialize` (2025-11-25, 2025-06-18 or 2025-03-26) is served through the SDK's legacy path on both stdio and HTTP. Nothing changes for existing hosts.
+- **HTTP** — `GET` / `DELETE /mcp` answer **405** (no SSE resumability; the server is stateless). The loopback bind and the `Host` / `Origin` guard are unchanged.
+
+The `tools/call` payload (`content`, `structuredContent`, `isError`) is identical between the 2026-07-28 path and the legacy path; `tests/http-modern.test.ts` asserts it.
+
+| Client                                                   | Transport        | Protocol negotiated                                 |
+| -------------------------------------------------------- | ---------------- | --------------------------------------------------- |
+| Claude Desktop, Cursor, Continue, Zed, Windsurf, Cline   | stdio            | legacy `initialize` (2025-xx) — unchanged           |
+| ChatGPT and other Streamable HTTP hosts                  | HTTP `POST /mcp` | legacy stateless streamable HTTP — unchanged        |
+| MCP 2026-07-28 clients (SDK v2 `Client`, current MCP Inspector) | stdio / HTTP | `server/discover`, cache hints, `_meta` envelope |
+| Ontheia                                                  | stdio            | legacy `initialize` (community-verified, #41)       |
 
 ### Environment variables
 
@@ -205,6 +241,11 @@ Community-verified compatibility includes:
 | `PDFNATIVE_MCP_OUTPUT_DIR`    | Absolute path to the sandbox directory. **Required to enable `outputMode: 'file'`.** |
 | `PDFNATIVE_MCP_CACHE_DIR`     | Absolute path to enable the persistent SHA-256-keyed result cache (1 h TTL, 256 MiB LRU). When unset, the cache is disabled. |
 | `PDFNATIVE_MCP_PORT`          | When set to a valid port (1–65535), starts an HTTP server on `http://127.0.0.1:<port>/mcp` instead of stdio. Binds loopback only and enables DNS-rebinding protection (foreign `Host`/`Origin` → **403**). |
+| `PDFNATIVE_MCP_TSA_URL`       | *(v1.6.0)* Absolute `http(s)` URL of the RFC 3161 timestamp authority used by `sign_pdf timestamp: true` and `timestamp_pdf`. Unset: `TSA_NOT_CONFIGURED`, no request is made. |
+| `PDFNATIVE_MCP_TSA_AUTH`      | *(v1.6.0, secret)* Optional `Authorization` header value sent to the TSA. Never logged or echoed. |
+| `PDFNATIVE_MCP_REVOCATION`    | *(v1.6.0)* `ocsp`, `crl` or `ocsp,crl` — enables online revocation collection for `add_ltv mode: 'online'`. Unset: `REVOCATION_NOT_CONFIGURED`. |
+| `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS` | *(v1.6.0)* Comma-separated allow-list (`host`, `host:port`, `*.suffix`) for OCSP / CRL responders. **Mandatory** when `PDFNATIVE_MCP_REVOCATION` is set — responder URLs come from untrusted certificates. |
+| `PDFNATIVE_MCP_NETWORK_TIMEOUT_MS` | *(v1.6.0)* Per-request timeout for TSA / OCSP / CRL calls, 1000–120000 ms (default 10000). |
 
 ---
 
@@ -295,7 +336,18 @@ openssl rsa  -in key.pem  -outform DER -traditional | base64 -w0    # RSA PKCS#1
 openssl pkey -in key.pem  -outform DER | base64 -w0                 # ECDSA
 ```
 
-> Use `prepare_signature_placeholder` only when you need to customize the placeholder (e.g. larger `placeholderBytes` for >4096-bit RSA keys). Otherwise call `sign_pdf` directly.
+> Use `prepare_signature_placeholder` only when you need to customize the placeholder (e.g. larger `placeholderBytes` for >4096-bit RSA keys, `subFilter: 'ETSI.CAdES.detached'`, `reserveTimestamp: true`). Otherwise call `sign_pdf` directly.
+
+**PAdES ladder (v1.6.0).** `sign_pdf` with `profile: "pades"` produces a B-B signature; add `timestamp: true` for B-T (needs `PDFNATIVE_MCP_TSA_URL`), then `add_ltv` (B-LT) and `timestamp_pdf` (B-LTA):
+
+```jsonc
+// 1. sign_pdf  { ..., "profile": "pades", "timestamp": true, "certChainDerBase64": ["<intermediate DER>"] }
+// 2. add_ltv   { "pdfBase64": "<signed>", "mode": "online" }            // or "offline" + certificatesDerBase64 / ocspResponsesDerBase64 / crlsDerBase64
+// 3. timestamp_pdf { "pdfBase64": "<ltv>" }                              // re-run before the TSA certificate expires
+// 4. verify_pdf { "pdfBase64": "<final>", "ltv": true }                  // -> ltvLevel: "B-LTA"
+```
+
+Signer metadata (`signerName`, `reason`, `location`, `contactInfo`) is baked into the placeholder; `fieldName` selects one of several unsigned placeholders (`PLACEHOLDER_AMBIGUOUS` otherwise) and `allowMultiple: true` adds a further signature. See [`docs/guides/LTV.md`](docs/guides/LTV.md).
 
 ---
 
@@ -391,7 +443,7 @@ Returns:
 }
 ```
 
-`check[]` accepts any of `'pdfa'`, `'signed'`, `'encrypted'`, `'placeholder'`, `'attachments'`. `checksPassed` is the AND of all requested checks.
+`check[]` accepts any of `'pdfa'`, `'signed'`, `'encrypted'`, `'placeholder'`, `'attachments'`, `'dss'`, `'docTimestamp'`, `'trapped'` (the last three since v1.6.0). `checksPassed` is the AND of all requested checks. `signatures: true` adds a per-field inventory (`subFilter`, `isDocTimestamp`, `isPlaceholder`, `byteRange`, `vriKey`); `dss`, `docTimestampCount` and `trapped` appear only when present; with `pages: true` each `perPage` entry also carries `trimBox` / `bleedBox` / `artBox` / `cropBox` / `userUnit` when set.
 
 ### `validate_pdf`
 
@@ -433,7 +485,7 @@ Types: `text`, `highlight`, `underline`, `strikeout`, `squiggly`, `square`, `cir
 
 ### `draft_governance_issue`
 
-Draft a governance-compliant GitHub issue **locally** for a human to review and submit. The server never contacts GitHub and makes no outbound network calls; it returns the draft Markdown plus a machine-readable compliance report.
+Draft a governance-compliant GitHub issue **locally** for a human to review and submit. The server never contacts GitHub (its only possible egress is the operator-configured TSA / OCSP / CRL endpoints — see [Network & egress](#network--egress)); it returns the draft Markdown plus a machine-readable compliance report.
 
 ```jsonc
 {
@@ -456,14 +508,28 @@ See the dedicated sections in [`docs/AI_GUIDE.md`](docs/AI_GUIDE.md) and the ref
 
 ## 🔐 Security model
 
-`pdfnative-mcp` runs **inside the host process** and exposes a stdio MCP server. It does **not** open network sockets and does **not** perform any I/O outside the configured sandbox.
+`pdfnative-mcp` runs **inside the host process** and exposes a stdio MCP server (or a loopback-only HTTP endpoint). It does **not** perform any I/O outside the configured sandbox.
 
 - **File writes** are gated by `PDFNATIVE_MCP_OUTPUT_DIR`. When unset, the `file` output mode is rejected with a `SecurityError`.
 - **Path resolution** rejects absolute paths, traversal sequences (`..`), NUL bytes, and any extension other than `.pdf`.
 - **Output size** is capped at 50 MB per call.
 - **Inputs** are validated against strict JSON Schemas + Zod runtime checks at the boundary of every tool.
 
-See [SECURITY.md](SECURITY.md) for the responsible disclosure process.
+### Network & egress
+
+The server makes **no outbound network call by default**. The only egress it can ever perform goes to the RFC 3161 / OCSP / CRL endpoints the **operator** configured in the environment for PAdES long-term validation (`PDFNATIVE_MCP_TSA_URL`, `PDFNATIVE_MCP_REVOCATION`, `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS`) — never to a URL supplied by a tool argument, never to GitHub, never for telemetry. Without that configuration `sign_pdf timestamp: true`, `timestamp_pdf` and `add_ltv mode: 'online'` fail fast with `TSA_NOT_CONFIGURED` / `REVOCATION_NOT_CONFIGURED` before touching the document; `add_ltv mode: 'offline'` embeds caller-supplied material with zero network access.
+
+OCSP / CRL URLs come from the AIA / CRL-distribution-point extensions of untrusted certificates inside the PDF, so every fetch passes an SSRF guard:
+
+- host must match the operator allow-list (`host`, `host:port` or `*.suffix`; bare wildcards are rejected);
+- `http:` / `https:` only, no embedded credentials, redirects are never followed;
+- loopback, link-local, private, unique-local, CGNAT, unspecified and multicast address literals (including decimal / octal / hex spellings and IPv4-mapped IPv6) are rejected unless that literal is allow-listed verbatim;
+- per-request timeout (`PDFNATIVE_MCP_NETWORK_TIMEOUT_MS`) and response caps (256 KiB TSA, 1 MiB OCSP, 16 MiB CRL);
+- the TSA URL is operator-trusted (scheme + credential checks only); the `PDFNATIVE_MCP_TSA_AUTH` secret is never logged or echoed in error messages.
+
+Providers are built per call and passed through pdfnative's per-call options — the process-wide provider setters are never used, so concurrent requests share nothing. The `server/discover` instructions report the current egress policy (endpoint kinds only, never secrets).
+
+See [SECURITY.md](SECURITY.md) for the responsible disclosure process and [`docs/guides/LTV.md`](docs/guides/LTV.md) for the operator setup.
 
 ---
 
@@ -477,6 +543,7 @@ npm run typecheck
 npm run lint
 npm test
 npm run build
+npm run validate:pdfa     # advisory: runs veraPDF on a generated PDF/A corpus (skips when veraPDF is absent)
 ```
 
 Smoke-test the server over stdio:
@@ -505,22 +572,33 @@ See `release-notes/TEMPLATE.md` for the canonical structure and publication chec
 
 ```
 src/
-├── cli.ts                      # stdio entrypoint (#!/usr/bin/env node)
+├── cli.ts                      # entrypoint: stdio (default) or Streamable HTTP (PDFNATIVE_MCP_PORT)
+├── http.ts                     # Node http <-> Web Request/Response bridge + Host/Origin loopback guard
 ├── index.ts                    # public library exports
-├── server.ts                   # McpServer factory + tool registry
+├── server.ts                   # Server factory, tool registry, cache hints, SERVER_INSTRUCTIONS
+├── network.ts                  # operator-configured TSA / OCSP / CRL egress + SSRF guard
+├── print.ts                    # print-production schema (boxes, bleed, marks, userUnit, outputIntent, metadata)
+├── diagnostics.ts              # PDF/A diagnostics sink, strict / includeDiagnostics / embedFonts
+├── chart.ts                    # charts v2 schema + ChartBlock mapper
 ├── output.ts                   # sandboxed file writer / base64 emitter (single + multi)
 ├── text.ts                     # newline sanitizer (Safe PDF/A)
-├── doc-features.ts             # nested lists, outline, page labels, viewer prefs
+├── doc-features.ts             # nested lists, outline, page labels, viewer prefs (+ print-dialog defaults)
 ├── pagetree.ts                 # page-tree error mapping (merge/split/extract)
-├── crypto-provider.ts          # node:crypto constant-time signature provider
+├── crypto-provider.ts          # node:crypto constant-time signature provider (SHA-256/384/512)
 ├── errors.ts                   # ToolError, SecurityError
 └── tools/
     ├── generate-basic-pdf.ts
     ├── add-barcode.ts
     ├── sign-pdf.ts
+    ├── add-ltv.ts
+    ├── timestamp-pdf.ts
+    ├── update-metadata.ts
     ├── add-international-text.ts
     ├── add-table.ts
     ├── add-form.ts
+    ├── read-form-fields.ts
+    ├── fill-form.ts
+    ├── add-chart.ts
     ├── embed-image.ts
     ├── inspect-pdf.ts
     ├── verify-pdf.ts
@@ -531,7 +609,16 @@ src/
     ├── merge-pdfs.ts
     ├── split-pdf.ts
     ├── extract-pages.ts
+    ├── annotate-pdf.ts
+    ├── encrypt-pdf.ts
+    ├── decrypt-pdf.ts
+    ├── draft-governance-issue.ts
     └── prepare-signature-placeholder.ts
+scripts/
+├── verify-issue.mjs            # governance draft checker (npm run verify:issue)
+├── validate-pdfa.mjs           # advisory veraPDF run (npm run validate:pdfa)
+└── generate-pdfa-corpus.mjs    # builds the PDF/A corpus the validator checks
+.github/workflows/verapdf.yml   # non-blocking veraPDF CI job
 tests/                          # vitest suites
 ```
 
@@ -539,11 +626,13 @@ tests/                          # vitest suites
 
 ## 🗺 Roadmap
 
-v1.3.0 is shipped. The full plan — released milestones, in-progress work, and long-term direction — lives in [ROADMAP.md](ROADMAP.md).
+v1.6.0 is shipped (PAdES LTV ladder, print production, charts v2, `update_metadata`, MCP 2026-07-28). The full plan — released milestones, in-progress work, and long-term direction — lives in [ROADMAP.md](ROADMAP.md).
 
-**Blocked upstream (page-tree manipulation):**
+**Still deferred:**
 
-- `redact_pdf` and an encrypted-PDF round-trip — pdfnative does not yet export the content-redaction / decryption primitives required to build these safely. They remain on the roadmap, blocked on an upstream API. (`merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0.)
+- `redact_pdf` — pdfnative has no content-removal API; an overlay-only "redaction" would create false security.
+- Native ECDSA verification — pdfnative does not export `ecdsaVerifyHash`; `verify_pdf` keeps its pure-JS path for P-256.
+- HTTP page streaming — MCP 2026-07-28 still has no partial `structuredContent`, so large results stay single-shot.
 
 Have a feature idea? Open an issue or PR.
 

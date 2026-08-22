@@ -575,7 +575,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: MERGE_PDFS_NAME,
         title: 'Merge PDFs',
         description:
-            "Concatenate 2–50 source PDFs into a single document (pdfnative v1.4 page-tree API). Each kept page's object graph is deep-copied into a fresh, self-contained PDF. Signatures and AcroForms are dropped (a page-tree edit invalidates /ByteRange); self-contained URI link annotations are preserved unless dropAnnotations=true. Encrypted sources are rejected (ENCRYPTED_SOURCE) — decrypt first. A secure-by-default 256 MiB in-memory assembly guard (maxOutputSizeBytes) guards against memory exhaustion; the emitted PDF is separately capped at 50 MiB (OUTPUT_TOO_LARGE). Returns one PDF (base64 or sandboxed file).",
+            "Concatenate 2–50 source PDFs into a single document (pdfnative v1.4 page-tree API). Each kept page's object graph is deep-copied into a fresh, self-contained PDF. Signatures and AcroForms are dropped (a page-tree edit invalidates /ByteRange); self-contained URI link annotations are preserved unless dropAnnotations=true. Encrypted sources are rejected (ENCRYPTED_SOURCE) — decrypt first. A secure-by-default 256 MiB in-memory assembly guard (maxOutputSizeBytes) guards against memory exhaustion; the emitted PDF is separately capped at 50 MiB (OUTPUT_TOO_LARGE). Returns one PDF (base64 or sandboxed file). NOTE (verified with veraPDF in v1.6.0): the rebuilt document carries no XMP packet, so a source PDF/A claim does NOT survive — re-declare PDF/A on the generating tools instead. Page boxes (TrimBox/BleedBox/ArtBox) and /UserUnit DO survive (pdfnative 1.7).",
         inputSchema: MERGE_PDFS_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -588,7 +588,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: SPLIT_PDF_NAME,
         title: 'Split PDF into ranges',
         description:
-            "Split one PDF into several documents — one per requested page range (pdfnative v1.4 page-tree API). Ranges are 0-based and inclusive; `end` defaults to `start` (a single page). Each output is a fresh, self-contained PDF (signatures/AcroForm dropped; URI links kept unless dropAnnotations=true). Encrypted sources are rejected (ENCRYPTED_SOURCE). In base64 mode every produced PDF is returned as its own embedded resource block; in file mode each is written to a 1-based indexed sibling of outputPath ('out.pdf' → 'out-1.pdf', 'out-2.pdf', …). Use extract_pages instead when you want a single PDF from an arbitrary page subset.",
+            "Split one PDF into several documents — one per requested page range (pdfnative v1.4 page-tree API). Ranges are 0-based and inclusive; `end` defaults to `start` (a single page). Each output is a fresh, self-contained PDF (signatures/AcroForm dropped; URI links kept unless dropAnnotations=true). Encrypted sources are rejected (ENCRYPTED_SOURCE). In base64 mode every produced PDF is returned as its own embedded resource block; in file mode each is written to a 1-based indexed sibling of outputPath ('out.pdf' → 'out-1.pdf', 'out-2.pdf', …). Use extract_pages instead when you want a single PDF from an arbitrary page subset. NOTE (verified with veraPDF in v1.6.0): the rebuilt document carries no XMP packet, so a source PDF/A claim does NOT survive — re-declare PDF/A on the generating tools instead. Page boxes (TrimBox/BleedBox/ArtBox) and /UserUnit DO survive (pdfnative 1.7).",
         inputSchema: SPLIT_PDF_INPUT_SCHEMA,
         outputSchema: MULTI_PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -601,7 +601,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: EXTRACT_PAGES_NAME,
         title: 'Extract pages into one PDF',
         description:
-            "Extract an arbitrary subset of pages (0-based, in the order given) from a PDF into a SINGLE new document (pdfnative v1.4 page-tree API). The output is a fresh, self-contained PDF (signatures/AcroForm dropped; URI links kept unless dropAnnotations=true). Encrypted sources are rejected (ENCRYPTED_SOURCE). Use split_pdf instead when you need several output PDFs (one per range).",
+            "Extract an arbitrary subset of pages (0-based, in the order given) from a PDF into a SINGLE new document (pdfnative v1.4 page-tree API). The output is a fresh, self-contained PDF (signatures/AcroForm dropped; URI links kept unless dropAnnotations=true). Encrypted sources are rejected (ENCRYPTED_SOURCE). Use split_pdf instead when you need several output PDFs (one per range). NOTE (verified with veraPDF in v1.6.0): the rebuilt document carries no XMP packet, so a source PDF/A claim does NOT survive — re-declare PDF/A on the generating tools instead. Page boxes (TrimBox/BleedBox/ArtBox) and /UserUnit DO survive (pdfnative 1.7).",
         inputSchema: EXTRACT_PAGES_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
