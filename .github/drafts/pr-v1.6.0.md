@@ -41,7 +41,17 @@ Full notes: [`release-notes/v1.6.0.md`](../../release-notes/v1.6.0.md).
 
 ## Quality gate
 
-<!-- QUALITY_GATE -->
+Measured on the final branch state (Windows 11, Node 22.17) — CI repeats it on ubuntu with Node 22 and 24.
+
+- `npm run typecheck:all` — 0 errors
+- `npm run lint` — 0 errors (33 `no-non-null-assertion` style warnings: 26 pre-existing on `main`, 7 in the new CMS / verify paths)
+- `npm run test:coverage` — **647 tests / 54 files** passing; **90.6** stmts / **81.8** branches / **95.2** funcs / **92.6** lines (thresholds raised to 89 / 80 / 90 / 91)
+- `npm run build` — clean `dist/`; `tests/cli-stdio.test.ts` drives the built CLI over stdio (legacy handshake, 2026-07-28 `server/discover` probe, 11 MiB frame)
+- `npm run examples:check` — 94 checks; every `examples/*.json` references a live tool; placeholder-free examples execute end-to-end
+- `npm audit --audit-level=high` — 0 vulnerabilities; lockfile contains no `hono` / `express` / `jose` / `@modelcontextprotocol/sdk`
+- `npm pack --dry-run` — 222 files, 284.5 kB: `dist/`, `LICENSE`, `README.md`, `CHANGELOG.md`, `server.json`, `llms.txt`, `package.json` only
+- `npm run validate:pdfa` — corpus of 15 files generated (13 claiming PDF/A, 2 page-tree outputs expected not to); veraPDF absent locally → advisory hint path (exit 0); the `verapdf.yml` job runs the real validator in CI (non-blocking in 1.6.0)
+- Byte-identity diff vs `main` (table below) — no unexpected change
 
 ## Byte-identity evidence
 
@@ -99,7 +109,57 @@ No unexpected byte change. The SDK v2 migration itself is byte-transparent: `too
 
 ## Review protocol
 
-<!-- REVIEW_PROTOCOL -->
+Two independent, read-only reviewers ran on the finished branch with the same inputs (full diff, release notes, engine release notes, charter). Triage rule: **CONFIRMED** (reproduced, or evident from the quoted code path) ⇒ fixed before this PR with a regression test for HIGH/MEDIUM; **PLAUSIBLE** ⇒ recorded as follow-up; **REJECTED** ⇒ reason given. Fixes landed in commit `fix(review)`.
+
+### Reviewer A — correctness, security, MCP 2026-07-28
+
+| # | Severity | Finding | Status |
+| --- | --- | --- | --- |
+| A-1 | HIGH | SDK v2 stdio `ReadBuffer` caps a frame at 10 MiB and closes the transport — a ~7.5 MiB PDF killed the server | CONFIRMED → fixed (256 MiB frame cap via `StdioServerTransport({ maxBufferSize })`, same cap on HTTP bodies with 413); regression `tests/cli-stdio.test.ts` (11 MiB frame) |
+| A-2 | HIGH | B-T claimed from an unverified signature-timestamp token (only the public imprint was checked) | CONFIRMED → fixed (token's own CMS signature verified → `timestamp.tokenSignatureValid`; B-T requires it); regression `tests/ltv-verify.test.ts` (corrupted token signature → B-B) |
+| A-3 | MEDIUM | `allValid` / `summary` ignored an invalid DocTimeStamp | CONFIRMED → fixed (verdict uses every entry's `valid`); regression (corrupted DocTimeStamp → `allValid:false`, `1/2 signature(s) valid.`) |
+| A-4 | MEDIUM | `ltvLevel` presence-based; revoked signer still `valid:true` | CONFIRMED → fixed (B-LT needs a `/VRI` entry for the signature **and** relevant revocation material; revoked ⇒ `valid:false` + error under the ltv view; caveat added: structural classification) |
+| A-5 | MEDIUM | Response caps enforced after full buffering; body read errors unmapped | CONFIRMED → fixed (streamed cap, `NETWORK_ERROR`); regression `tests/network.test.ts` |
+| A-6 | MEDIUM | Online `add_ltv` embedded responder bytes unparsed | CONFIRMED → fixed (OCSP / CRL parse-validated before the engine sees them → `LTV_MATERIAL_INVALID`); regression `tests/ltv-tools.test.ts` |
+| A-7 | MEDIUM | Client-disconnect abort wiring dead for POST | CONFIRMED → fixed (socket close aborts the in-flight request); regression `tests/http.test.ts` |
+| A-8 | MEDIUM | Signer certificate assumed first in `certificates [0]` | PLAUSIBLE → fixed anyway (selected by `SignerInfo.sid` serial, first-cert fallback) |
+| A-9 | LOW | CRL could report `revoked` before the issuer matched | CONFIRMED → fixed (issuer must match); OCSP issuer-hash matching documented as a caveat |
+| A-10 | LOW | Over-broad `TSA_REJECTED` regexes | CONFIRMED → fixed (exact engine phrases) |
+| A-11 | LOW | Allow-list edge cases fail closed silently (ports, punycode, IPv6, DNS rebinding) | CONFIRMED → entries canonicalised through the URL parser + caveats documented (README / AGENTS / SECURITY / LTV guide); regression in `tests/network.test.ts` |
+| A-12 | LOW | Intermediates in the CMS never walked for `chainTrust` | CONFIRMED → fixed (bounded breadth-first walk); regression in `tests/ltv-tools.test.ts` |
+| A-13 | LOW | Two byte-identity tests could straddle a `/CreationDate` second | CONFIRMED → fixed (dates normalised) |
+| A-14 | LOW | `sign_pdf` `openWorldHint:false` despite `timestamp:true` egress | CONFIRMED → fixed (true; recorded in API_STABILITY §5) |
+| A-15 | LOW | Offline `add_ltv` skipped DocTimeStamp fields in `/VRI` | CONFIRMED → fixed; regression |
+| A-16 | LOW | No HTTP body cap; chart `maxLength` parity; `FONT_LOAD_FAILED` undocumented | CONFIRMED → fixed (256 MiB cap → 413; schema parity; AGENTS / API_STABILITY) |
+
+### Reviewer B — API stability, byte-identity, docs parity, tests
+
+| # | Severity | Finding | Status |
+| --- | --- | --- | --- |
+| B-1 | HIGH | `package-lock.json` still at 1.5.0 / `zod ^4.4.3` | CONFIRMED → fixed (`npm install --package-lock-only`, `npm ci --dry-run` clean) |
+| B-2 | MEDIUM | `draft_governance_issue` default output changed (charter sentence) but evidence / §5 silent | CONFIRMED → documented (API_STABILITY §5 third default-output change, release-notes Upgrade, byte table below) |
+| B-3 | MEDIUM | `signingTime` now reaching `/Sig /M` undocumented | CONFIRMED → documented (Fixed bullet, §5, field description) |
+| B-4 | MEDIUM | `PLACEHOLDER_AMBIGUOUS` / `SIGNATURE_FIELD_NOT_FOUND` / sign_pdf `TSA_REJECTED` / bad chain untested | CONFIRMED → regression tests added (`tests/ltv-tools.test.ts`) |
+| B-5 | MEDIUM | CHANGELOG not a bullet-for-bullet mirror (Upgrade list missing) | CONFIRMED → `### Upgrade notes` added under [1.6.0] |
+| B-6 | MEDIUM | `draft_governance_issue` description still said "NO outbound network call" | CONFIRMED → charter wording |
+| B-7 | LOW | `timestamp_pdf` claimed explicit `fieldName` auto-suffixes | CONFIRMED → description corrected (auto-suffix only when omitted) |
+| B-8 | LOW | `signingTime` description overstated `/M` | CONFIRMED → corrected |
+| B-9 | LOW | Placeholder size bound for very large certificates undocumented | CONFIRMED → documented (§5 + byte table) |
+| B-10 | LOW | "LTV enabled in Adobe" without the trusted-root qualifier | CONFIRMED → corrected |
+| B-11 | LOW | Seven pre-existing error codes missing from AGENTS §6 | CONFIRMED (pre-existing) → table completed |
+| B-12 | LOW | `add_chart` PDF/A-class engine throw now maps to `PDF_A_COMPLIANCE_VIOLATION` instead of `CHART_ERROR` | PLAUSIBLE → documented in §5 (no code change) |
+| B-13 | LOW | = A-10 | fixed with A-10 |
+| B-14 | LOW | = A-5 | fixed with A-5 |
+| B-15 | LOW | `describeNetworkPolicy()` baked into `SERVER_INSTRUCTIONS` at module load | CONFIRMED, accepted as-is: the environment is read at process start in every supported deployment; recorded here for transparency |
+| B-16 | LOW | Offline `/VRI` superset composed in the wrapper | CONFIRMED (design note) → follow-up: request an upstream `embedValidationInfo` helper that derives `/VRI` from the document; documented in API_STABILITY / LTV guide |
+| docs-parity sub-review | LOW/MEDIUM | `extract_text` / `extract_attachments` descriptions stale (pre-existing), `server.json` cache description incomplete, README `modDate`, API_STABILITY:169 pointer | CONFIRMED → all fixed |
+
+Outcome: **A: 15 confirmed + 1 plausible (fixed) / B: 14 confirmed + 1 plausible (documented) / 0 rejected.** The full gate and the byte-identity diff were re-run after the fixes (numbers above are post-review).
+
+### Follow-ups (not in this release)
+- Upstream: `embedValidationInfo` helper deriving `/VRI` from the document (B-16); OCSP issuer-hash matching once `parseOcspResponse` exposes CertID (A-9).
+- DNS-rebinding detection for allow-listed hostnames would need a resolver hook — out of scope without a dependency (A-11, documented).
+- veraPDF job to become blocking in 1.7.0.
 
 ## Post-merge checklist (human)
 

@@ -183,17 +183,27 @@ With `ltv: true` each signature additionally reports:
 | Field | Meaning |
 | --- | --- |
 | `profile` | `'pades'` when the CMS carries ESS signing-certificate-v2, else `'pkcs7'`. |
-| `timestamp` | The signature timestamp from the unsigned attributes (`genTime`, TSA subject, imprint check), or `null`. |
-| `revocation` | `{ source, status }` for the signer certificate, read from **embedded `/DSS` material only**. |
-| `ltvLevel` | `'B-B'`, `'B-T'`, `'B-LT'` or `'B-LTA'` reached by this signature. |
+| `timestamp` | The signature timestamp from the unsigned attributes, or `null`: `genTime`, `tsaSubject`, `imprintVerified` (the token's imprint equals the digest of the signature value) and `tokenSignatureValid` (the token's **own** CMS signature verifies against the TSA certificate it carries — the token sits in the *unsigned* attributes, so this check is what stops a replaced or backdated token; B-T requires it). |
+| `revocation` | `{ source, status }` for the signer certificate, read from **embedded `/DSS` material only** (OCSP matched by serial number, CRL by issuer + serial). A `'revoked'` status makes the signature `valid: false` (with an explanatory entry in `errors[]`) under the ltv view; the plain verdict (`ltv` omitted) is purely cryptographic. |
+| `ltvLevel` | `'B-B'`, `'B-T'`, `'B-LT'` or `'B-LTA'` reached by this signature: B-T needs a verified timestamp (imprint **and** token signature); B-LT additionally needs a `/VRI` entry for this very signature **and** revocation material that actually speaks about the signer (`good` or `revoked` — unrelated or missing material does not count); B-LTA additionally needs a valid document timestamp covering the signature's revision. |
 
 Document-level: `dss` (store summary or `null`), `ltvLevel` (the minimum across
 non-timestamp signatures) and a fixed `caveats[]`:
 
-- revocation status is read from embedded `/DSS` material only; **responder
-  signatures and chain validity at signing time are not evaluated**;
-- timestamp tokens are checked for imprint consistency; **TSA certificate trust is
-  not evaluated** unless `trustedRootsDerBase64` includes its root.
+- revocation status is read from embedded `/DSS` material only (OCSP matched by
+  serial, CRL by issuer + serial); **responder and CRL signatures are not
+  verified, and chain validity at signing time is not evaluated**;
+- timestamp tokens are checked for imprint consistency **and** for their own CMS
+  signature against the TSA certificate they carry; **TSA certificate trust is
+  not evaluated** unless `trustedRootsDerBase64` includes its root;
+- `ltvLevel` is a structural classification (verified timestamp, `/VRI` entry,
+  relevant revocation material, covering document timestamp) — not a full
+  ETSI EN 319 102-1 validation.
+
+Chain trust (`chainTrust`) walks the intermediate certificates carried in the CMS
+(`sign_pdf certChainDerBase64`) up to one of the supplied roots; a document
+timestamp whose TSA signature does not verify (or whose TSA is untrusted when roots
+are supplied) is reported `valid: false` and flips `allValid`.
 
 In other words, `verify_pdf` proves integrity and reports the evidence the document
 carries; it is not a full trust-anchor validator. Use `inspect_pdf` with
