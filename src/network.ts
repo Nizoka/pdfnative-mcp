@@ -82,7 +82,16 @@ function readTimeout(): number {
     return n;
 }
 
-/** Parse the comma-separated allow-list; entries are lower-cased hostnames, `host:port`, or `*.suffix`. */
+/**
+ * Parse the comma-separated allow-list. Entries are hostnames, `host:port`,
+ * or `*.suffix` wildcards. Each entry is canonicalised the way the WHATWG URL
+ * parser canonicalises request URLs (lower-case, IDN → punycode, IPv6 in
+ * brackets, default ports dropped) so that `bücher.example.com`, `::1` or
+ * `example.com:80` match what certificates actually advertise.
+ *
+ * The guard checks address *literals* and hostnames only — a listed hostname
+ * that resolves to an internal address (DNS rebinding) is not detected.
+ */
 export function parseAllowedHosts(raw: string | undefined): string[] {
     if (raw === undefined) return [];
     const out: string[] = [];
@@ -92,9 +101,31 @@ export function parseAllowedHosts(raw: string | undefined): string[] {
         if (entry === '*' || entry === '*.' || entry.includes('/') || /\s/.test(entry)) {
             throw new ToolError('NETWORK_ERROR', `${ALLOWED_HOSTS_ENV}: invalid entry '${item.trim()}' (bare wildcards and paths are not allowed).`);
         }
-        out.push(entry);
+        out.push(canonicalHostEntry(entry, item.trim()));
     }
     return out;
+}
+
+/** Canonicalise one allow-list entry through the URL parser (wildcard prefix preserved). */
+function canonicalHostEntry(entry: string, original: string): string {
+    const wildcard = entry.startsWith('*.');
+    let bare = wildcard ? entry.slice(2) : entry;
+    // A bare IPv6 literal (`::1`) must be bracketed for the URL parser.
+    if (!bare.startsWith('[') && isIP(bare) === 6) bare = `[${bare}]`;
+    let parsed: URL;
+    try {
+        parsed = new URL(`http://${bare}/`);
+    } catch {
+        throw new ToolError('NETWORK_ERROR', `${ALLOWED_HOSTS_ENV}: invalid entry '${original}'.`);
+    }
+    if (parsed.username !== '' || parsed.password !== '' || parsed.pathname !== '/' || parsed.search !== '' || parsed.hash !== '') {
+        throw new ToolError('NETWORK_ERROR', `${ALLOWED_HOSTS_ENV}: invalid entry '${original}' (host or host:port only).`);
+    }
+    if (wildcard && parsed.port !== '') {
+        throw new ToolError('NETWORK_ERROR', `${ALLOWED_HOSTS_ENV}: wildcard entry '${original}' cannot carry a port.`);
+    }
+    // URL.host keeps an explicit non-default port and brackets IPv6 literals.
+    return wildcard ? `*.${parsed.hostname}` : parsed.host;
 }
 
 /** TSA configuration from the environment, or `null` when timestamping is disabled. */
@@ -178,18 +209,17 @@ function isForbiddenIpv6(ip: string): boolean {
     return false;
 }
 
-function hostMatchesAllowList(hostname: string, port: string, allowed: readonly string[]): boolean {
-    const h = hostname.toLowerCase();
+function hostMatchesAllowList(url: URL, allowed: readonly string[]): boolean {
+    const h = url.hostname.toLowerCase(); // IPv6 without brackets, IDN as punycode
+    const bracketed = url.host.startsWith('[') ? url.host.split(']')[0] + ']' : h; // hostname as it appears in URL.host
     for (const entry of allowed) {
         if (entry.startsWith('*.')) {
             const suffix = entry.slice(1); // ".example.com"
             if (h.endsWith(suffix) && h.length > suffix.length) return true;
             continue;
         }
-        if (entry === h) return true;
-        if (port !== '' && entry === `${h}:${port}`) return true;
-        // Bracketed IPv6 literal in the list vs URL hostname without brackets.
-        if (entry === `[${h}]` || entry === `[${h}]:${port}`) return true;
+        // Entry without a port matches any port; entry with a port must match URL.host exactly.
+        if (entry === bracketed || entry === url.host) return true;
     }
     return false;
 }
@@ -209,12 +239,13 @@ export function assertUrlAllowed(url: URL, policy: { trusted: boolean; allowedHo
     }
     if (policy.trusted) return;
     const hostname = url.hostname.toLowerCase();
-    const listed = hostMatchesAllowList(hostname, url.port, policy.allowedHosts);
+    const listed = hostMatchesAllowList(url, policy.allowedHosts);
     if (!listed) {
         throw new ToolError('NETWORK_HOST_NOT_ALLOWED', `Host '${url.host}' is not in ${ALLOWED_HOSTS_ENV}.`);
     }
     // An IP literal must be listed verbatim (not via a wildcard) to reach an internal range.
-    const verbatim = policy.allowedHosts.some((e) => e === hostname || e === `${hostname}:${url.port}` || e === `[${hostname}]` || e === `[${hostname}]:${url.port}`);
+    const bracketed = url.host.startsWith('[') ? url.host.split(']')[0] + ']' : hostname;
+    const verbatim = policy.allowedHosts.some((e) => e === bracketed || e === url.host);
     if (!verbatim && isForbiddenAddress(hostname)) {
         throw new ToolError('NETWORK_HOST_NOT_ALLOWED', `Host '${url.host}' is a loopback / link-local / private address and is not allow-listed verbatim.`);
     }
@@ -250,11 +281,42 @@ async function fetchBytes(
     if (declared !== null && Number.parseInt(declared, 10) > maxBytes) {
         throw new ToolError('NETWORK_ERROR', `${what}: response from ${url.host} exceeds ${maxBytes} bytes.`);
     }
-    const buf = new Uint8Array(await response.arrayBuffer());
-    if (buf.byteLength > maxBytes) {
-        throw new ToolError('NETWORK_ERROR', `${what}: response from ${url.host} exceeds ${maxBytes} bytes.`);
+    return readBodyCapped(response, maxBytes, url.host, what);
+}
+
+/**
+ * Read a response body while enforcing the size cap *as bytes arrive*, so an
+ * unsized (chunked) response from a misbehaving host cannot make the server
+ * buffer more than `maxBytes` before being rejected.
+ */
+async function readBodyCapped(response: Response, maxBytes: number, host: string, what: string): Promise<Uint8Array> {
+    const body = response.body;
+    if (body === null) return new Uint8Array(0);
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            total += value.byteLength;
+            if (total > maxBytes) {
+                await reader.cancel().catch(() => undefined);
+                throw new ToolError('NETWORK_ERROR', `${what}: response from ${host} exceeds ${maxBytes} bytes.`);
+            }
+            chunks.push(value);
+        }
+    } catch (err) {
+        if (err instanceof ToolError) throw err;
+        throw new ToolError('NETWORK_ERROR', `${what}: reading the response from ${host} failed (${describeFetchError(err)}).`);
     }
-    return buf;
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (const c of chunks) {
+        out.set(c, offset);
+        offset += c.byteLength;
+    }
+    return out;
 }
 
 /** Never echo header values (the TSA Authorization secret) — only the error class / name. */

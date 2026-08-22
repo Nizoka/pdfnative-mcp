@@ -129,3 +129,22 @@ describe.skipIf(!hasDist)('dist/cli.js over stdio', () => {
         expect(result?.supportedVersions).toContain('2026-07-28');
     });
 });
+
+describe.skipIf(!hasDist)('dist/cli.js over stdio — large frames', () => {
+    it('accepts a single JSON-RPC frame larger than the SDK default 10 MiB cap without dying', async () => {
+        const big = 'A'.repeat(11 * 1024 * 1024); // ~11 MiB base64 string (garbage → tool error, but the frame must arrive)
+        const session = await runStdioSession(
+            [
+                { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'smoke', version: '0' } } },
+                { jsonrpc: '2.0', method: 'notifications/initialized' },
+                { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'inspect_pdf', arguments: { pdfBase64: big } } },
+                { jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} },
+            ],
+            [1, 2, 3],
+        );
+        expect(session.stderr).not.toContain('ReadBuffer exceeded');
+        const call = session.frames.find((f) => f.id === 2)?.result as { isError?: boolean } | undefined;
+        expect(call?.isError).toBe(true); // garbage PDF → tool error, delivered
+        expect(session.frames.find((f) => f.id === 3)?.result).toBeDefined(); // the server is still alive afterwards
+    }, 60_000);
+});

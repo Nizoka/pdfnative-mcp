@@ -25,7 +25,7 @@ import { z } from 'zod';
 
 export const CHART_TYPE_ENUM = ['bar', 'barH', 'stackedBar', 'stackedBarH', 'line', 'area', 'scatter', 'pie', 'donut'] as const;
 
-const X_VALUE = { type: ['number', 'string'], description: 'Positional x value: a number (linear axis) or an ISO-8601 date / epoch milliseconds (time axis).' } as const;
+const X_VALUE = { type: ['number', 'string'], maxLength: 64, description: 'Positional x value: a number (linear axis) or an ISO-8601 date / epoch milliseconds (time axis).' } as const;
 
 /** Hex-colour pattern shared by series and palette overrides (JSON Schema + Zod stay in lock-step). */
 const HEX_COLOR_PATTERN = '^#?[0-9a-fA-F]{6}$';

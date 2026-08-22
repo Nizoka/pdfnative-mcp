@@ -37,6 +37,13 @@
  */
 import { createServer, ensureCompressionReady } from './server.js';
 
+/**
+ * Largest single JSON-RPC frame accepted on stdio (256 MiB). Sized for the
+ * biggest legitimate request — merge_pdfs with 50 base64 sources — while still
+ * bounding memory; HTTP bodies use the same bound in src/http.ts.
+ */
+const STDIO_MAX_FRAME_BYTES = 256 * 1024 * 1024;
+
 function log(line: string): void {
     process.stderr.write(`[pdfnative-mcp] ${line}\n`);
 }
@@ -52,7 +59,7 @@ async function main(): Promise<void> {
     if (!Number.isNaN(port) && port > 0 && port < 65536) {
         // --- HTTP / Streamable HTTP transport ---
         const { createMcpHandler } = await import('@modelcontextprotocol/server');
-        const { guardLoopback, sendWebResponse, toWebRequest } = await import('./http.js');
+        const { guardLoopback, sendWebResponse, toWebRequest, RequestTooLargeError } = await import('./http.js');
         const { createServer: createHttpServer } = await import('node:http');
 
         // Both eras: 2026-07-28 requests are served by a fresh per-request instance;
@@ -73,6 +80,11 @@ async function main(): Promise<void> {
                     const response = guardLoopback(request) ?? (await handler.fetch(request));
                     await sendWebResponse(res, response);
                 } catch (err) {
+                    if (err instanceof RequestTooLargeError) {
+                        if (!res.headersSent) res.writeHead(413, { 'Content-Type': 'text/plain' });
+                        res.end('Payload Too Large');
+                        return;
+                    }
                     onerror(err instanceof Error ? err : new Error(String(err)));
                     if (!res.headersSent) {
                         res.writeHead(500, { 'Content-Type': 'text/plain' });
@@ -103,11 +115,17 @@ async function main(): Promise<void> {
         });
     } else {
         // --- stdio transport (default) ---
-        const { serveStdio } = await import('@modelcontextprotocol/server/stdio');
+        const { serveStdio, StdioServerTransport } = await import('@modelcontextprotocol/server/stdio');
+
+        // SDK v2 caps a single stdio frame at 10 MiB by default and closes the
+        // transport (exiting the server) on overflow. Our tools legitimately
+        // accept far larger inputs (multi-MiB base64 PDFs, merges of 50 documents),
+        // so raise the cap to the server's own envelope (see STDIO_MAX_FRAME_BYTES).
+        const transport = new StdioServerTransport(process.stdin, process.stdout, { maxBufferSize: STDIO_MAX_FRAME_BYTES });
 
         // The opening exchange pins the protocol era for this process
         // (`server/discover` probe → 2026-07-28, `initialize` → legacy).
-        const handle = serveStdio(factory, { legacy: 'serve', onerror });
+        const handle = serveStdio(factory, { legacy: 'serve', onerror, transport });
 
         const shutdown = async (signal: string): Promise<void> => {
             log(`received ${signal}, shutting down...`);

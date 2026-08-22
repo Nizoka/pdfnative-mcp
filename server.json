@@ -29,7 +29,7 @@
         },
         {
           "name": "PDFNATIVE_MCP_CACHE_DIR",
-          "description": "Opt-in content-addressed response cache directory. SHA-256 keyed, 1h TTL, 256 MiB LRU. Tool output is stored as plaintext at rest; encrypt_pdf and decrypt_pdf are never cached so decrypted/protected bytes never linger on disk.",
+          "description": "Opt-in content-addressed response cache directory. SHA-256 keyed, 1h TTL, 256 MiB LRU. Tool output is stored as plaintext at rest. Never cached: encrypt_pdf, decrypt_pdf (so decrypted/protected bytes never linger on disk), add_ltv, timestamp_pdf, update_metadata, sign_pdf with timestamp=true (time- or network-dependent output), and any call with outputMode='file'.",
           "isRequired": false,
           "isSecret": false
         },
@@ -60,7 +60,7 @@
         },
         {
           "name": "PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS",
-          "description": "Comma-separated allow-list of OCSP / CRL responder hosts ('host', 'host:port' or '*.suffix'). Mandatory when PDFNATIVE_MCP_REVOCATION is set: responder URLs come from untrusted certificates inside the PDF and are fetched only when the host matches (http(s) only, no credentials, no redirects, internal address literals rejected unless listed verbatim).",
+          "description": "Comma-separated allow-list of OCSP / CRL responder hosts ('host', 'host:port' or '*.suffix'). Mandatory when PDFNATIVE_MCP_REVOCATION is set: responder URLs come from untrusted certificates inside the PDF and are fetched only when the host matches (http(s) only, no credentials, no redirects, internal address literals rejected unless listed verbatim). Entries are hostnames: 'host:port' only matches URLs with an explicit non-default port, wildcards cannot carry a port, IDN hosts must be punycode, IPv6 literals in brackets. Address literals only are checked — a listed hostname resolving to an internal address (DNS rebinding) is not detected.",
           "isRequired": false,
           "isSecret": false
         },

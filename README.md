@@ -40,7 +40,7 @@
 | `extract_attachments`              | Read-only extraction of embedded files (Factur-X / ZUGFeRD XML round-trip) with byte-for-byte payloads. |
 | `extract_text`                     | Unicode text extraction (resolves `/ToUnicode`) with optional positioned runs; opens encrypted PDFs via `password`. |
 | `inspect_pdf`                      | Read-only inspection: PDF version, page count, encryption (+ precise `encryptionInfo`), PDF/A claim, signatures (+ inventory, `/DSS`, document timestamps), page boxes, `/Trapped`, attachments, placeholder state. |
-| `update_metadata` *(new in v1.6.0)* | Rewrite `/Info` title / author / subject / keywords (+ XMP) of an **existing** PDF as an incremental update. |
+| `update_metadata` *(new in v1.6.0)* | Rewrite `/Info` title / author / subject / keywords (+ XMP) of an **existing** PDF as an incremental update; pin `modDate` for reproducible bytes. |
 | `encrypt_pdf`                      | Re-secure a PDF with AES-128 / AES-256 (owner/user passwords, permissions, password rotation).  |
 | `decrypt_pdf`                      | Emit an unencrypted copy of an RC4 / AES-128 / AES-256 document.                                |
 | `merge_pdfs`                       | Concatenate 2–50 PDFs into one via pdfnative's page-tree API (page boxes preserved).            |
@@ -521,10 +521,11 @@ The server makes **no outbound network call by default**. The only egress it can
 
 OCSP / CRL URLs come from the AIA / CRL-distribution-point extensions of untrusted certificates inside the PDF, so every fetch passes an SSRF guard:
 
-- host must match the operator allow-list (`host`, `host:port` or `*.suffix`; bare wildcards are rejected);
+- host must match the operator allow-list (`host`, `host:port` or `*.suffix`; bare wildcards are rejected). Entries are **hostnames**, not URLs: a `host:port` entry only matches URLs carrying an *explicit* port (the URL parser drops default `:80` / `:443` — list the bare host for those); wildcard entries cannot carry a port; IDN hostnames must be listed in punycode (`xn--…`); IPv6 literals in brackets (`[2001:db8::1]`);
 - `http:` / `https:` only, no embedded credentials, redirects are never followed;
-- loopback, link-local, private, unique-local, CGNAT, unspecified and multicast address literals (including decimal / octal / hex spellings and IPv4-mapped IPv6) are rejected unless that literal is allow-listed verbatim;
-- per-request timeout (`PDFNATIVE_MCP_NETWORK_TIMEOUT_MS`) and response caps (256 KiB TSA, 1 MiB OCSP, 16 MiB CRL);
+- loopback, link-local, private, unique-local, CGNAT, unspecified and multicast address literals (including decimal / octal / hex spellings and IPv4-mapped IPv6) are rejected unless that literal is allow-listed verbatim. The guard checks **literals only** — a listed hostname that resolves to an internal address (DNS rebinding) is not detected, since there is no resolver without adding a dependency; allow-list only hosts you control;
+- per-request timeout (`PDFNATIVE_MCP_NETWORK_TIMEOUT_MS`) and response caps (256 KiB TSA, 1 MiB OCSP, 16 MiB CRL) enforced **while streaming**, so an oversized response is cut off rather than buffered;
+- OCSP responses and CRLs returned by responders are parse-validated before `add_ltv` embeds them;
 - the TSA URL is operator-trusted (scheme + credential checks only); the `PDFNATIVE_MCP_TSA_AUTH` secret is never logged or echoed in error messages.
 
 Providers are built per call and passed through pdfnative's per-call options — the process-wide provider setters are never used, so concurrent requests share nothing. The `server/discover` instructions report the current egress policy (endpoint kinds only, never secrets).

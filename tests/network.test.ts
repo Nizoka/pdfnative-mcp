@@ -214,3 +214,72 @@ describe('network policy (operator-configured egress, SSRF guard)', () => {
         expect(seen[1]).toBe('GET http://crl.example.org/ca.crl');
     });
 });
+
+describe('network policy — review hardening (v1.6.0)', () => {
+    beforeEach(() => {
+        for (const k of ENV_KEYS) delete process.env[k];
+    });
+    afterEach(() => {
+        for (const k of ENV_KEYS) delete process.env[k];
+        __setFetchForTests(null);
+    });
+
+    it('enforces the size cap while streaming an unsized (chunked) body', async () => {
+        process.env[TSA_URL_ENV] = 'https://tsa.example.com/tsr';
+        let produced = 0;
+        __setFetchForTests(async () => {
+            const chunk = new Uint8Array(64 * 1024);
+            const stream = new ReadableStream<Uint8Array>({
+                pull(controller) {
+                    produced += chunk.byteLength;
+                    controller.enqueue(chunk);
+                    if (produced > 64 * 1024 * 1024) controller.close();
+                },
+            });
+            return new Response(stream, { status: 200 }); // no content-length
+        });
+        const err = await requireTimestampProvider().getTimestamp(new Uint8Array(1)).catch((e: unknown) => e);
+        expect((err as ToolError).code).toBe('NETWORK_ERROR');
+        expect((err as ToolError).message).toContain('exceeds');
+        // Stopped right after crossing 256 KiB, not after the full 64 MiB.
+        expect(produced).toBeLessThan(2 * 1024 * 1024);
+    });
+
+    it('maps a body read failure (e.g. timeout mid-stream) to NETWORK_ERROR', async () => {
+        process.env[TSA_URL_ENV] = 'https://tsa.example.com/tsr';
+        __setFetchForTests(async () => {
+            const stream = new ReadableStream<Uint8Array>({
+                pull() {
+                    const e = new Error('aborted');
+                    e.name = 'TimeoutError';
+                    throw e;
+                },
+            });
+            return new Response(stream, { status: 200 });
+        });
+        const err = await requireTimestampProvider().getTimestamp(new Uint8Array(1)).catch((e: unknown) => e);
+        expect((err as ToolError).code).toBe('NETWORK_ERROR');
+        expect((err as ToolError).message).toContain('timeout');
+    });
+
+    it('canonicalises allow-list entries: IDN → punycode, default ports dropped, IPv6 bracketed, explicit ports kept', () => {
+        expect(parseAllowedHosts('bücher.example.com, EXAMPLE.com:80, ::1, [::1]:8443, ocsp.example.org:8080, *.Pki.Example.net')).toEqual([
+            'xn--bcher-kva.example.com',
+            'example.com',
+            '[::1]',
+            '[::1]:8443',
+            'ocsp.example.org:8080',
+            '*.pki.example.net',
+        ]);
+        const policy = { trusted: false, allowedHosts: parseAllowedHosts('bücher.example.com, example.com:80, ::1, ocsp.example.org:8080') };
+        expect(codeOf(() => assertUrlAllowed(new URL('http://bücher.example.com/ocsp'), policy))).toBeNull();
+        expect(codeOf(() => assertUrlAllowed(new URL('http://xn--bcher-kva.example.com/ocsp'), policy))).toBeNull();
+        expect(codeOf(() => assertUrlAllowed(new URL('http://example.com/ocsp'), policy))).toBeNull();
+        expect(codeOf(() => assertUrlAllowed(new URL('http://example.com:8080/ocsp'), policy))).toBeNull(); // port-less entry matches any port
+        expect(codeOf(() => assertUrlAllowed(new URL('http://[::1]/ocsp'), policy))).toBeNull(); // verbatim loopback literal
+        expect(codeOf(() => assertUrlAllowed(new URL('http://ocsp.example.org:8080/x'), policy))).toBeNull();
+        expect(codeOf(() => assertUrlAllowed(new URL('http://ocsp.example.org/x'), policy))).toBe('NETWORK_HOST_NOT_ALLOWED'); // entry pinned a port
+        expect(codeOf(() => parseAllowedHosts('*.example.com:8080'))).toBe('NETWORK_ERROR');
+        expect(codeOf(() => parseAllowedHosts('user@example.com'))).toBe('NETWORK_ERROR');
+    });
+});

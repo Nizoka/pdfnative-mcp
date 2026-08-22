@@ -67,10 +67,13 @@ describe('colour-emoji flag & ZWJ sequences (pdfnative 1.7 bundled font, no API 
 
     it('is deterministic and differs from the per-codepoint fallback text', async () => {
         const seq = { title: 'S', lang: ['emoji'], paragraphs: ['\u{1F1EB}\u{1F1F7}'] };
+        // Strip the wall-clock /CreationDate so a second boundary between calls cannot flake.
+        const norm = (b64: string | undefined): string =>
+            Buffer.from(b64 ?? '', 'base64').toString('latin1').replace(/D:\d{14}[^)]*\)/g, 'D:X)');
         const a = await addInternationalText(seq);
         const b = await addInternationalText(seq);
-        expect(a.base64).toBe(b.base64);
+        expect(norm(a.base64)).toBe(norm(b.base64));
         const split = await addInternationalText({ title: 'S', lang: ['emoji'], paragraphs: ['\u{1F1EB} \u{1F1F7}'] });
-        expect(split.base64).not.toBe(a.base64);
+        expect(norm(split.base64)).not.toBe(norm(a.base64));
     });
 });

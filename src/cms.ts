@@ -5,15 +5,18 @@
  * extracts the bits needed to verify a PAdES Baseline / adbe.pkcs7.detached
  * signature:
  *
- *   - the signer certificate (first cert in the `certificates [0]` field)
+ *   - the signer certificate (selected from `certificates [0]` by matching
+ *     SignerInfo.sid's serial number — RFC 5652 imposes no order)
  *   - the digest + signature algorithm OIDs
  *   - the signed attributes blob (raw DER), if present, so the verifier can
  *     re-encode it as a SET for hashing
  *   - the `messageDigest` signed attribute value
  *   - the signature value bytes
+ *   - the PAdES markers: ESS signing-certificate-v2 and an RFC 3161 signature
+ *     timestamp token carried as an unsigned attribute
  *
- * Only RSA-SHA256 and ECDSA-SHA256 are supported in v1.0.0, matching the
- * algorithms `sign_pdf` is able to produce.
+ * Supports RSA with SHA-256/384/512 and ECDSA-P256 with SHA-256, matching the
+ * algorithms `sign_pdf` is able to produce (digest agility since v1.6.0).
  */
 import { derDecode } from 'pdfnative';
 
@@ -131,6 +134,31 @@ function algorithmFromOid(oid: string, digest: CmsDigest): CmsAlgorithm {
     throw new ToolError('CMS_PARSE_FAILED', `unsupported signature algorithm OID ${oid}`);
 }
 
+/** Serial number of a DER Certificate: tbsCertificate → [version?] → serialNumber INTEGER. */
+function certificateSerial(certNode: DerNode): Uint8Array | null {
+    const tbs = certNode.children[0];
+    if (tbs === undefined || tbs.tag !== 0x30) return null;
+    const first = tbs.children[0];
+    const serial = first !== undefined && first.tag === 0xa0 ? tbs.children[1] : first;
+    return serial !== undefined && serial.tag === 0x02 ? serial.value : null;
+}
+
+/** Select the signer certificate by matching SignerInfo.sid (issuerAndSerialNumber) against the carried certificates. */
+function pickSignerCert(certNodes: readonly DerNode[], sidNode: DerNode, cms: Uint8Array): Uint8Array {
+    if (sidNode.tag === 0x30) {
+        const serialNode = sidNode.children[1];
+        if (serialNode !== undefined && serialNode.tag === 0x02) {
+            for (const c of certNodes) {
+                const serial = certificateSerial(c);
+                if (serial !== null && serial.length === serialNode.value.length && serial.every((b, i) => b === serialNode.value[i])) {
+                    return rawBytes(c, cms);
+                }
+            }
+        }
+    }
+    return rawBytes(certNodes[0]!, cms);
+}
+
 /**
  * Re-encodes a `[0] IMPLICIT SET` of signed attributes as an explicit SET
  * (`tag 0x31`) — the bytes that were actually digested during signing.
@@ -211,10 +239,11 @@ export function parseCmsSignedData(cms: Uint8Array): ParsedCms {
     if (certsNode === null || certsNode.children.length === 0) {
         throw new ToolError('CMS_PARSE_FAILED', 'SignedData: no signer certificate');
     }
-    const signerCertNode = certsNode.children[0]!;
-    expectTag(signerCertNode, 0x30, 'Certificate');
-    const signerCertDer = rawBytes(signerCertNode, cms);
-    const certificatesDer = certsNode.children.filter((c) => c.tag === 0x30).map((c) => rawBytes(c, cms));
+    const certNodes = certsNode.children.filter((c) => c.tag === 0x30);
+    if (certNodes.length === 0) {
+        throw new ToolError('CMS_PARSE_FAILED', 'SignedData: no signer certificate');
+    }
+    const certificatesDer = certNodes.map((c) => rawBytes(c, cms));
 
     const signerInfo = signerInfos.children[0]!;
     expectTag(signerInfo, 0x30, 'SignerInfo');
@@ -224,7 +253,10 @@ export function parseCmsSignedData(cms: Uint8Array): ParsedCms {
     // version, sid, digestAlgorithm, [signedAttrs?], signatureAlgorithm, signature, [unsignedAttrs?]
     let siCursor = 0;
     siCursor++; // version
-    siCursor++; // sid
+    const sidNode = signerInfo.children[siCursor++]!; // IssuerAndSerialNumber (SEQUENCE) or [0] SubjectKeyIdentifier
+    // RFC 5652 imposes no order on `certificates`: pick the one whose serial number
+    // matches SignerInfo.sid (fall back to the first certificate for SKI-form sids).
+    const signerCertDer = pickSignerCert(certNodes, sidNode, cms);
     const digestAlgNode = signerInfo.children[siCursor++]!;
     expectTag(digestAlgNode, 0x30, 'SignerInfo.digestAlgorithm');
     const digestOidNode = digestAlgNode.children[0];

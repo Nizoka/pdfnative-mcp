@@ -9,8 +9,10 @@
  *     signature (and the TSA certificates inside embedded timestamp tokens),
  *     asks the **operator-configured** revocation provider for OCSP/CRL
  *     material (`PDFNATIVE_MCP_REVOCATION` + allow-list) and embeds it.
- *     Fails fast with `REVOCATION_NOT_CONFIGURED` when nothing is configured:
- *     the server never contacts the network otherwise.
+ *     Every response is parse-validated (RFC 6960 / RFC 5280) before the
+ *     engine sees it, so an HTTP-200 error page from a responder never lands
+ *     in `/DSS`. Fails fast with `REVOCATION_NOT_CONFIGURED` when nothing is
+ *     configured: the server never contacts the network otherwise.
  *   - `offline` — `embedValidationInfo()`: the caller supplies DER material
  *     collected out-of-band (air-gapped pipelines, corporate PKI exports);
  *     every blob is parsed before embedding so garbage never lands in `/DSS`.
@@ -29,6 +31,7 @@ import {
     parseOcspResponse,
     vriKeyForContents,
     type LtvData,
+    type RevocationProvider,
 } from 'pdfnative';
 import { z } from 'zod';
 
@@ -111,6 +114,52 @@ function validateMaterial(field: string, items: readonly Uint8Array[], parse: (d
     });
 }
 
+/**
+ * Wrap the operator provider so that every fetched blob is parsed before the
+ * engine embeds it — the engine stores provider output verbatim.
+ */
+function validatingProvider(raw: RevocationProvider): RevocationProvider {
+    const rawOcsp = raw.fetchOcsp;
+    const rawCrl = raw.fetchCrl;
+    const hostOf = (u: string): string => {
+        try {
+            return new URL(u).host;
+        } catch {
+            return 'responder';
+        }
+    };
+    return {
+        ...(rawOcsp !== undefined
+            ? {
+                  fetchOcsp: async (url: string, request: Uint8Array): Promise<Uint8Array> => {
+                      const bytes = await rawOcsp(url, request);
+                      try {
+                          parseOcspResponse(bytes);
+                      } catch (err) {
+                          const message = err instanceof Error ? err.message : String(err);
+                          throw new ToolError('LTV_MATERIAL_INVALID', `OCSP response from ${hostOf(url)} does not parse: ${message}`);
+                      }
+                      return bytes;
+                  },
+              }
+            : {}),
+        ...(rawCrl !== undefined
+            ? {
+                  fetchCrl: async (url: string): Promise<Uint8Array> => {
+                      const bytes = await rawCrl(url);
+                      try {
+                          parseCrl(bytes);
+                      } catch (err) {
+                          const message = err instanceof Error ? err.message : String(err);
+                          throw new ToolError('LTV_MATERIAL_INVALID', `CRL from ${hostOf(url)} does not parse: ${message}`);
+                      }
+                      return bytes;
+                  },
+              }
+            : {}),
+    };
+}
+
 function mapLtvError(err: unknown): ToolError {
     if (err instanceof ToolError) return err;
     const message = err instanceof Error ? err.message : String(err);
@@ -142,7 +191,7 @@ export async function addLtv(rawInput: unknown): Promise<OutputResult> {
     try {
         if (input.mode === 'online') {
             // Fail fast (before touching the document) when no provider is configured.
-            const revocationProvider = requireRevocationProvider();
+            const revocationProvider = validatingProvider(requireRevocationProvider());
             const extraCertificates = decodeList('extraCertificatesDerBase64', input.extraCertificatesDerBase64);
             validateMaterial('extraCertificatesDerBase64', extraCertificates, parseCertificate);
             const before = listSignatures(pdf);
@@ -151,7 +200,7 @@ export async function addLtv(rawInput: unknown): Promise<OutputResult> {
                 preferOcsp: input.preferOcsp,
                 ...(extraCertificates.length > 0 ? { extraCertificates } : {}),
             });
-            summary = { mode: 'online', signatures: before.filter((s) => !s.isPlaceholder && !s.isDocTimestamp).length };
+            summary = { mode: 'online', signatures: before.filter((s) => !s.isPlaceholder).length };
         } else {
             const certificates = decodeList('certificatesDerBase64', input.certificatesDerBase64);
             const ocspResponses = decodeList('ocspResponsesDerBase64', input.ocspResponsesDerBase64);
@@ -160,7 +209,9 @@ export async function addLtv(rawInput: unknown): Promise<OutputResult> {
             validateMaterial('ocspResponsesDerBase64', ocspResponses, parseOcspResponse);
             validateMaterial('crlsDerBase64', crls, parseCrl);
 
-            const signed = listSignatures(pdf).filter((s) => !s.isPlaceholder && !s.isDocTimestamp);
+            // Every signed field — including document timestamps, which PAdES
+            // re-timestamping chains also validate through /VRI — gets an entry.
+            const signed = listSignatures(pdf).filter((s) => !s.isPlaceholder);
             if (signed.length === 0) {
                 throw new ToolError('LTV_NO_SIGNATURE', 'The document has no signed signature to enable LTV for — run sign_pdf first.');
             }

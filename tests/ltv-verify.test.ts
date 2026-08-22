@@ -69,13 +69,14 @@ describe('verify_pdf ltv', () => {
         expect(result.allValid).toBe(true);
         expect(result.ltvLevel).toBe('B-B');
         expect(result.dss).toBeNull();
-        expect(result.caveats).toHaveLength(2);
+        expect(result.caveats).toHaveLength(3);
         expect(result.caveats![0]).toMatch(/embedded \/DSS material only/);
         expect(result.caveats![1]).toMatch(/TSA certificate trust is not evaluated/);
+        expect(result.caveats![2]).toMatch(/structural classification/);
         const sig = result.signatures[0]!;
         expect(sig.profile).toBe('pades');
         expect(sig.ltvLevel).toBe('B-B');
-        expect(sig.timestamp).toEqual({ present: false, genTime: null, imprintVerified: null, tsaSubject: null });
+        expect(sig.timestamp).toEqual({ present: false, genTime: null, imprintVerified: null, tokenSignatureValid: null, tsaSubject: null });
         expect(sig.revocation).toEqual({ source: 'none', status: 'not-evaluated' });
     });
 
@@ -90,6 +91,7 @@ describe('verify_pdf ltv', () => {
             present: true,
             genTime: MOCK_TSA_GEN_TIME.toISOString(),
             imprintVerified: true,
+            tokenSignatureValid: true,
             tsaSubject: 'pdfnative Mock TSA',
         });
         expect(sig.revocation).toEqual({ source: 'none', status: 'not-evaluated' });
@@ -117,9 +119,57 @@ describe('verify_pdf ltv', () => {
         expect(result.dss!.crls).toBeGreaterThan(0);
         const sig = result.signatures[0]!;
         expect(sig.revocation).toEqual({ source: 'crl', status: 'revoked' });
-        // Revocation data is informational — LTV level and cryptographic validity are reported as-is.
+        // Material that speaks about the signer (even negatively) still makes the
+        // document structurally B-LT, but a revoked signer is not a valid signature.
         expect(sig.ltvLevel).toBe('B-LT');
-        expect(sig.valid).toBe(true);
+        expect(sig.valid).toBe(false);
+        expect(sig.errors).toEqual(expect.arrayContaining([expect.stringMatching(/REVOKED/)]));
+        expect(result.allValid).toBe(false);
+        // Without the ltv view, the cryptographic verdict is unchanged.
+        const plain = await verifyPdf({ pdfBase64: toB64(blt) });
+        expect(plain.allValid).toBe(true);
+    });
+
+    /** Flip one byte of a CMS SignerInfo signature value inside the LAST /Contents hex string of a PDF. */
+    function corruptSignatureValue(pdf: Uint8Array, pickToken: (cms: Uint8Array) => Uint8Array): Uint8Array {
+        const text = Buffer.from(pdf).toString('latin1');
+        const contentsStart = text.lastIndexOf('/Contents <') + '/Contents <'.length;
+        const contentsEnd = text.indexOf('>', contentsStart);
+        const hex = text.slice(contentsStart, contentsEnd);
+        const contents = Buffer.from(hex, 'hex');
+        const token = pickToken(contents);
+        const sigValue = Buffer.from(parseCmsSignedData(token).signatureValue);
+        const at = contents.indexOf(sigValue);
+        if (at < 0) throw new Error('signature value not found in /Contents');
+        contents[at + 4] = contents[at + 4]! ^ 0xff;
+        const patched = text.slice(0, contentsStart) + contents.toString('hex').toUpperCase().padEnd(hex.length, '0') + text.slice(contentsEnd);
+        return Buffer.from(patched, 'latin1');
+    }
+
+    it('does not claim B-T from a signature timestamp whose own CMS signature is broken', async () => {
+        const bt = await signedBT(basePdf());
+        // The signature timestamp token sits in the unsigned attributes of the ONLY /Contents.
+        const corrupted = corruptSignatureValue(bt, (cms) => parseCmsSignedData(cms).signatureTimestampTokenDer!);
+        const result = await verifyPdf({ pdfBase64: toB64(corrupted), ltv: true });
+        const sig = result.signatures[0]!;
+        expect(sig.valid).toBe(true); // the signer's own signature is untouched
+        expect(sig.timestamp?.present).toBe(true);
+        expect(sig.timestamp?.imprintVerified).toBe(true); // the imprint is public — anyone can recompute it
+        expect(sig.timestamp?.tokenSignatureValid).toBe(false);
+        expect(sig.ltvLevel).toBe('B-B');
+        expect(result.ltvLevel).toBe('B-B');
+    });
+
+    it('a DocTimeStamp whose TSA signature does not verify flips allValid and the summary', async () => {
+        const { blta } = await fullLadder(basePdf());
+        // The DocTimeStamp is the last /Contents; its value IS the bare TimeStampToken (zero-padded).
+        const corrupted = corruptSignatureValue(blta, (contents) => contents);
+        const result = await verifyPdf({ pdfBase64: toB64(corrupted) });
+        const ts = result.signatures.find((s) => s.isDocTimestamp === true)!;
+        expect(ts.integrity).toBe(true);
+        expect(ts.valid).toBe(false);
+        expect(result.allValid).toBe(false);
+        expect(result.summary).toBe('1/2 signature(s) valid.');
     });
 
     it('reports revoked via OCSP when the responder says so', async () => {

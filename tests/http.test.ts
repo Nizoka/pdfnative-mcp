@@ -94,3 +94,36 @@ describe('src/http.ts bridge', () => {
         expect(guardLoopback(badOrigin)?.status).toBe(403);
     });
 });
+
+describe('src/http.ts bridge — client disconnect aborts the in-flight request', () => {
+    it('aborts the web Request signal when the POST client goes away before the response', async () => {
+        const { createServer } = await import('node:http');
+        const { toWebRequest } = await import('../src/http.js');
+        let seenSignal: AbortSignal | undefined;
+        const gotRequest = new Promise<void>((resolve) => {
+            const server = createServer((req, res) => {
+                void (async () => {
+                    const port = (server.address() as AddressInfo).port;
+                    const request = await toWebRequest(req, `http://127.0.0.1:${port}`);
+                    seenSignal = request.signal;
+                    resolve();
+                    // Never answer: the client will hang up.
+                    setTimeout(() => {
+                        res.end();
+                        server.close();
+                    }, 500);
+                })();
+            });
+            server.listen(0, '127.0.0.1', () => {
+                const port = (server.address() as AddressInfo).port;
+                const req = httpRequest({ host: '127.0.0.1', port, path: '/mcp', method: 'POST', headers: { 'content-type': 'application/json' } });
+                req.on('error', () => undefined);
+                req.end('{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}');
+                setTimeout(() => req.destroy(), 100);
+            });
+        });
+        await gotRequest;
+        await new Promise((r) => setTimeout(r, 300));
+        expect(seenSignal?.aborted).toBe(true);
+    });
+});

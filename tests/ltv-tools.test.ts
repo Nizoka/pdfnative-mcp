@@ -10,6 +10,7 @@ import { listSignatures } from 'pdfnative';
 import { ensureCompressionReady } from '../src/server.js';
 import { generateBasicPdf } from '../src/tools/generate-basic-pdf.js';
 import { signPdf } from '../src/tools/sign-pdf.js';
+import { verifyPdf } from '../src/tools/verify-pdf.js';
 import { addLtv } from '../src/tools/add-ltv.js';
 import { timestampPdf } from '../src/tools/timestamp-pdf.js';
 import { ToolError } from '../src/errors.js';
@@ -171,5 +172,106 @@ describe('LTV tools (add_ltv, timestamp_pdf, sign_pdf timestamp)', () => {
         process.env[REVOCATION_ENV] = 'ocsp';
         process.env[ALLOWED_HOSTS_ENV] = 'mock.invalid';
         await expect(addLtv({ pdfBase64: 'AQIDBA==' })).rejects.toMatchObject({ code: 'PDF_PARSE_FAILED' });
+    });
+});
+
+describe('sign_pdf — review regressions (placeholder selection, chain, TSA rejection)', () => {
+    let pki: MockPki;
+    let tsa: MockTsaServer | undefined;
+    let unsignedPdf: string;
+
+    beforeAll(async () => {
+        await ensureCompressionReady();
+        pki = createMockPki();
+        unsignedPdf = (await generateBasicPdf({ title: 'Sign', blocks: [{ type: 'paragraph', text: 'review' }] })).base64!;
+    });
+    afterEach(async () => {
+        for (const k of ENV) delete process.env[k];
+        if (tsa !== undefined) {
+            await tsa.close();
+            tsa = undefined;
+        }
+    });
+
+    const keys = (): Record<string, unknown> => ({
+        algorithm: 'rsa-sha256',
+        certDerBase64: pki.signer.certDerBase64,
+        rsaKeyPkcs1DerBase64: pki.signer.rsaKeyPkcs1DerBase64,
+    });
+
+    it('PLACEHOLDER_AMBIGUOUS when several unsigned placeholders exist and no fieldName is given; SIGNATURE_FIELD_NOT_FOUND for a wrong name', async () => {
+        const { addSignaturePlaceholder } = await import('pdfnative');
+        const one = addSignaturePlaceholder(Buffer.from(unsignedPdf, 'base64'), { fieldName: 'Author' });
+        const two = addSignaturePlaceholder(one, { fieldName: 'Reviewer', allowMultiple: true });
+        const pdf = Buffer.from(two).toString('base64');
+        await expect(signPdf({ pdfBase64: pdf, ...keys() })).rejects.toMatchObject({ code: 'PLACEHOLDER_AMBIGUOUS' });
+        await expect(signPdf({ pdfBase64: pdf, ...keys(), fieldName: 'Nobody' })).rejects.toMatchObject({ code: 'SIGNATURE_FIELD_NOT_FOUND' });
+        const signed = await signPdf({ pdfBase64: pdf, ...keys(), fieldName: 'Reviewer' });
+        const v = await verifyPdf({ pdfBase64: signed.base64! });
+        expect(v.signatures.find((s) => s.fieldName === 'Reviewer')?.valid).toBe(true);
+    });
+
+    it('rejects an unparsable certChainDerBase64 entry and walks a carried intermediate chain up to a trusted root', async () => {
+        await expect(signPdf({ pdfBase64: unsignedPdf, ...keys(), certChainDerBase64: ['AQIDBA=='] })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+        // Signer → root (the mock PKI has no intermediate): the root must be found through the carried chain.
+        const signed = await signPdf({ pdfBase64: unsignedPdf, ...keys(), certChainDerBase64: [...pki.chainDerBase64] });
+        const trusted = await verifyPdf({ pdfBase64: signed.base64!, trustedRootsDerBase64: [pki.root.certDerBase64] });
+        expect(trusted.signatures[0]?.chainTrust).toBe('trusted');
+        expect(trusted.allValid).toBe(true);
+    });
+
+    it('sign_pdf timestamp=true maps a TSA rejection to TSA_REJECTED and embeds nothing', async () => {
+        tsa = await startMockTsaServer(pki, { mode: 'reject' });
+        process.env[TSA_URL_ENV] = tsa.url;
+        await expect(signPdf({ pdfBase64: unsignedPdf, ...keys(), profile: 'pades', timestamp: true })).rejects.toMatchObject({ code: 'TSA_REJECTED' });
+        expect(tsa.requests).toBe(1);
+    });
+});
+
+describe('add_ltv — review regressions (online material validation, VRI coverage)', () => {
+    let pki: MockPki;
+    let tsa: MockTsaServer | undefined;
+    let unsignedPdf: string;
+
+    beforeAll(async () => {
+        await ensureCompressionReady();
+        pki = createMockPki();
+        unsignedPdf = (await generateBasicPdf({ title: 'LTV2', blocks: [{ type: 'paragraph', text: 'review' }] })).base64!;
+    });
+    afterEach(async () => {
+        for (const k of ENV) delete process.env[k];
+        __setFetchForTests(null);
+        if (tsa !== undefined) {
+            await tsa.close();
+            tsa = undefined;
+        }
+    });
+
+    async function signed(): Promise<string> {
+        const r = await signPdf({ pdfBase64: unsignedPdf, algorithm: 'rsa-sha256', profile: 'pades', certDerBase64: pki.signer.certDerBase64, certChainDerBase64: [...pki.chainDerBase64], rsaKeyPkcs1DerBase64: pki.signer.rsaKeyPkcs1DerBase64 });
+        return r.base64!;
+    }
+
+    it('online mode refuses a responder answer that is not an OCSP response / CRL (HTTP 200 HTML page)', async () => {
+        process.env[REVOCATION_ENV] = 'ocsp,crl';
+        process.env[ALLOWED_HOSTS_ENV] = 'mock.invalid';
+        __setFetchForTests(async () => new Response('<html>maintenance</html>', { status: 200, headers: { 'content-type': 'text/html' } }));
+        const err = await addLtv({ pdfBase64: await signed(), mode: 'online' }).catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(ToolError);
+        expect((err as ToolError).code).toBe('LTV_MATERIAL_INVALID');
+        expect((err as ToolError).message).toMatch(/mock\.invalid/);
+    });
+
+    it('offline mode gives every signed field — document timestamps included — a /VRI entry', async () => {
+        tsa = await startMockTsaServer(pki);
+        process.env[TSA_URL_ENV] = tsa.url;
+        const stamped = await timestampPdf({ pdfBase64: await signed() });
+        const provider = createMockRevocationProvider(pki);
+        const crlDer = await provider.fetchCrl!(MOCK_CRL_URL);
+        const out = await addLtv({ pdfBase64: stamped.base64!, mode: 'offline', certificatesDerBase64: [pki.root.certDerBase64, pki.tsa.certDerBase64], crlsDerBase64: [Buffer.from(crlDer).toString('base64')] });
+        expect(out.summary).toMatchObject({ signatures: 2 });
+        const { inspectPdf } = await import('../src/tools/inspect-pdf.js');
+        const info = (await inspectPdf({ pdfBase64: out.base64! })) as { dss?: { vriKeys: string[] } };
+        expect(info.dss?.vriKeys).toHaveLength(2);
     });
 });

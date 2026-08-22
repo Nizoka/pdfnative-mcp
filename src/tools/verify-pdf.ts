@@ -162,11 +162,12 @@ export const VERIFY_PDF_OUTPUT_SCHEMA = {
                         type: ['object', 'null'],
                         additionalProperties: false,
                         description: 'ltv only. RFC 3161 signature timestamp (id-aa-signatureTimeStampToken) carried in the unsigned attributes.',
-                        required: ['present', 'genTime', 'imprintVerified', 'tsaSubject'],
+                        required: ['present', 'genTime', 'imprintVerified', 'tokenSignatureValid', 'tsaSubject'],
                         properties: {
                             present: { type: 'boolean' },
                             genTime: { type: ['string', 'null'], description: 'TSTInfo genTime, ISO 8601.' },
                             imprintVerified: { type: ['boolean', 'null'], description: 'Token messageImprint equals the digest of the signature value.' },
+                            tokenSignatureValid: { type: ['boolean', 'null'], description: "The token's own CMS signature verifies against the TSA certificate it carries (null when it could not be evaluated). Required for B-T." },
                             tsaSubject: { type: ['string', 'null'] },
                         },
                     },
@@ -221,7 +222,10 @@ export type LtvLevel = 'B-B' | 'B-T' | 'B-LT' | 'B-LTA';
 export interface TimestampInfo {
     readonly present: boolean;
     readonly genTime: string | null;
+    /** TSTInfo messageImprint equals the digest of the signature value. */
     readonly imprintVerified: boolean | null;
+    /** The token's own CMS signature verifies against the embedded TSA certificate (null = not evaluable). */
+    readonly tokenSignatureValid: boolean | null;
     readonly tsaSubject: string | null;
 }
 
@@ -263,8 +267,9 @@ export interface VerifyPdfResult {
 }
 
 const LTV_CAVEATS: readonly string[] = [
-    'revocation status is read from embedded /DSS material only; responder signatures and chain validity at signing time are not evaluated',
-    'timestamp tokens are checked for imprint consistency; TSA certificate trust is not evaluated unless trustedRootsDerBase64 includes its root',
+    'revocation status is read from embedded /DSS material only (OCSP matched by serial, CRL by issuer + serial); responder and CRL signatures are not verified, and chain validity at signing time is not evaluated',
+    "timestamp tokens are checked for imprint consistency and for their own CMS signature against the TSA certificate they carry; TSA certificate trust is not evaluated unless trustedRootsDerBase64 includes its root",
+    'ltvLevel is a structural classification (verified timestamp, /VRI entry, relevant revocation material, covering document timestamp) — not a full ETSI EN 319 102-1 validation',
 ];
 
 const LTV_ORDER: readonly LtvLevel[] = ['B-B', 'B-T', 'B-LT', 'B-LTA'];
@@ -338,19 +343,53 @@ function safeSubjectCN(cert: X509Certificate): string | null {
     return cert.subject.cn ?? cert.subject.o ?? null;
 }
 
+function signedBy(cert: X509Certificate, issuer: X509Certificate): boolean {
+    try {
+        return verifyCertSignature(cert, issuer);
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Chain trust: the signer must be issued (directly, or through one or more
+ * intermediates carried in the CMS `certificates` field) by one of the
+ * supplied roots. Validity periods and revocation are not evaluated here.
+ */
 function decideChainTrust(
     cert: X509Certificate,
     trustedRoots: readonly X509Certificate[],
+    intermediatesDer: readonly Uint8Array[] = [],
 ): { trust: ChainTrust; error: string | null } {
     if (trustedRoots.length > 0) {
-        for (const root of trustedRoots) {
+        const intermediates: X509Certificate[] = [];
+        for (const der of intermediatesDer) {
             try {
-                if (verifyCertSignature(cert, root)) {
+                const c = parseCertificate(der);
+                if (!bytesEqual(c.raw, cert.raw)) intermediates.push(c);
+            } catch {
+                // ignore unparsable extra certificates
+            }
+        }
+        // Breadth-first walk from the signer up through the carried intermediates (bounded).
+        let frontier: X509Certificate[] = [cert];
+        const seen = new Set<X509Certificate>([cert]);
+        for (let depth = 0; depth <= intermediates.length && frontier.length > 0; depth++) {
+            for (const node of frontier) {
+                if (trustedRoots.some((root) => signedBy(node, root))) {
                     return { trust: 'trusted', error: null };
                 }
-            } catch {
-                // try next root
             }
+            const next: X509Certificate[] = [];
+            for (const node of frontier) {
+                for (const inter of intermediates) {
+                    if (!seen.has(inter) && signedBy(node, inter)) {
+                        seen.add(inter);
+                        next.push(inter);
+                    }
+                }
+            }
+            frontier = next;
         }
         return { trust: 'unverified', error: 'no trusted root validates the signer certificate' };
     }
@@ -559,6 +598,7 @@ function verifyTokenSignature(tokenDer: Uint8Array): {
     readonly ok: boolean | null;
     readonly error: string | null;
     readonly tsaCert: X509Certificate | null;
+    readonly certificatesDer: readonly Uint8Array[];
 } {
     let cms: ParsedCms;
     let eContent: Uint8Array | undefined;
@@ -566,27 +606,28 @@ function verifyTokenSignature(tokenDer: Uint8Array): {
         cms = parseCmsSignedData(tokenDer);
         eContent = parseCmsStructure(tokenDer).eContent;
     } catch (err) {
-        return { ok: null, error: `timestamp token signature not evaluated: ${errorMessage(err)}`, tsaCert: null };
+        return { ok: null, error: `timestamp token signature not evaluated: ${errorMessage(err)}`, tsaCert: null, certificatesDer: [] };
     }
     let tsaCert: X509Certificate;
     try {
         tsaCert = parseCertificate(cms.signerCertDer);
         /* v8 ignore next 3 */
     } catch (err) {
-        return { ok: null, error: `timestamp token signature not evaluated: TSA cert parse failed: ${errorMessage(err)}`, tsaCert: null };
+        return { ok: null, error: `timestamp token signature not evaluated: TSA cert parse failed: ${errorMessage(err)}`, tsaCert: null, certificatesDer: [] };
     }
+    const certificatesDer = cms.certificatesDer;
     /* v8 ignore next 3 */
     if (eContent === undefined || cms.signedAttrsValueDer === null || cms.messageDigest === null) {
-        return { ok: false, error: 'timestamp token lacks TSTInfo content or signed attributes', tsaCert };
+        return { ok: false, error: 'timestamp token lacks TSTInfo content or signed attributes', tsaCert, certificatesDer };
     }
     if (!constantTimeEqual(cms.messageDigest, hashBytes(cms.digestAlgorithm, eContent))) {
-        return { ok: false, error: 'timestamp token messageDigest does not match its TSTInfo', tsaCert };
+        return { ok: false, error: 'timestamp token messageDigest does not match its TSTInfo', tsaCert, certificatesDer };
     }
     const attrsHash = hashBytes(cms.digestAlgorithm, reencodeSignedAttrsAsSet(cms.signedAttrsValueDer));
     const r = verifySignatureValue(cms.algorithm, tsaCert, attrsHash, cms.signatureValue);
     /* v8 ignore next */
-    if (r.error !== null) return { ok: false, error: r.error, tsaCert };
-    return { ok: r.ok, error: r.ok ? null : 'timestamp token signature value does not match signedAttrs hash', tsaCert };
+    if (r.error !== null) return { ok: false, error: r.error, tsaCert, certificatesDer };
+    return { ok: r.ok, error: r.ok ? null : 'timestamp token signature value does not match signedAttrs hash', tsaCert, certificatesDer };
 }
 
 /**
@@ -627,7 +668,7 @@ function verifyDocTimestamp(
     if (token.error !== null) errors.push(token.error);
     let chainTrust: ChainTrust = 'unknown';
     if (token.tsaCert !== null) {
-        const chain = decideChainTrust(token.tsaCert, trustedRoots);
+        const chain = decideChainTrust(token.tsaCert, trustedRoots, token.certificatesDer);
         chainTrust = chain.trust;
         if (chain.error !== null) errors.push(chain.error);
     }
@@ -727,7 +768,7 @@ function verifyOneWidget(
     }
 
     // 6) chain trust
-    const chain = decideChainTrust(signerCert, trustedRoots);
+    const chain = decideChainTrust(signerCert, trustedRoots, cms.certificatesDer);
     if (chain.error !== null) errors.push(chain.error);
 
     const valid = integrity && sigOk && (chain.trust === 'trusted' || chain.trust === 'self-signed' || trustedRoots.length === 0);
@@ -753,28 +794,23 @@ function verifyOneWidget(
 /** Evaluate the PAdES signature timestamp (id-aa-signatureTimeStampToken) of a CMS. */
 function evaluateSignatureTimestamp(cms: ParsedCms): TimestampInfo {
     if (cms.signatureTimestampTokenDer === null) {
-        return { present: false, genTime: null, imprintVerified: null, tsaSubject: null };
+        return { present: false, genTime: null, imprintVerified: null, tokenSignatureValid: null, tsaSubject: null };
     }
     let tst: TstInfo;
     try {
         tst = parseTimestampToken(cms.signatureTimestampTokenDer);
     } catch {
-        return { present: true, genTime: null, imprintVerified: false, tsaSubject: null };
+        return { present: true, genTime: null, imprintVerified: false, tokenSignatureValid: null, tsaSubject: null };
     }
     // RFC 3161 / ETSI EN 319 122-1: the imprint is the digest of the SignerInfo signature value.
     const imprint = hashBytes(digestFromOidBytes(tst.hashAlgorithmOid), cms.signatureValue);
     const imprintVerified = verifyTimestampImprint(tst, imprint);
-    let tsaSubject: string | null = null;
-    const tsaDer = tst.tsaCertificates[0];
-    if (tsaDer !== undefined) {
-        try {
-            tsaSubject = safeSubjectCN(parseCertificate(tsaDer));
-            /* v8 ignore next 3 */
-        } catch {
-            tsaSubject = null;
-        }
-    }
-    return { present: true, genTime: tst.genTime.toISOString(), imprintVerified, tsaSubject };
+    // The token lives in the UNSIGNED attributes, so it is not covered by the
+    // signer's signature: its own CMS signature must verify, otherwise anyone
+    // could replace or backdate it.
+    const token = verifyTokenSignature(cms.signatureTimestampTokenDer);
+    const tsaSubject = token.tsaCert !== null ? safeSubjectCN(token.tsaCert) : null;
+    return { present: true, genTime: tst.genTime.toISOString(), imprintVerified, tokenSignatureValid: token.ok, tsaSubject };
 }
 
 /**
@@ -824,8 +860,10 @@ function evaluateRevocation(signerCert: X509Certificate, dss: DssMaterial | null
         } catch {
             continue;
         }
+        // Only a CRL issued by the signer's CA can speak about the signer's serial.
+        if (!bytesEqual(crl.issuerRaw, signerCert.issuer.raw)) continue;
         if (isSerialRevoked(crl, serial)) return { source: 'crl', status: 'revoked' };
-        if (bytesEqual(crl.issuerRaw, signerCert.issuer.raw)) crlGood = true;
+        crlGood = true;
     }
     if (crlGood) return { source: 'crl', status: 'good' };
     return { source: 'none', status: 'unknown' };
@@ -860,16 +898,27 @@ function applyLtv(
         const timestamp = evaluateSignatureTimestamp(v.cms);
         const revocation = evaluateRevocation(v.signerCert, dss);
         const vriKey = vriKeyForContents(v.widget.contentsBytes);
-        const hasT = timestamp.present && timestamp.imprintVerified === true;
+        const hasT = timestamp.present && timestamp.imprintVerified === true && timestamp.tokenSignatureValid === true;
+        // B-LT: a verified timestamp, a /VRI entry for this very signature, and
+        // revocation material that actually speaks about the signer (good or
+        // revoked) — unrelated or missing material does not count.
         const hasLT =
             hasT &&
             dss !== null &&
-            (dss.vriKeys.includes(vriKey) || (dss.certs > 0 && (dss.ocsps > 0 || dss.crls > 0)));
+            dss.vriKeys.includes(vriKey) &&
+            (revocation.status === 'good' || revocation.status === 'revoked');
         const hasLTA = hasLT && docTimestamps.some((t) => t.result.valid && t.revisionEnd > v.revisionEnd);
         const ltvLevel: LtvLevel = hasLTA ? 'B-LTA' : hasLT ? 'B-LT' : hasT ? 'B-T' : 'B-B';
         levels.push(ltvLevel);
+        const revoked = revocation.status === 'revoked';
         return {
             ...v.result,
+            ...(revoked
+                ? {
+                      valid: false,
+                      errors: [...v.result.errors, 'signer certificate is reported REVOKED by the embedded revocation material'],
+                  }
+                : {}),
             profile: v.cms.hasEssSigningCertV2 ? 'pades' : 'pkcs7',
             timestamp,
             revocation,
@@ -915,24 +964,26 @@ export async function verifyPdf(rawInput: unknown): Promise<VerifyPdfResult> {
     const widgets = collectSignatureWidgets(reader);
     const verifications = widgets.map((w) => verifyOneWidget(w, pdf, trustedRoots));
     let signatures: VerifyResult[] = verifications.map((v) => v.result);
-    const plain = signatures.filter((s) => s.isDocTimestamp !== true);
-    const docTimestamps = signatures.filter((s) => s.isDocTimestamp === true);
-    const allValid =
-        signatures.length > 0 && plain.every((s) => s.valid) && docTimestamps.every((s) => s.integrity);
-    const summary =
-        signatures.length === 0
-            ? 'No signatures found.'
-            : allValid
-                ? `All ${signatures.length} signature(s) valid.`
-                : `${signatures.filter((s) => s.valid).length}/${signatures.length} signature(s) valid.`;
+    const verdict = (sigs: readonly VerifyResult[]): { allValid: boolean; summary: string } => {
+        const allValid = sigs.length > 0 && sigs.every((s) => s.valid);
+        const summary =
+            sigs.length === 0
+                ? 'No signatures found.'
+                : allValid
+                    ? `All ${sigs.length} signature(s) valid.`
+                    : `${sigs.filter((s) => s.valid).length}/${sigs.length} signature(s) valid.`;
+        return { allValid, summary };
+    };
 
     if (!ltv) {
+        const { allValid, summary } = verdict(signatures);
         return { signatureCount: signatures.length, allValid, summary, signatures };
     }
 
     const dss = readDssMaterial(reader);
     const ltvView = applyLtv(verifications, dss);
     signatures = ltvView.signatures;
+    const { allValid, summary } = verdict(signatures);
     const dssSummary: DssSummary | null =
         dss === null ? null : { certs: dss.certs, ocsps: dss.ocsps, crls: dss.crls, vriKeys: dss.vriKeys };
     return {

@@ -94,9 +94,12 @@ describe('generate_basic_pdf diagnostics', () => {
     });
 
     it('absent diagnostic options keep the bytes identical to a call without the fields', async () => {
+        // Strip the wall-clock /CreationDate (+ XMP dates) so a second boundary between the two calls cannot flake.
+        const norm = (b64: string | undefined): string =>
+            Buffer.from(b64 ?? '', 'base64').toString('latin1').replace(/D:\d{14}[^)]*\)/g, 'D:X)').replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[^<]*/g, 'T');
         const a = await generateBasicPdf(BASE);
         const b = await generateBasicPdf({ ...BASE, strict: false, includeDiagnostics: false, embedFonts: false });
-        expect(b.base64).toBe(a.base64);
+        expect(norm(b.base64)).toBe(norm(a.base64));
         expect(Object.keys(b)).not.toContain('diagnostics');
     });
 

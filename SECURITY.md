@@ -61,11 +61,12 @@ The server makes **no outbound network call by default**. The only egress it can
 
 OCSP and CRL URLs come from the AIA / CRL-distribution-point extensions of **untrusted certificates inside the PDF** — a classic SSRF vector. A certificate-supplied URL is fetched only when:
 
-- its host matches the operator allow-list (bare wildcards and paths are rejected as entries);
+- its host matches the operator allow-list (bare wildcards and paths are rejected as entries). Entries are **hostnames**, not URLs: a `host:port` entry only matches URLs with an *explicit* port — the URL parser drops default `:80` / `:443`, so list the bare host for those; wildcard entries cannot carry a port; IDN hostnames must be listed in punycode (`xn--…`); IPv6 literals in brackets;
 - the scheme is `http:` or `https:` and the URL carries no embedded credentials;
 - redirects are never followed (`redirect: 'error'`);
-- the host is not a loopback, link-local, private (RFC 1918), unique-local, CGNAT, unspecified or multicast address literal — including decimal / octal / hex spellings and IPv4-mapped IPv6 — unless that literal is allow-listed **verbatim** (a wildcard never unlocks an internal range);
-- the response stays under the cap (TSA 256 KiB, OCSP 1 MiB, CRL 16 MiB) and within the timeout.
+- the host is not a loopback, link-local, private (RFC 1918), unique-local, CGNAT, unspecified or multicast address literal — including decimal / octal / hex spellings and IPv4-mapped IPv6 — unless that literal is allow-listed **verbatim** (a wildcard never unlocks an internal range). **Known limitation:** the guard inspects address *literals* only. A listed hostname that resolves to an internal address (DNS rebinding) is not detected — there is no resolver step without adding a dependency — so allow-list only responders you control;
+- the response stays under the cap (TSA 256 KiB, OCSP 1 MiB, CRL 16 MiB), enforced while the body is streamed, and within the timeout;
+- OCSP responses and CRLs returned by responders are parse-validated before `add_ltv` embeds them — a responder cannot plant arbitrary bytes in the `/DSS`.
 
 The TSA URL is operator-trusted, so only the scheme and credential checks apply to it. Providers are constructed per call and passed through pdfnative's per-call options — the process-wide provider setters are never used, so concurrent requests share nothing. `add_ltv mode: 'offline'` embeds caller-supplied DER material with zero network access (every blob is parsed before it is written). The server's instructions report the egress policy as endpoint kinds only, never URLs or secrets.
 

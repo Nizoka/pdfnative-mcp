@@ -137,7 +137,7 @@ export const SIGN_PDF_INPUT_SCHEMA = {
         signingTime: {
             type: 'string',
             format: 'date-time',
-            description: 'ISO-8601 timestamp written to /Sig /M (and the CMS signing-time under the pkcs7 profile). Defaults to now. Not a trusted time — use timestamp=true for that.',
+            description: 'ISO-8601 signing instant. Written to /Sig /M only when THIS call injects the placeholder (a placeholder prepared earlier keeps its own /M) and to the CMS signing-time attribute under the pkcs7 profile. Defaults to now. Not a trusted time — use timestamp=true for that.',
         },
         outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
         outputPath: { type: 'string' },
@@ -262,7 +262,9 @@ function mapSigningError(err: unknown): ToolError {
     if (/no unsigned signature field named/.test(message)) {
         return new ToolError('SIGNATURE_FIELD_NOT_FOUND', message);
     }
-    if (/TSA rejected|imprint|nonce|TimeStampResp|timestamp/i.test(message)) {
+    // Exact engine phrases (pdfnative signPdfBytesWithTimestamp / rfc3161) — kept narrow so
+    // unrelated errors mentioning "timestamp" keep their own codes.
+    if (/TSA rejected the request|TSA token message imprint|TSA token nonce mismatch|^RFC 3161:/.test(message)) {
         return new ToolError('TSA_REJECTED', `The timestamp authority's response was rejected: ${message}`);
     }
     return new ToolError('SIGNING_FAILED', `Failed to sign PDF: ${message}`);

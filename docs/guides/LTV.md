@@ -86,7 +86,23 @@ vector. A certificate-supplied URL is fetched only when **all** of these hold:
   multicast address literals — including decimal / octal / hex spellings and
   IPv4-mapped IPv6 — are rejected **unless that literal is allow-listed verbatim**
   (a wildcard never unlocks an internal range);
-- the response stays under the cap (OCSP 1 MiB, CRL 16 MiB) and the timeout.
+- the response stays under the cap (OCSP 1 MiB, CRL 16 MiB), enforced while the body
+  streams, and within the timeout;
+- every OCSP response / CRL the responder returns is parse-validated before it is
+  embedded into the `/DSS`.
+
+Allow-list caveats worth knowing before you write the entry:
+
+- Entries are **hostnames**, not URLs. A `host:port` entry only matches URLs with an
+  *explicit* port — the URL parser drops default `:80` / `:443`, so
+  `ocsp.example.com:443` never matches `https://ocsp.example.com/`; list the bare host.
+- Wildcard entries (`*.suffix`) cannot carry a port.
+- IDN hostnames must be listed in punycode (`xn--…`), which is how they appear in the
+  parsed URL.
+- IPv6 literals go in brackets (`[2001:db8::1]`).
+- The guard checks address **literals only**. A listed hostname that resolves to an
+  internal address (DNS rebinding) is not detected — there is no resolver step without
+  adding a dependency. Allow-list only responders you control.
 
 The TSA URL is operator-trusted (the operator chose it), so only the scheme and
 credential checks apply there — loopback is permitted, which is what the test-suite's
@@ -206,3 +222,20 @@ carries; it is not a full trust-anchor validator. Use `inspect_pdf` with
 `add_ltv`, `timestamp_pdf` and `sign_pdf` with `timestamp: true` are never served
 from the opt-in response cache (`PDFNATIVE_MCP_CACHE_DIR`): their output embeds a
 token minted at call time or material fetched at call time.
+
+## Design note / follow-up
+
+- **Offline `/VRI` composition lives in the wrapper.** In `mode: 'offline'` the server
+  builds the per-signature `/VRI` map itself — every supplied certificate / OCSP
+  response / CRL is referenced from every signed signature (the Adobe-tolerant
+  superset) before `embedValidationInfo` writes the `/DSS`. pdfnative has no helper
+  that derives the `/VRI` mapping from loose material yet; one will be requested
+  upstream (through `draft_governance_issue`, human-submitted), and the wrapper will
+  delegate to it once available with no change to inputs, outputs or error codes.
+- **`ltvLevel` is structural, not a full ETSI validation.** `verify_pdf ltv: true`
+  classifies a signature from what the file carries: a verified signature timestamp
+  (B-T), revocation material in `/DSS` relevant to the signer (B-LT), a verified
+  `/DocTimeStamp` (B-LTA). It does not build the chain to a trust anchor at signing
+  time, validate responder signatures, or apply grace periods — ETSI EN 319 102-1
+  validation stays the job of a dedicated validator. The fixed `caveats[]` in the
+  response states the same.

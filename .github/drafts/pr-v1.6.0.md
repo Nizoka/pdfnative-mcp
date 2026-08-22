@@ -56,10 +56,11 @@ Method: fixed inputs per tool, PDF bytes normalised for `/CreationDate`, XMP dat
 | add_form, fill_form | changed | AcroForm `/Helv` gains `/ToUnicode` in every mode |
 | prepare_signature_placeholder, annotate_pdf | changed | incremental writer: `/ID[1]` regenerated + EOL framing |
 | add_attachment (pdfa3b) | changed | tagged base-14 `/ToUnicode` (as above) |
-| inspect_pdf, verify_pdf, extract_text, validate_pdf, extract_attachments, read_form_fields, draft_governance_issue | identical | — |
+| inspect_pdf, verify_pdf, extract_text, validate_pdf, extract_attachments, read_form_fields | identical | — |
+| draft_governance_issue | changed | `HUMAN_GATE` charter text inside the draft markdown and `complianceReport.humanGate` (deliberate charter update; report shape unchanged) |
 | merge_pdfs, split_pdf, extract_pages, decrypt_pdf | identical | — |
 | encrypt_pdf | changed | non-deterministic by design (random IV / salt) |
-| sign_pdf | n/a | needs key material; covered by real sign → verify round-trips for every algorithm |
+| sign_pdf | n/a | needs key material; covered by real sign → verify round-trips for every algorithm. Default placeholder size is now `max(16384, estimateContentsSize(cert, alg))` — identical for signer certificates ≤ ~10 KB, larger beyond; a pinned `signingTime` now lands in `/Sig /M` when the call injects the placeholder |
 
 No unexpected byte change. The SDK v2 migration itself is byte-transparent: `tools/call` results are deep-equal between the in-memory legacy transport and the 2026-07-28 HTTP path (`tests/http-modern.test.ts`).
 

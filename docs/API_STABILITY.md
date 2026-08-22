@@ -123,33 +123,54 @@ All 27 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 > (`profile`, `timestamp`, `revocation`, `ltvLevel`, document-level `dss` / `ltvLevel` /
 > `caveats`, opt-in); `inspect_pdf` `dss`, `trapped`, `docTimestampCount` (presence-gated),
 > `signatures[]` (opt-in) and `perPage[].trimBox` / `bleedBox` / `artBox` / `cropBox` /
-> `userUnit` (only when set on the page, and only with `pages: true`). Two additions land in
+> `userUnit` (only when set on the page, and only with `pages: true`). Three changes land in
 > **default** output: `verify_pdf` signatures now always carry `subFilter` (a new key, `null`
-> when absent), and `inspect_pdf` `checks` carries three extra `false` keys (`dss`,
+> when absent); `inspect_pdf` `checks` carries three extra `false` keys (`dss`,
 > `docTimestamp`, `trapped`) whenever `check` is used — the same additive precedent as the
-> `placeholder` / `attachments` keys in v1.0.0. Both are "new optional output field" changes
-> per §3; no existing key changed type or meaning.
+> `placeholder` / `attachments` keys in v1.0.0; and the `draft_governance_issue` draft
+> markdown and `complianceReport.humanGate` string changed because the `HUMAN_GATE` charter
+> sentence was reworded to state the single permitted egress class (a deliberate charter
+> update — the field keeps its type and meaning, only the quoted text differs). The first two
+> are "new optional output field" changes per §3; the third is free-text carried verbatim
+> from the governance charter and has never been promised stable.
 >
 > **New error codes** (additive): `TSA_NOT_CONFIGURED`, `TSA_REJECTED`,
 > `REVOCATION_NOT_CONFIGURED`, `NETWORK_HOST_NOT_ALLOWED`, `NETWORK_ERROR`, `LTV_NO_SIGNATURE`,
 > `LTV_EMPTY`, `LTV_MATERIAL_INVALID`, `LTV_ERROR`, `PLACEHOLDER_AMBIGUOUS`,
 > `SIGNATURE_FIELD_NOT_FOUND`, `PRINT_ERROR`, `METADATA_ERROR`, `GENERATION_FAILED` (generic
-> engine throw during a build). Existing codes gained **new triggers** without changing their
+> engine throw during a build), `FONT_LOAD_FAILED` now also raised by the document tools when
+> the `embedFonts` Noto Sans Latin data cannot be loaded (previously `add_international_text`
+> only). Existing codes gained **new triggers** without changing their
 > meaning: `PDF_A_COMPLIANCE_VIOLATION` (escalated engine diagnostics under `strict: true`;
-> `print.userUnit` under `pdfa1b`), `CHART_ERROR` (engine cross-field rules, now also for the
-> `generate_basic_pdf` `chart` block), `ENCRYPTED_SOURCE` (`update_metadata`, `add_ltv`,
-> `timestamp_pdf`).
+> `print.userUnit` under `pdfa1b`; in `add_chart` a PDF/A-class engine throw now maps to
+> `PDF_A_COMPLIANCE_VIOLATION` instead of the old catch-all `CHART_ERROR`), `CHART_ERROR`
+> (engine cross-field rules, now also for the `generate_basic_pdf` `chart` block),
+> `ENCRYPTED_SOURCE` (`update_metadata`, `add_ltv`, `timestamp_pdf`).
 >
-> **Two bug fixes change bytes for inputs that were previously wrong:**
+> **Annotation change:** `sign_pdf` now advertises `annotations.openWorldHint: true`, because
+> `timestamp: true` performs egress to the operator-configured TSA (no request is made without
+> `PDFNATIVE_MCP_TSA_URL`). Annotations are hints, not part of the §2 contract.
+>
+> **Bug fixes that change bytes for inputs that were previously wrong:**
 > 1. Signer metadata (`signerName` / `reason` / `location` / `contactInfo`) passed to
 >    `sign_pdf` or `prepare_signature_placeholder` never reached the `/Sig` dictionary on
 >    pdfnative < 1.7 (the engine dropped it). It is now baked at placeholder time, so a PDF
 >    signed with those inputs differs from v1.5.0 output — the previous output silently lost
 >    caller data.
-> 2. `verify_pdf` reported `allValid: false` on PAdES B-LTA documents because a
+> 2. `sign_pdf.signingTime` now reaches `/Sig /M` when `sign_pdf` injects the placeholder.
+>    pdfnative < 1.7 wrote `/M` = *now* at placeholder time and ignored the option, so callers
+>    who pinned `signingTime` for reproducible output get different (correct) `/M` bytes. A
+>    pre-built placeholder (`prepare_signature_placeholder`) keeps its own `/M`.
+> 3. `verify_pdf` reported `allValid: false` on PAdES B-LTA documents because a
 >    `/DocTimeStamp` was parsed as a CMS signature. Document timestamps are now verified as
 >    RFC 3161 tokens and never flip `allValid`. Inputs that were correctly verified before are
 >    unaffected.
+>
+> **Placeholder sizing note:** the default `sign_pdf` placeholder size is now
+> `estimateContentsSize([certLen], algorithm)` = `max(16384, …)` instead of a flat 16384. The
+> result is identical for signer certificates up to roughly 10 KB; beyond that the reserved
+> `/Contents` grows, so the produced bytes differ from v1.5.0 only for very large certificates
+> (which previously risked `SIGNING_FAILED` on overflow). Pass `placeholderBytes` to pin it.
 >
 > **Engine-inherited byte changes (pdfnative 1.6 → 1.7), default inputs:** measured against
 > v1.5.0 with a fixed-input baseline (dates and trailer `/ID` normalised). Plain documents,
@@ -166,7 +187,24 @@ All 27 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 > old drawing — the old output was unreadable); tagged base-14 documents under PDF/A emit the
 > shared WinAnsi `/ToUnicode` CMap (`generate_basic_pdf` / `add_attachment` with `pdfA` —
 > required for text extraction under ISO 19005). Per §3 these are correctness fixes, not
-> "default value changes", and the full evidence table ships in the v1.6.0 release notes.
+> "default value changes". The byte-identity evidence (fixed inputs per tool, PDF bytes
+> normalised for `/CreationDate`, XMP dates and the trailer `/ID`, SHA-256 compared between
+> v1.5.0 on pdfnative 1.6.0 / SDK 1.29 and v1.6.0):
+>
+> | Tool (input) | Result | Reason |
+> | --- | --- | --- |
+> | generate_basic_pdf (plain / chart block) | identical | — |
+> | generate_basic_pdf (`pdfA: pdfa2b`) | changed | tagged base-14 docs emit the shared WinAnsi `/ToUnicode` CMap |
+> | add_barcode, add_table, embed_image, add_chart | identical | — |
+> | add_international_text (ar / he / latin) | changed | UAX #9 fixes: RTL digit order, mirroring, ALEF joining |
+> | add_form, fill_form | changed | AcroForm `/Helv` gains `/ToUnicode` in every mode |
+> | prepare_signature_placeholder, annotate_pdf | changed | incremental writer: `/ID[1]` regenerated + EOL framing |
+> | add_attachment (pdfa3b) | changed | tagged base-14 `/ToUnicode` (as above) |
+> | inspect_pdf, verify_pdf, extract_text, validate_pdf, extract_attachments, read_form_fields | identical | — |
+> | draft_governance_issue | changed | `HUMAN_GATE` charter text inside the draft and `complianceReport.humanGate` (deliberate charter update) |
+> | merge_pdfs, split_pdf, extract_pages, decrypt_pdf | identical | — |
+> | encrypt_pdf | changed | non-deterministic by design (random IV / salt) |
+> | sign_pdf | n/a | needs key material; covered by real sign → verify round-trips for every algorithm. Default placeholder size is bounded below by 16384 and only grows for signer certificates above ~10 KB; `signingTime` now lands in `/M` (see above) |
 >
 > The MCP SDK v2 migration itself is byte-transparent on every tool result.
 
@@ -242,6 +280,21 @@ All 27 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 > opt-in token-saving feature; the `outputSchema` contract continues to describe full output.
 
 Page-tree tools `merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative v1.4.0's page-tree API; `annotate_pdf` shipped in v1.4.0 on pdfnative v1.5.0's annotation writer; charts (`add_chart`), form fill/flatten (`read_form_fields`, `fill_form`) and the encrypted round-trip (`encrypt_pdf`, `decrypt_pdf`, `password`/`encrypt` on the page-tree and read-only tools) shipped in v1.5.0 on pdfnative v1.6.0; the PAdES LTV ladder (`add_ltv`, `timestamp_pdf`, `sign_pdf` `profile` / `timestamp`), `update_metadata`, print production and charts v2 shipped in v1.6.0 on pdfnative v1.7.0. `redact_pdf` stays **deferred by design** (pdfnative can overlay/flatten but not remove content — an overlay-only redaction would create false security) and will be added with the same stability guarantees once pdfnative exports a content-removal API. Native ECDSA verification also stays deferred: pdfnative still does not export `ecdsaVerifyHash`, so `verify_pdf` keeps its local P-256 implementation (no contract impact).
+
+> **Design note / follow-up (v1.6.0).** Two places where the wrapper is thicker than it
+> should be, recorded here so they are not mistaken for contract:
+> - `add_ltv mode: 'offline'` composes the per-signature `/VRI` entries itself — every
+>   supplied certificate / OCSP response / CRL is referenced from every signed signature's
+>   `/VRI` (the Adobe-tolerant superset) before the material is handed to
+>   `embedValidationInfo`. An upstream helper that derives the `/VRI` mapping from the
+>   material will be requested from pdfnative; when it lands the wrapper will delegate to it
+>   with no change to inputs, outputs or error codes.
+> - `verify_pdf ltv: true` classifies `ltvLevel` **structurally**: the presence of a verified
+>   signature / document timestamp and of revocation material relevant to the signer in
+>   `/DSS`. It is not a full ETSI EN 319 102-1 validation (no chain building to a trust
+>   anchor at signing time, no responder-signature check, no grace-period logic) — the fixed
+>   `caveats[]` says so. A future engine-level validator may tighten the classification; that
+>   would be surfaced as a new opt-in field, not a silent change of `ltvLevel`.
 
 ---
 

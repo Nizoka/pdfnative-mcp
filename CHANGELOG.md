@@ -46,9 +46,24 @@ previously-wrong output (see `release-notes/v1.6.0.md` → Upgrade).
 
 ### Fixed
 
-- **fix(sign):** `signerName` / `reason` / `location` / `contactInfo` never reached the `/Sig` dictionary — pdfnative < 1.7 dropped the values passed at placeholder time. They are now baked into the placeholder (`sign_pdf` when it injects one, `prepare_signature_placeholder` always), so `verify_pdf` reports them.
+- **fix(sign):** `signerName` / `reason` / `location` / `contactInfo` / `signingTime` never reached the `/Sig` dictionary — pdfnative < 1.7 dropped the values passed at placeholder time and wrote `/M` = *now*. They are now baked into the placeholder (`sign_pdf` when it injects one, `prepare_signature_placeholder` always), so `verify_pdf` reports them and a pinned `signingTime` lands in `/M` (a pre-built placeholder keeps its own `/M`).
 - **fix(verify):** a `/DocTimeStamp` field was parsed as a CMS signature and flipped `allValid` to `false` on every B-LTA document; document timestamps are now verified as RFC 3161 tokens.
 - **fix(docs):** the PDF/A guide claimed every font was embedded; base-14 Helvetica text is not. See `embedFonts`.
+
+### Upgrade notes
+
+No breaking changes. Drop-in replacement for v1.5.0. Deliberate behaviour changes inherited from pdfnative 1.7.0 — in each case the previous output was wrong or non-conformant:
+
+- **RTL text** (`add_international_text`): digit runs keep logical order, paired delimiters mirror, ALEF joins correctly and Persian letters take positional forms — every Arabic-script document renders differently, and correctly.
+- **Forms** (`add_form`, `fill_form`): the AcroForm `/Helv` font carries `/ToUnicode` in every mode (form text becomes searchable); all form outputs change bytes.
+- **Tagged / PDF/A documents on base-14 fonts** (`pdfA` on the document tools): the shared WinAnsi `/ToUnicode` CMap is emitted; bytes change. The same configuration now raises the `PDFA_NO_FONT_ENTRIES` diagnostic — silent by default, visible with `includeDiagnostics`, fatal with `strict`; fix it with `embedFonts: true`.
+- **Incremental outputs** (`prepare_signature_placeholder`, `sign_pdf`, `annotate_pdf`, `fill_form`, the new LTV tools): `/ID[1]` is regenerated per revision and an EOL is inserted before the appended revision; earlier revisions stay a byte-exact prefix.
+- **CMS signatures**: signed attributes are encoded in canonical DER order; signatures remain valid.
+- **Charts** whose x labels previously overlapped now draw every Nth label; `labelStride: 1` restores the old draw-everything behaviour.
+- **Colour emoji** (`add_international_text` with `emoji`): COLRv1 `PaintComposite` layers are now rendered, so flag sequences draw as flat flags instead of tofu — output bytes change for every document containing emoji input.
+- **`draft_governance_issue`**: the `HUMAN_GATE` charter sentence was reworded to state the single permitted egress class (operator-configured TSA / OCSP / CRL, never GitHub), so the draft markdown and `complianceReport.humanGate` text differ from v1.5.0. Deliberate charter update; the report shape is unchanged.
+- **`sign_pdf` placeholder size**: the default reservation is now `max(16384, estimateContentsSize(cert, algorithm))` instead of a flat 16384 bytes — identical for signer certificates up to roughly 10 KB, larger (different bytes) beyond, where the old size risked an overflow. Pass `placeholderBytes` to pin it.
+- **MCP transport**: hosts that speak MCP 2026-07-28 now receive `resultType`, cache hints and `_meta.serverInfo`; 2025-era hosts see no difference. Programmatic consumers of `createServer()` now receive an `@modelcontextprotocol/server` `Server` instance.
 
 ### Security
 

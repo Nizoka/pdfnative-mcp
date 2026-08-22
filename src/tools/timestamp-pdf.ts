@@ -7,8 +7,8 @@
  * tampered response is never written.
  *
  * Re-run periodically (before the previous TSA certificate expires) to
- * extend the archival chain — field names auto-suffix (`DocTimeStamp1`,
- * `DocTimeStamp2`, …). Fails fast with `TSA_NOT_CONFIGURED` when no TSA is
+ * extend the archival chain — when `fieldName` is omitted the engine
+ * auto-suffixes (`DocTimeStamp1`, `DocTimeStamp2`, …). Fails fast with `TSA_NOT_CONFIGURED` when no TSA is
  * configured: the server never contacts the network otherwise.
  */
 import { addDocumentTimestamp } from 'pdfnative';
@@ -30,7 +30,7 @@ export const TIMESTAMP_PDF_INPUT_SCHEMA = {
         fieldName: {
             type: 'string',
             pattern: '^[A-Za-z0-9_.\\- ]{1,127}$',
-            description: "Signature field name for the timestamp. Default 'DocTimeStamp1', auto-suffixed when it already exists (DocTimeStamp2, …).",
+            description: "Signature field name for the timestamp. Omit it to get 'DocTimeStamp1', 'DocTimeStamp2', … auto-suffixed on each re-timestamp; an explicit name that collides with an existing signed field fails.",
         },
         placeholderBytes: {
             type: 'integer',
@@ -54,7 +54,7 @@ const InputSchema = z.object({
 function mapTimestampError(err: unknown): ToolError {
     if (err instanceof ToolError) return err;
     const message = err instanceof Error ? err.message : String(err);
-    if (/TSA rejected|imprint|nonce|TimeStampResp|status/i.test(message)) {
+    if (/TSA rejected the request|TSA token message imprint|TSA token nonce mismatch|^RFC 3161:/.test(message)) {
         return new ToolError('TSA_REJECTED', `The timestamp authority's response was rejected: ${message}`);
     }
     if (/encrypt/i.test(message)) {

@@ -23,6 +23,17 @@ import {
 /** Methods that carry a body per RFC 9110 (GET/HEAD/DELETE must not pass one to `Request`). */
 const BODY_METHODS: ReadonlySet<string> = new Set(['POST', 'PUT', 'PATCH']);
 
+/** Largest request body accepted (256 MiB — the same envelope as the stdio frame cap). */
+export const MAX_REQUEST_BODY_BYTES = 256 * 1024 * 1024;
+
+/** Thrown by {@link toWebRequest} when the body exceeds {@link MAX_REQUEST_BODY_BYTES}. */
+export class RequestTooLargeError extends Error {
+    constructor(limit: number) {
+        super(`request body exceeds ${limit} bytes`);
+        this.name = 'RequestTooLargeError';
+    }
+}
+
 /**
  * Convert a Node request into a web-standard `Request`. The body is buffered
  * (MCP JSON-RPC bodies are small) so the SDK can clone it for era detection;
@@ -38,14 +49,25 @@ export async function toWebRequest(req: IncomingMessage, origin: string): Promis
     }
     const method = (req.method ?? 'GET').toUpperCase();
     const controller = new AbortController();
+    // Abort the in-flight MCP request when the client goes away. For POST the
+    // request side is fully consumed before the handler runs, so the reliable
+    // signal is the *response* socket closing before we finished writing.
+    const onGone = (): void => {
+        if (!controller.signal.aborted) controller.abort();
+    };
     req.once('close', () => {
-        if (!req.readableEnded || !req.complete) controller.abort();
+        if (!req.readableEnded || !req.complete) onGone();
     });
+    req.socket?.once('close', onGone);
     const init: RequestInit = { method, headers, signal: controller.signal };
     if (BODY_METHODS.has(method)) {
         const chunks: Buffer[] = [];
+        let total = 0;
         for await (const chunk of req) {
-            chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : (chunk as Buffer));
+            const buf = typeof chunk === 'string' ? Buffer.from(chunk) : (chunk as Buffer);
+            total += buf.byteLength;
+            if (total > MAX_REQUEST_BODY_BYTES) throw new RequestTooLargeError(MAX_REQUEST_BODY_BYTES);
+            chunks.push(buf);
         }
         init.body = new Uint8Array(Buffer.concat(chunks));
     }

@@ -116,14 +116,22 @@ content block (`data:application/pdf;base64,…`), not duplicated into
   must be **relative**, end in `.pdf`, no traversal / absolute paths / NUL bytes.
 - `PDFNATIVE_MCP_OUTPUT_DIR` — sandbox root for file output (unset = file mode disabled).
 - `PDFNATIVE_MCP_CACHE_DIR` — opt-in SHA-256 cache (1 h TTL, 256 MiB LRU). Never
-  caches `encrypt_pdf` / `decrypt_pdf` / `add_ltv` / `timestamp_pdf` / `update_metadata`
-  or `sign_pdf` with `timestamp:true` (time- or network-dependent).
+  caches `encrypt_pdf` / `decrypt_pdf` / `add_ltv` / `timestamp_pdf` / `update_metadata`,
+  `sign_pdf` with `timestamp:true` (time- or network-dependent), or any file-mode call.
 - `PDFNATIVE_MCP_TSA_URL` — RFC 3161 TSA for `sign_pdf timestamp:true` and `timestamp_pdf`
   (unset ⇒ `TSA_NOT_CONFIGURED`). `PDFNATIVE_MCP_TSA_AUTH` — optional `Authorization`
   header value (secret, never echoed).
 - `PDFNATIVE_MCP_REVOCATION` — `ocsp` | `crl` | `ocsp,crl` for `add_ltv mode:'online'`
   (unset ⇒ `REVOCATION_NOT_CONFIGURED`); requires `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS`
-  (comma-separated `host`, `host:port`, `*.suffix`).
+  (comma-separated `host`, `host:port`, `*.suffix`). Allow-list caveats: entries are
+  **hostnames**, not URLs; a `host:port` entry only matches URLs with an *explicit*
+  port (the URL parser drops default `:80` / `:443`, so list the bare host for those);
+  wildcard entries cannot carry a port; IDN hostnames must be listed in punycode
+  (`xn--…`); IPv6 literals in brackets (`[2001:db8::1]`). The guard checks address
+  **literals** only — a listed hostname that resolves to an internal address (DNS
+  rebinding) is not detected, because there is no resolver without a dependency.
+  Material returned by OCSP / CRL responders is parse-validated before it is embedded,
+  and response-size caps are enforced while streaming (not after download).
 - `PDFNATIVE_MCP_NETWORK_TIMEOUT_MS` — per-request timeout, 1000–120000 (default 10000).
 
 **Privacy / network policy:** no telemetry; outbound network is **none by default** —
@@ -190,15 +198,22 @@ hints) on the MCP TypeScript SDK v2, with automatic fallback to the 2025-era
 | `FORM_VALUE_TYPE_ERROR` | Wrong value type / choice not in options | Match the field type; use a valid option. |
 | `FORM_UNSUPPORTED` | Tried to fill/flatten a signature field | Sign with `sign_pdf` instead. |
 | `CHART_ERROR` | Chart (`add_chart` or a `generate_basic_pdf` `chart` block) failed an engine cross-field rule: log scale with non-positive values, scatter without `xValues`, `xValues` length mismatch, `yAxis:'right'` on pie, … | The message carries the remedy; hex colours only. |
-| `EXTRACTION_UNSUPPORTED` | (legacy) retained for compatibility | Encrypted reads now use `password` instead. |
+| `EXTRACTION_UNSUPPORTED` | **Legacy — never raised since v1.5.0.** Kept in the contract for compatibility only | Encrypted reads use `password` (`PASSWORD_REQUIRED` / `PASSWORD_INVALID` otherwise). |
 | `ENCRYPTED_SOURCE` | Encrypted input on `annotate_pdf`, `update_metadata`, `add_ltv`, `timestamp_pdf` (no `password` input) | Decrypt with `decrypt_pdf` first, or use a password-aware tool. |
 | `ATTACHMENT_NOT_FOUND` | `extract_attachments` `filename` matched nothing | Drop `filename` or list names via `inspect_pdf`. |
 | `ATTACHMENT_TOO_LARGE` | `add_attachment` payload > 8 MiB | Shrink/split the payload. |
+| `ATTACHMENT_BUILD_FAILED` | `add_attachment`: the engine threw while building the PDF/A-3 document (bad MIME type, unreadable payload, …) | The message carries the engine text; fix the attachment it names. |
+| `PLACEHOLDER_FAILED` | `sign_pdf` (auto-inject) / `prepare_signature_placeholder`: the engine could not inject the `/Sig` placeholder | Check the source PDF opens; for a custom `pageIndex` confirm the page exists. |
+| `VERIFY_FAILED` | `verify_pdf`: structural failure before signature checks (ByteRange beyond the file, unsupported EC public-key encoding) | Re-encode the base64; confirm the PDF is not truncated. |
 | `OUTPUT_TOO_LARGE` | PDF > 50 MiB, or extraction > 16 MiB/file · 32 MiB total | Reduce content; for extraction use `includeData:false` or `filename`. |
 | `UNSUPPORTED_LANG` | `add_international_text` `lang` unknown | Use a supported code. |
-| `FONT_LOAD_FAILED` | Bundled font module failed to load | Retry; reinstall `pdfnative` if persistent. |
+| `FONT_LOAD_FAILED` | Bundled font module failed to load (`add_international_text` script fonts, or the Noto Sans Latin data behind `embedFonts: true` on the document tools) | Retry; reinstall `pdfnative` if persistent. |
 | `SIGNING_FAILED` · `CMS_PARSE_FAILED` · `EC_KEY_PARSE_FAILED` · `EC_CURVE_UNSUPPORTED` | Signing / key-cert problem | Check DER encodings; ECDSA must be P-256. |
 | `SECURITY_VIOLATION` | Sandbox / path-traversal rejection | Set `PDFNATIVE_MCP_OUTPUT_DIR`; use a relative `.pdf` path. |
+| `MISSING_OUTPUT_PATH` | `outputMode:'file'` without `outputPath` | Pass a relative `outputPath`. |
+| `INVALID_PATH` | `outputPath` empty / not a string | Pass a non-empty relative path. |
+| `INVALID_EXTENSION` | `outputPath` does not end in `.pdf` (`.md` for `draft_governance_issue`) | Fix the extension. |
+| `UNKNOWN_RESOURCE` | `resources/read` with an unknown `pdfnative://` URI — surfaced as JSON-RPC error **`-32602`** (Invalid params), the code is carried in the message | List URIs with `resources/list`. |
 | `GOVERNANCE_VIOLATION` | `draft_governance_issue` draft breaks the AI-governance contract (proposes a runtime dependency, missing reproduction, or `duplicateSearchPerformed:false`) | Remove the dependency proposal, include a reproduction, confirm the duplicate search. |
 
 ## 7. Contributing to this repo
