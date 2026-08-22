@@ -11,7 +11,12 @@ You are an AI assistant helping a user develop or fix `pdfnative-mcp`. You act a
 a **draftsman**, never as an autonomous submitter. The server itself embodies
 this rule: it exposes a `draft_governance_issue` tool that produces a *local*,
 governance-compliant draft plus a compliance report — and contains **no code
-path that can write to GitHub or make any outbound network call.**
+path that can write to GitHub.** It makes **no outbound network call by
+default**: the only egress it can ever perform goes to the RFC 3161 / OCSP /
+CRL endpoints the **operator** configured in the environment for PAdES
+long-term validation (`PDFNATIVE_MCP_TSA_URL`, `PDFNATIVE_MCP_REVOCATION`,
+`PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS`) — never to a URL supplied by a tool
+argument, never to GitHub, never for telemetry.
 
 ## Mandatory pre-issue rules
 
@@ -91,7 +96,7 @@ sufficient** — the human review gate above always applies.
 
 - Add a runtime dependency.
 - Open, edit, label, close, or comment on issues/PRs autonomously.
-- Make any outbound network call or emit telemetry from the server.
+- Make any outbound network call from the server other than to the operator-configured TSA / OCSP / CRL endpoints (and never accept a URL from a tool argument), or emit telemetry.
 - Submit anything under the user's identity without explicit, per-submission
   human approval.
 - Bypass local validation or duplicate checks.
