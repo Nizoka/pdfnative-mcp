@@ -173,9 +173,9 @@
         "prepublishOnly": "npm run clean && npm run lint && npm run typecheck && npm run test && npm run build"
     },
     "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.29.0",
-        "pdfnative": "^1.6.0",
-        "zod": "^4.0.0"
+        "@modelcontextprotocol/server": "^2.0.0",
+        "pdfnative": "^1.7.0",
+        "zod": "^4.2.0"
     },
     "devDependencies": {
         "@eslint/js": "^9.18.0",
