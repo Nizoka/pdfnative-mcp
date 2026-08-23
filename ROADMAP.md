@@ -67,7 +67,7 @@ Priorities may shift based on community feedback and sponsorship.
 ### v1.2.0 — token-frugal responses, attachment round-trip, watermarks
 
 - [x] **Tool `extract_attachments`** — read-only extraction of embedded files (byte-for-byte), completing the Factur-X / ZUGFeRD round-trip. **14th tool.**
-- [x] **Watermarks** — optional `watermark` (text, opacity, angle, colour, position) on `generate_basic_pdf` and `add_table`.
+- [x] **Watermarks** — optional `watermark` (text, opacity, angle, colour, position) on `generate_basic_pdf` and `add_table` (image watermarks followed in v1.6.0).
 - [x] **Unicode `normalize`** — opt-in `NFC`/`NFD`/`NFKC`/`NFKD` on `generate_basic_pdf` and `add_international_text`.
 - [x] **Token-frugal reads** — optional `verbosity: 'summary'` + `fields: […]` on every read-only tool (~90% smaller responses); no base64 duplication in `structuredContent`.
 - [x] **MCP registry publish fix** — canonical `io.github.Nizoka/pdfnative-mcp` casing.
@@ -109,9 +109,14 @@ Priorities may shift based on community feedback and sponsorship.
 - [x] **Native MCP resources** — generated PDFs (file mode) exposed as `pdfnative://output/…` resource URIs (`resources/list` + `resources/read`) with `resource_link` in results. (Previously long-term.)
 - [x] **Tool annotations** — every tool advertises `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`.
 
-### v1.6.0 — PAdES LTV ladder, print production, charts v2, MCP 2026-07-28, pdfnative 1.7
+### v1.6.0 — full engine coverage, PAdES LTV ladder, print production, charts v2, MCP 2026-07-28, pdfnative 1.7
 
 - [x] **pdfnative v1.7.0** — dependency bump `^1.6.0` → `^1.7.0` (additive; engine byte changes documented in the release notes).
+- [x] **Full document model** — `generate_basic_pdf` accepts all 13 `DocumentBlock` kinds (`table`, `image`, `link`, `toc`, `barcode`, `svg`, `formField` join `heading` / `paragraph` / `list` / `chart` / `pageBreak` / `spacer`), each sharing its body with the dedicated tool; layout options `pageSize` / `margins` / `headerTemplate` / `footerTemplate` / `compress` / `debug` on the nine document tools; build-time `encrypt` (keeps the AcroForm) on seven of them; image watermarks (`watermark.image`) on `generate_basic_pdf` / `add_table`; `add_form` `listbox` + `placeholder`; `embed_image` `align` / `alt`. Deliberately unexposed engine options are listed in `docs/KNOWLEDGE_BASE.md`.
+- [x] **Tool `inspect_layout`** — read-only pagination dry run over the same blocks and layout inputs (`totalPages`, per-block geometry, no PDF produced). **28th tool.** Engine gap: a `toc` block measures 0 pt.
+- [x] **`inspect_pdf annotations: true`** — page-annotation inventory + `annotationCount`, `check: 'annotations'`.
+- [x] **`PDFNATIVE_MCP_MAX_INFLATE_BYTES`** — operator-set engine decompression cap (invalid value refuses to start); `extract_text` degrades to empty text for a capped content stream (engine behaviour, documented).
+- [x] **Compatibility gate** — `tests/catalogue-superset.test.ts` against the frozen 1.5.0 catalogue (`tests/_fixtures/tool-shape.v1.5.0.json`): no removal, no narrowing; `embed_image.imageBase64` stays unbounded.
 - [x] **MCP SDK v2 / MCP 2026-07-28** — migrated from `@modelcontextprotocol/sdk` 1.x to `@modelcontextprotocol/server` ^2.0.0: stateless serving, `server/discover`, `resultType`, `ttlMs` / `cacheScope` cache hints, `_meta` serverInfo, `Mcp-Method` / `Mcp-Name` headers on HTTP, resource-not-found as `-32602`; automatic fallback to the 2025-era `initialize` handshake on stdio and HTTP so existing hosts keep working unchanged.
 - [x] **Tool `add_ltv`** — PAdES B-LT: embed `/DSS` + `/VRI` with certificates and OCSP / CRL material, `mode: 'online'` (operator provider) or `mode: 'offline'` (caller-supplied DER, zero network). **25th tool.**
 - [x] **Tool `timestamp_pdf`** — PAdES B-LTA: RFC 3161 `/DocTimeStamp` from the operator TSA; re-run to extend the archival chain. **26th tool.**
@@ -120,21 +125,24 @@ Priorities may shift based on community feedback and sponsorship.
 - [x] **Network charter** — no egress by default; only operator-configured TSA / OCSP / CRL endpoints (`PDFNATIVE_MCP_TSA_URL`, `PDFNATIVE_MCP_TSA_AUTH`, `PDFNATIVE_MCP_REVOCATION`, `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS`, `PDFNATIVE_MCP_NETWORK_TIMEOUT_MS`) behind an SSRF guard; URLs never come from tool arguments. Mirrored in `.github/ai-governance.json` / `AGENT_RULES.md`.
 - [x] **Print production** — `print` (TrimBox / BleedBox / ArtBox / CropBox, `bleed` shorthand, crop + registration `marks`, `/UserUnit`), `metadata` (`/Author` / `/Subject` / `/Keywords` / `/Trapped`), `outputIntent` (custom RGB ICC) on every document tool; `viewerPreferences` print-dialog defaults; `inspect_pdf pages: true` reports the boxes; merge / split / extract preserve them.
 - [x] **Charts v2** — `stackedBar` / `stackedBarH` / `area` / `scatter`, secondary axis (`axis2`), `axis.scale: 'log'`, `xAxis.type: 'linear' | 'time'`, `dataLabels`, `labelStride` (automatic) / `labelRotation`; engine cross-field rules surfaced as `CHART_ERROR`.
-- [x] **Honest PDF/A** — `embedFonts` (Noto Sans Latin; base-14 Helvetica is not embedded) on the eight Latin document tools, `strict` (fail instead of warn), `includeDiagnostics` (`structuredContent.diagnostics`); a 24-file veraPDF corpus with negative canaries (`npm run validate:pdfa`, `PASS` / `FAIL` / `XFAIL` / `XPASS` / `INFRA` / `SKIP`), `VERAPDF_REQUIRED=1` fail-closed mode, and a CI workflow with a SHA-256-pinned veraPDF 1.30.2 (advisory in 1.6.0).
+- [x] **Honest PDF/A** — `embedFonts` (Noto Sans Latin; base-14 Helvetica is not embedded) on the eight Latin document tools, `strict` (fail instead of warn), `includeDiagnostics` (`structuredContent.diagnostics`); new diagnostics `PDFA_UNEMBEDDED_FORM_FONT` / `PDFA_DEVICE_CMYK_IMAGE`; a 26-file veraPDF corpus (24 validated) with negative canaries (`npm run validate:pdfa`, `PASS` / `FAIL` / `XFAIL` / `XPASS` / `INFRA` / `SKIP`), `VERAPDF_REQUIRED=1` fail-closed mode, and a CI workflow with a SHA-256-pinned veraPDF 1.30.2 (advisory in 1.6.0).
 - [x] **Reproducible bytes** — opt-in `creationDate` on all nine document tools (pins `/CreationDate`, XMP dates and the trailer `/ID`), `signingTime` on `prepare_signature_placeholder`, timezone offsets on `sign_pdf signingTime`, `modDate` on `update_metadata`; byte-identical on the same host time zone. `reproducible_output`, `print_ready`, `pades_ladder` and `pdfa_valid` MCP prompts.
-- [x] **HTTP bearer token** — opt-in `PDFNATIVE_MCP_HTTP_TOKEN` (constant-time compare, 401 + `WWW-Authenticate` otherwise); without it HTTP mode stays loopback-only with no authentication.
-- [x] **Strict boundaries** — Zod `.strict()` on every schema (unknown keys → `VALIDATION_ERROR`), unknown tool → JSON-RPC `-32602` `[UNKNOWN_TOOL]`, base64 / PEM-vs-DER hints, catalogue-parity gate (`scripts/tool-shape.mjs` + `tests/catalogue-parity.test.ts`), compacted `tools/list` (≈ 174 kB).
+- [x] **HTTP bearer token** — opt-in `PDFNATIVE_MCP_HTTP_TOKEN` (constant-time compare, 401 + RFC 6750 `WWW-Authenticate` otherwise); without it HTTP mode stays loopback-only with no authentication; the `Origin` port is pinned to the server port.
+- [x] **Strict boundaries** — Zod `.strict()` on every schema (unknown keys → `VALIDATION_ERROR`), unknown tool → JSON-RPC `-32602` `[UNKNOWN_TOOL]`, base64 / PEM-vs-DER hints, image boundary checks (magic bytes, PNG IHDR, 24 MiB per-call budget), catalogue-parity gate (`scripts/tool-shape.mjs` + `tests/catalogue-parity.test.ts`); `tools/list` ≈ 245 kB (every block kind advertised inline, no `$ref`), instructions ≈ 6.7 kB; `eslint --max-warnings 0`; Windows CI job.
 - [x] **`inspect_pdf` signature inventory** — `signatures: true`, `dss` / `docTimestampCount` / `trapped`, new `check` values `dss` / `docTimestamp` / `trapped`.
 - [x] **Colour-emoji sequences** — flag and ZWJ sequences render as single glyphs (engine; no API change).
 - [x] **Fix: signer metadata** — `signerName` / `reason` / `location` / `contactInfo` never reached the `/Sig` dictionary on pdfnative < 1.7; now baked at placeholder time.
 - [x] **Fix: `verify_pdf` on B-LTA documents** — `/DocTimeStamp` entries are verified as RFC 3161 tokens and count in `allValid` like any signature (a sound timestamp passes; a tampered or TSA-untrusted one fails) instead of always failing as a mis-parsed CMS signature.
+- [x] **Fix: `add_form` text areas** — `fieldType: 'textarea'` maps to the engine's `multilineText` (`/Ff 4096`); 1.5.0 passed the name through unmapped. Bytes change for that input only (API_STABILITY §5).
 
 _v1.6.0 is the active release. `redact_pdf` stays **deferred** by design (overlay/flatten ≠ content removal)._
 
 ### v1.7.0 — follow-ups
 
 - [ ] **veraPDF blocking in CI** — drop `continue-on-error` from `.github/workflows/verapdf.yml` once the `paths:` filter caveat is resolved; the corpus, canaries and `VERAPDF_REQUIRED=1` are already in place.
-- [ ] **`add_form` + PDF/A: embed the AcroForm `/DR` font** — upstream pdfnative fix so `/AcroForm /DR /Helv` is no longer an unembedded Type1 font (ISO 19005-2 rule 6.2.11.4.1); tracked by the `form-pdfa2b.pdf` negative canary, to be filed via `draft_governance_issue`. Flip the canary's expectation when it lands.
+- [ ] **`add_form` + PDF/A: embed the AcroForm `/DR` font** — upstream pdfnative fix so `/AcroForm /DR /Helv` is no longer an unembedded Type1 font (ISO 19005-2 rule 6.2.11.4.1); tracked by the `form-pdfa2b.pdf` negative canary and the `PDFA_UNEMBEDDED_FORM_FONT` diagnostic; draft generated via `draft_governance_issue`, human-submitted. Flip the canary's expectation when it lands.
+- [ ] **`inspect_layout` `toc` height** — upstream `inspectDocumentLayout` measures a `toc` block as 0 pt (`estimateBlockHeight` called without the headings in `pdf-layout-inspect.ts`); drop the caveat from the tool description and the pinned test when fixed.
+- [ ] **`extractText` under the inflate cap** — upstream surfaces per-page decode failures instead of returning empty text, so `extract_text` can raise `PDF_PARSE_FAILED` like `extract_attachments` does.
 - [ ] **Offline `/VRI` composition upstream** — delegate `add_ltv mode: 'offline'` to a pdfnative helper once one exists (no change to inputs, outputs or error codes).
 
 ---

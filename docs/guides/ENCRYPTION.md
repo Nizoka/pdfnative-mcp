@@ -12,13 +12,15 @@ read but **never emitted** for new output.
 | Extract text from an encrypted PDF | `extract_text` + `password` | — |
 | Extract attachments / verify signatures | `extract_attachments` / `verify_pdf` + `password` | — |
 | Get an unencrypted copy | — | `decrypt_pdf` |
-| Protect a PDF | — | `encrypt_pdf` |
+| Protect a PDF you already have | — | `encrypt_pdf` |
+| Generate a **new** protected document (or a protected **fillable form**) | the document tool with `encrypt` (v1.6.0: `generate_basic_pdf`, `add_table`, `add_form`, `add_international_text`, `embed_image`, `add_barcode`, `add_chart`) — build-time encryption, **keeps the AcroForm** | — |
 | Merge/split encrypted sources, re-secure output | — | `merge_pdfs` / `split_pdf` / `extract_pages` with `password` + `encrypt` |
 
 > **Prefer the "no rebuild" column when you only need to *read*.** `decrypt_pdf`,
 > `encrypt_pdf` and the page-tree tools rebuild the page tree, which **drops
 > signatures and the interactive AcroForm** (a page-tree edit invalidates
-> `/ByteRange`). Encrypt **before** signing, never after.
+> `/ByteRange`). Encrypt **before** signing, never after — and for a form that must stay
+> fillable, encrypt at build time with the document tool's `encrypt` input.
 
 ## Passwords
 
@@ -40,6 +42,23 @@ read but **never emitted** for new output.
 
 - **Password rotation**: pass the current `password` of an already-encrypted source plus the new `ownerPassword`/`userPassword` to re-secure it in one call.
 - `inspect_pdf` reports the precise cipher in `encryptionInfo` (`{ algorithm, revision, authenticatedAs }`).
+
+## Encrypt at build time (v1.6.0)
+
+Seven document tools take the same `encrypt` object (`ownerPassword` required, `userPassword`, `algorithm`, `permissions`) and hand it to the engine's `PdfLayoutOptions.encryption`, so the document is born encrypted — nothing is rebuilt afterwards:
+
+```jsonc
+{ "tool": "add_form", "arguments": {
+  "title": "Confidential survey",
+  "fields": [{ "fieldType": "text", "name": "name", "label": "Name" }],
+  "encrypt": { "ownerPassword": "owner-secret", "userPassword": "open-me" }
+}}
+```
+
+- The AcroForm survives: `read_form_fields` / `fill_form` with `password` work on the result. This is the only way to obtain an encrypted fillable form (`encrypt_pdf` would drop it).
+- `encrypt` and `pdfA` are mutually exclusive → `VALIDATION_ERROR` (ISO 19005-1 §6.3.2).
+- Output is randomised (IV / salt) and never served from the response cache.
+- Not offered on `prepare_signature_placeholder` (the placeholder must stay signable — encrypt last, if at all), `add_attachment` (PDF/A-3) or the read-only `inspect_layout`.
 
 ## Round-trip in one call
 
@@ -76,18 +95,18 @@ likely cause, rather than as a mysterious parse failure.
 
 ## Caching
 
-`encrypt_pdf` and `decrypt_pdf` always bypass the opt-in response cache
-(`PDFNATIVE_MCP_CACHE_DIR`): the cache stores tool output in plaintext at rest, and
-neither the unencrypted bytes of a deliberately-protected document nor the freshly
-protected bytes (minted with a random IV / salt, so never reproducible anyway) should
-linger on disk. The same applies to the page-tree tools in file mode (no file-mode call
-is ever cached).
+`encrypt_pdf`, `decrypt_pdf` and any document call carrying `encrypt` always bypass the
+opt-in response cache (`PDFNATIVE_MCP_CACHE_DIR`): the cache stores tool output in
+plaintext at rest, and neither the unencrypted bytes of a deliberately-protected document
+nor the freshly protected bytes (minted with a random IV / salt, so never reproducible
+anyway) should linger on disk. The same applies to the page-tree tools in file mode (no
+file-mode call is ever cached).
 
 ## Safety notes
 
 - Passwords are never logged or echoed back in responses or errors.
 - RC4 is read-only: any output this server writes is AES-128 or AES-256.
-- PDF/A forbids encryption. The server does not need to enforce a conflict because the
-  two never meet: the document tools have no `encrypt` input, and `encrypt_pdf` (like
-  the page-tree `encrypt` option) rebuilds the document without the XMP packet, so any
-  PDF/A claim on the source is dropped rather than carried into an encrypted file.
+- PDF/A forbids encryption. On the document tools `encrypt` + `pdfA` is rejected up-front
+  with `VALIDATION_ERROR` (ISO 19005-1 §6.3.2); `encrypt_pdf` (like the page-tree
+  `encrypt` option) rebuilds the document without the XMP packet, so any PDF/A claim on
+  the source is dropped rather than carried into an encrypted file.

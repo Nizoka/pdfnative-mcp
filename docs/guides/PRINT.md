@@ -39,11 +39,15 @@ Worked, placeholder-free example: [`examples/print-bleed-marks.json`](../../exam
 | `marks` | `true` for defaults, or `{ crop?, registration?, length?, offset?, weight? }` — corner crop (trim) marks and edge-midpoint registration targets drawn **outside the TrimBox** (defaults: both on, length 14 pt, offset 5 pt, weight 0.25 pt). **Requires a TrimBox** (via `bleed` or `trimBox`). |
 | `userUnit` | 1–75000: size of one user-space unit in multiples of 1/72 inch (`/UserUnit`, PDF 1.6+). Use for pages larger than 14400 pt. Raises the header to PDF 1.7. |
 
-Every box must lie within the MediaBox; the engine rejects inconsistent boxes, marks
-without a TrimBox and similar mistakes with **`PRINT_ERROR`** (the message says what
-to fix). Because the `bleed` shorthand insets the MediaBox, the page you design is the
-**MediaBox** — place content that must survive trimming at least `bleed` points away
-from the edge, and extend backgrounds that should bleed all the way to the edge.
+Every box must lie within the MediaBox — which is A4 unless you pick another
+`pageSize` (`Letter`, `Legal`, `A3`, `Tabloid`; v1.6.0); the engine rejects
+inconsistent boxes, marks without a TrimBox and similar mistakes with **`PRINT_ERROR`**
+(the message says what to fix). Because the `bleed` shorthand insets the MediaBox, the
+page you design is the **MediaBox** — place content that must survive trimming at least
+`bleed` points away from the edge, and extend backgrounds that should bleed all the way
+to the edge. `margins` and running `headerTemplate` / `footerTemplate` (v1.6.0) affect
+where content flows, not the boxes; a header reserves 15 pt at the top of the content
+area.
 
 ## `metadata` — `/Info` and XMP
 
@@ -119,4 +123,4 @@ set on the page — `trimBox`, `bleedBox`, `artBox`, `cropBox` and `userUnit`.
 
 ## Units cheat-sheet
 
-1 pt = 1/72 in = 0.3528 mm. 3 mm bleed = 8.5 pt · 5 mm = 14.2 pt · A4 = 595.28 × 841.89 pt.
+1 pt = 1/72 in = 0.3528 mm. 3 mm bleed = 8.5 pt · 5 mm = 14.2 pt · A4 = 595.28 × 841.89 pt (the default `pageSize`); the other presets are Letter 612 × 792, Legal 612 × 1008, A3 841.89 × 1190.55, Tabloid 792 × 1224 (all portrait). Every `print.*` box must fit the chosen page; `margins` (0–200 pt each) and `headerTemplate` / `footerTemplate` only move the content, never the boxes.

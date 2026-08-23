@@ -1,7 +1,7 @@
 # AI Agent Guide — pdfnative-mcp
 
 > **Read this first if you are an AI agent (Copilot, Claude, Cursor, Continue, Zed, Windsurf, Cline, Roo Code, …) about to call pdfnative-mcp.**
-> It tells you which of the 27 tools to pick and how to avoid the common retry loops.
+> It tells you which of the 28 tools to pick and how to avoid the common retry loops.
 
 The server also returns the same decision tree in `serverInfo.instructions`. The full reference lives in [`KNOWLEDGE_BASE.md`](KNOWLEDGE_BASE.md); the stability charter in [`API_STABILITY.md`](API_STABILITY.md). Worked invocations are in [`../examples/`](../examples).
 
@@ -11,22 +11,25 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 
 | You want to… | Tool |
 |---|---|
-| A plain document (headings, paragraphs, lists) | `generate_basic_pdf` |
-| A QR code or barcode | `add_barcode` |
+| Any document — headings, paragraphs, lists, and inline `table` / `image` / `link` / `toc` / `barcode` / `svg` / `formField` / `chart` blocks (13 kinds) | `generate_basic_pdf` |
+| Preview the pagination of those blocks (page count, block positions) without rendering | `inspect_layout` *(same `blocks` + layout inputs; read-only)* |
+| A standalone QR code or barcode | `add_barcode` |
 | Non-Latin text (Arabic, Hindi, CJK, …) | `add_international_text` |
 | A tabular report | `add_table` |
-| A **new** interactive AcroForm | `add_form` |
+| A **new** interactive AcroForm (text, textarea, checkbox, radio, dropdown, listbox) | `add_form` *(or `formField` blocks in `generate_basic_pdf`)* |
+| A **new** form that must stay fillable **and** be password-protected | `add_form` with `encrypt` *(not `encrypt_pdf`, which drops the AcroForm)* |
 | List the fields of an **existing** AcroForm | `read_form_fields` |
 | Fill / flatten an **existing** AcroForm | `fill_form` |
 | A native vector chart (bar, line, area, scatter, pie, …) | `add_chart` *(or a `chart` block in `generate_basic_pdf`)* |
-| Embed a JPEG/PNG into a PDF | `embed_image` |
+| Embed a JPEG/PNG into a PDF | `embed_image` *(or an `image` block in `generate_basic_pdf`)* |
+| Letter / Legal / A3 / Tabloid pages, custom margins, a running header or footer, a smaller file | `pageSize`, `margins`, `headerTemplate` / `footerTemplate`, `compress` on any document tool |
 | Digitally sign any PDF | `sign_pdf` *(auto-injects placeholder)* |
 | Customize the signature placeholder before signing (`subFilter`, `reserveTimestamp`, `placeholderBytes`, signer metadata, `signingTime`) | `prepare_signature_placeholder` → `sign_pdf` |
 | Embed revocation material (PAdES B-LT, `/DSS`) | `add_ltv` |
 | Append a document timestamp (PAdES B-LTA) | `timestamp_pdf` |
 | **Factur-X / ZUGFeRD invoice** or any PDF with attachments | `add_attachment` *(NOT `generate_basic_pdf` — only `add_attachment` embeds files)* |
 | **Pull embedded files back out** (e.g. Factur-X XML) | `extract_attachments` |
-| Inspect / assert metadata ("does a signed field exist?") | `inspect_pdf` |
+| Inspect / assert metadata ("does a signed field exist?", "which annotations are on page 3?") | `inspect_pdf` *(`annotations: true` for the annotation inventory)* |
 | Verify all PAdES signatures (cryptographic validity) | `verify_pdf` |
 | Validate PDF/UA accessibility structure | `validate_pdf` |
 | Extract plain text | `extract_text` |
@@ -46,6 +49,24 @@ Input validation is strict: unknown top-level or nested keys are rejected with `
 ---
 
 ## 2. Common pitfalls (these cause the most retries)
+
+### Document blocks (`generate_basic_pdf`, v1.6.0)
+- 13 block kinds: `heading`, `paragraph`, `list`, `table`, `image`, `link`, `toc`, `barcode`, `svg`, `formField`, `chart`, `pageBreak`, `spacer`. `table` / `barcode` / `formField` / `chart` take **exactly** the body of `add_table` / `add_barcode` / `add_form` / `add_chart` (same keys, same rules — a table row must have as many cells as headers, a radio / dropdown / listbox field needs `options`).
+- `image`: JPEG or PNG, `mimeType` must match the bytes. PNGs must be **8-bit, non-interlaced, greyscale or RGB** — alpha-channel (colour type 4 / 6), palette (type 3), 16-bit and interlaced PNGs are rejected with `VALIDATION_ERROR` and a remedy (flatten / re-export; the same rule applies to `embed_image` and watermark images). Each inline image ≤ 12 M base64 characters, all images of one call ≤ 24 MiB decoded. Under PDF/A a CMYK JPEG reports `PDFA_DEVICE_CMYK_IMAGE` — keep images RGB.
+- `link.url` must start with `http://`, `https://` or `mailto:` and contain no control characters; anything else (`javascript:`, `file:`, …) is `VALIDATION_ERROR`.
+- `svg.data` is a path `d` string or SVG markup (≤ 100 000 chars). Supported: `<path>`, `<rect>`, `<circle>`, `<ellipse>`, `<line>`, `<polyline>`, `<polygon>`, `<text>`/`<tspan>`, `fill` / `stroke` / `stroke-width`, double-quoted attributes. **Silently ignored:** `transform`, `<g>`, `<use>`, `<image>`, `<defs>` / `<clipPath>`, gradients, opacity, CSS / `style`, dash patterns. Pass `viewBox` for a bare path string that is not 0-based. Nothing is ever fetched.
+- `toc` prints a table of contents built from the `heading` blocks (internal links, dot leaders) — pair it with `outline: 'auto'` for the bookmark pane. `inspect_layout` measures a `toc` block as 0 pt (engine gap), so a document with a `toc` may paginate one page later than previewed.
+- `formField` under `pdfA` reports `PDFA_UNEMBEDDED_FORM_FONT` (`strict: true` fails the call) — flatten the form or drop the claim. `barcode` blocks have no `alt`.
+- More than 50 000 engine blocks after newline splitting → `VALIDATION_ERROR`; split the document and `merge_pdfs` the parts.
+- Preview first: `inspect_layout` with the same `title`, `blocks`, `footerText`, `pdfA`, `normalize`, `embedFonts`, `pageSize`, `margins`, `headerTemplate`, `footerTemplate` returns `totalPages` and every block's page / x / top / width / height — no PDF is produced. `verbosity: 'summary'` + `fields: ['totalPages']` is the cheapest "does it fit on one page?" probe.
+
+### Layout options (the nine document tools, v1.6.0)
+- `pageSize`: `A4` (default), `Letter`, `Legal`, `A3`, `Tabloid` — portrait presets; `print.*` boxes must fit the chosen page.
+- `margins`: all four of `top` / `right` / `bottom` / `left` (0–200 pt); default 45 / 36 / 35 / 36.
+- `headerTemplate` / `footerTemplate`: `{ left?, center?, right?, fontSize?, color? }` with `{page}` `{pages}` `{title}` `{date}`. A **`footerTemplate` replaces the default footer** — `footerText` is then ignored and page numbers appear only where you put `{page}/{pages}`. `{date}` is the build-day wall clock (YYYY-MM-DD, host time zone), **not** `creationDate`: omit it when you need stable bytes, and remember a cache hit returns the earlier date.
+- `compress: true`: FlateDecode streams — smaller file, different bytes (the XMP packet stays plain under PDF/A). `debug: true`: margin / block / cell guide rectangles as unmarked content — fine for PDF/A-2b, not for PDF/UA output.
+- `encrypt: { ownerPassword, userPassword?, … }` (seven tools: `generate_basic_pdf`, `add_table`, `add_form`, `add_international_text`, `embed_image`, `add_barcode`, `add_chart`): AES-128 by default, AES-256 on request, **keeps the AcroForm**. Exclusive with `pdfA` (`VALIDATION_ERROR`). Output is randomised and never cached. Not on `prepare_signature_placeholder` (must stay signable) or `add_attachment` (PDF/A-3).
+- Everything is opt-in; omit the keys and the output is byte-identical to before.
 
 ### Barcodes / QR codes
 - `data` is the **raw** payload. To produce a QR pointing at `https://google.com`, send `{ "format": "qr", "data": "https://google.com" }` — **do not** URL-encode the URL.
@@ -104,9 +125,9 @@ Input validation is strict: unknown top-level or nested keys are rejected with `
 - To read attachments back out, call `extract_attachments` — it returns each embedded file's bytes as `dataBase64` (byte-for-byte). Set `includeData: false` for a metadata-only probe, or `filename: '…'` to pull a single file. `inspect_pdf` lists attachment metadata only (no payload).
 
 ### Watermarks
-- `generate_basic_pdf` and `add_table` accept an optional `watermark: { text, fontSize?, opacity?, angle?, color?, position? }` rendered on every page. `color` is an `[r, g, b]` triple in the `0.0–1.0` range.
-- Defaults match pdfnative: `opacity 0.15`, `angle -45`, light-gray, `position 'background'`. Omit `watermark` and output is byte-identical to before.
-- **PDF/A-1b forbids transparency** (ISO 19005-1 §6.4): combining `opacity < 1.0` with `pdfA: 'pdfa1b'` throws. Use `opacity: 1.0` or a PDF/A-2/3 level.
+- `generate_basic_pdf` and `add_table` accept an optional `watermark: { text?, fontSize?, opacity?, angle?, color?, image?, position? }` rendered on every page — `text`, `image` (v1.6.0: `{ imageBase64, mimeType, opacity?, width?, height? }`, JPEG / opaque 8-bit PNG, ≤ 8 MiB decoded) or both. `color` is an `[r, g, b]` triple in the `0.0–1.0` range. At least one of `text` / `image` is required.
+- Defaults match pdfnative: text `opacity 0.15`, image `opacity 0.10`, `angle -45`, light-gray, `position 'background'` (`'foreground'` paints above the content, for text and image alike). Omit `watermark` and output is byte-identical to before.
+- **PDF/A-1b forbids transparency** (ISO 19005-1 §6.4): a text **or** image opacity below `1.0` (the defaults included) with `pdfA: 'pdfa1b'` throws `PDF_A_COMPLIANCE_VIOLATION`. Use `opacity: 1.0` (and `image.opacity: 1.0`) or a PDF/A-2/3 level.
 
 ### Unicode normalization
 - `generate_basic_pdf` and `add_international_text` accept an optional `normalize: 'NFC' | 'NFD' | 'NFKC' | 'NFKD'`. `add_international_text` defaults to `'NFC'` (best glyph coverage for complex scripts); `generate_basic_pdf` defaults to no normalization (byte-stable). Only set it when input may contain decomposed combining sequences (e.g. macOS-copied text).
@@ -120,7 +141,7 @@ Input validation is strict: unknown top-level or nested keys are rejected with `
 - After generating a tagged/PDF-A document, call `validate_pdf` to assert PDF/UA structural conformance.
 - **Honesty note (v1.6.0):** the Latin document tools render text through the viewer's base-14 Helvetica, which is **not embedded** — veraPDF rejects such a PDF/A claim (ISO 19005 §6.2.11.4.1). For a valid claim pass `embedFonts: true` (Noto Sans Latin, about 0.3 MiB; `add_international_text` always embeds). `strict: true` fails with `PDF_A_COMPLIANCE_VIOLATION` instead of producing a non-conformant file; `includeDiagnostics: true` echoes the engine diagnostics (e.g. `PDFA_NO_FONT_ENTRIES`) in `structuredContent.diagnostics`.
 - `print.userUnit` is rejected under `pdfa1b`.
-- **Known limitations (engine-side):** `add_form` + `pdfA` + `embedFonts: true` still fails PDF/A-2b under veraPDF — the AcroForm `/DR /Helv` is an unembedded Type1 font (ISO 19005-2 rule 6.2.11.4.1). `prepare_signature_placeholder` + `pdfA` is **not** conformant until signed (empty `/Contents`, ISO 19005-2 6.4.3); once signed with `sign_pdf profile: 'pades'` it passes. `inspect_pdf` reports the PDF/A claim, not its validity.
+- **Known limitations (engine-side):** `add_form` (and `formField` blocks) + `pdfA` + `embedFonts: true` still fails PDF/A-2b under veraPDF — the AcroForm `/DR /Helv` is an unembedded Type1 font (ISO 19005-2 rule 6.2.11.4.1; the `PDFA_UNEMBEDDED_FORM_FONT` diagnostic tells you so). `prepare_signature_placeholder` + `pdfA` is **not** conformant until signed (empty `/Contents`, ISO 19005-2 6.4.3); once signed with `sign_pdf profile: 'pades'` it passes. `inspect_pdf` reports the PDF/A claim, not its validity.
 - See [`guides/PDFA.md`](guides/PDFA.md) for the per-tool capability matrix.
 
 ### International text
@@ -141,12 +162,14 @@ Input validation is strict: unknown top-level or nested keys are rejected with `
 ### Text extraction
 - `extract_text` returning `extractable: false` is **not an error**. The PDF uses subset fonts without `/ToUnicode` CMaps; the `extractableReason` field explains. The file is not corrupt.
 - Encrypted PDFs open with `password` (missing / wrong → `PASSWORD_REQUIRED` / `PASSWORD_INVALID`). `EXTRACTION_UNSUPPORTED` is a legacy code that is never raised.
+- Empty text for a page that visibly has text can also mean the page's content stream exceeded the operator's decompression cap (`PDFNATIVE_MCP_MAX_INFLATE_BYTES`): the engine swallows the per-page decode failure, so no error is raised. `extract_attachments includeData: true` on a capped attachment stream does raise `PDF_PARSE_FAILED` with a remedy.
 
 ### Token-frugal reads (v1.2.0)
-The six read-only tools — `inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`, `extract_attachments`, `read_form_fields` — accept two **optional** inputs that shrink the response (typically ~90% fewer output tokens for large results) without losing the fields you branch on:
+The seven read-only tools — `inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`, `extract_attachments`, `read_form_fields`, `inspect_layout` — accept two **optional** inputs that shrink the response (typically ~90% fewer output tokens for large results) without losing the fields you branch on:
 
 - `verbosity: 'summary'` returns a compact scalar-only verdict and drops the heavy arrays / full text:
-  - `inspect_pdf` → `{ version, pageCount, encryption, pdfA, signatureCount, hasSignaturePlaceholder, attachmentCount }` plus `docTimestampCount` / `trapped` / `checksPassed` when present (drops `attachments[]`, `info`, `perPage`, `dss`).
+  - `inspect_pdf` → `{ version, pageCount, encryption, pdfA, signatureCount, hasSignaturePlaceholder, attachmentCount }` plus `docTimestampCount` / `trapped` / `checksPassed` / `annotationCount` when present (drops `attachments[]`, `info`, `perPage`, `dss`, `annotations[]`).
+  - `inspect_layout` → `{ pageWidth, pageHeight, totalPages, blockCount }` (drops `pages[]`, `margins`).
   - `verify_pdf` → `{ signatureCount, allValid, invalid, summary }` plus `ltvLevel` when `ltv: true` (drops `signatures[]`).
   - `validate_pdf` → `{ standard, valid, errorCount, warningCount, summary }` (drops `errors[]`, `warnings[]`).
   - `extract_text` → `{ pageCount, extractedPageCount, extractable, charCount }` (drops `pages[]`, `fullText`).
@@ -157,7 +180,7 @@ The six read-only tools — `inspect_pdf`, `verify_pdf`, `validate_pdf`, `extrac
 Defaults are unchanged: omit both and you get the full v1.1.0-identical response. Smallest "is this PDF signed and valid?" probe: `{ pdfBase64, verbosity: 'summary', fields: ['allValid'] }`.
 
 ### Response cache
-With `PDFNATIVE_MCP_CACHE_DIR` set, a repeated identical call (same tool, same input) may be answered from cache — the result then carries `_meta.cached: true` and returns the **earlier** call's bytes (e.g. the old `/CreationDate`) within the 1 h TTL. Never cached: `encrypt_pdf`, `decrypt_pdf`, `sign_pdf` (every call), `add_ltv`, `timestamp_pdf`, `update_metadata`, and any `outputMode: 'file'` call. The key is namespaced by the tool API + package version, so an upgrade never serves old bytes.
+With `PDFNATIVE_MCP_CACHE_DIR` set, a repeated identical call (same tool, same input) may be answered from cache — the result then carries `_meta.cached: true` and returns the **earlier** call's bytes (e.g. the old `/CreationDate`, or an earlier `{date}` template placeholder) within the 1 h TTL. Never cached: `encrypt_pdf`, `decrypt_pdf`, `sign_pdf` (every call), `add_ltv`, `timestamp_pdf`, `update_metadata`, any document call carrying `encrypt`, and any `outputMode: 'file'` call. The key is namespaced by the tool API + package version, so an upgrade never serves old bytes.
 
 > **PDF bytes delivery:** generated PDFs (base64 mode) are returned **once** as an embedded `resource` content block (a `data:application/pdf;base64,…` URI), not duplicated into `structuredContent` (which is `{ mode, sizeBytes }`, plus `diagnostics[]` when `includeDiagnostics: true` and a `summary` for `add_ltv`). Read the bytes from the resource block.
 
@@ -166,7 +189,8 @@ With `PDFNATIVE_MCP_CACHE_DIR` set, a repeated identical call (same tool, same i
 - `tools/list` and `prompts/list` are safe to cache for 24 h (`cacheScope: 'public'`); `resources/*` results are private and must not be cached.
 - Six MCP prompts are advertised: `governance_contract`, `draft_issue_workflow`, `pades_ladder`, `print_ready`, `reproducible_output`, `pdfa_valid` — read the one matching your workflow before the first call.
 - Over HTTP (`PDFNATIVE_MCP_PORT`), the operator may require a bearer token (`PDFNATIVE_MCP_HTTP_TOKEN`): send `Authorization: Bearer <token>` or every `/mcp` request is answered 401. Without it HTTP mode has no authentication (loopback bind + Host/Origin guard only). stdio is unaffected.
-- Operator environment, for reference (an agent never sets these): `PDFNATIVE_MCP_OUTPUT_DIR` (file-mode sandbox), `PDFNATIVE_MCP_CACHE_DIR` (opt-in response cache), `PDFNATIVE_MCP_PORT` / `PDFNATIVE_MCP_HTTP_TOKEN` (HTTP transport), `PDFNATIVE_MCP_TSA_URL` / `PDFNATIVE_MCP_TSA_AUTH` (RFC 3161 TSA, the auth value is a secret never echoed), `PDFNATIVE_MCP_REVOCATION` + `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS` (online LTV), `PDFNATIVE_MCP_NETWORK_TIMEOUT_MS` (1000–120000 ms, default 10000). Full table: AGENTS.md §4.
+- Operator environment, for reference (an agent never sets these): `PDFNATIVE_MCP_OUTPUT_DIR` (file-mode sandbox), `PDFNATIVE_MCP_CACHE_DIR` (opt-in response cache), `PDFNATIVE_MCP_PORT` / `PDFNATIVE_MCP_HTTP_TOKEN` (HTTP transport), `PDFNATIVE_MCP_MAX_INFLATE_BYTES` (engine decompression cap — a capped attachment stream is `PDF_PARSE_FAILED`, a capped content stream yields empty `extract_text` output), `PDFNATIVE_MCP_TSA_URL` / `PDFNATIVE_MCP_TSA_AUTH` (RFC 3161 TSA, the auth value is a secret never echoed), `PDFNATIVE_MCP_REVOCATION` + `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS` (online LTV), `PDFNATIVE_MCP_NETWORK_TIMEOUT_MS` (1000–120000 ms, default 10000). Full table: AGENTS.md §4.
+- `tools/list` is ≈ 245 kB because every block kind and layout option is spelled out inline (no `$ref`); if your host has a tight context budget, read the `description` strings and `_meta.examples` first — the full `blocks` union is only needed when you compose a document.
 
 ### File output mode
 - `outputMode: 'file'` only works if the host process set `PDFNATIVE_MCP_OUTPUT_DIR`. Otherwise the call returns `SecurityError`.
@@ -210,8 +234,17 @@ With `PDFNATIVE_MCP_CACHE_DIR` set, a repeated identical call (same tool, same i
 1. `update_metadata` with `author` / `keywords` / … (pin `modDate` for reproducible bytes on the same host time zone; XMP dates are rewritten too).
 2. `sign_pdf` / `timestamp_pdf` again if the latest revision must be signed — the update is an unsigned incremental revision.
 
+### Composite document with pagination preview
+1. `inspect_layout` with `title`, the full `blocks[]` (`toc`, `heading`, `paragraph`, `table`, `image`, `svg`, `barcode`, `link`, `formField`, `chart`…), `pageSize: 'Letter'`, `headerTemplate: { right: '{title} — {page}/{pages}' }`, `verbosity: 'summary'`, `fields: ['totalPages']` — adjust the content until the page count is right (remember the `toc` 0 pt gap).
+2. `generate_basic_pdf` with exactly the same inputs plus `outline: 'auto'` (and `embedFonts: true` + `pdfA: 'pdfa2b'` for archival).
+3. *(optional)* `inspect_pdf` with `pages: true` / `annotations: true` to confirm page count and link annotations.
+
+### Encrypted fillable form
+1. `add_form` with the fields and `encrypt: { ownerPassword, userPassword }` — the AcroForm survives (the post-hoc `encrypt_pdf` would rebuild the page tree and drop it). Do not combine with `pdfA`.
+2. `read_form_fields` / `fill_form` with `password` to work on it later.
+
 ### Watermarked report
-1. `add_table` with `watermark: { text: 'CONFIDENTIAL', opacity: 0.2 }`.
+1. `add_table` with `watermark: { text: 'CONFIDENTIAL', opacity: 0.2 }` — or a logo: `watermark: { image: { imageBase64, mimeType: 'image/png' }, position: 'foreground' }`.
 2. *(optional)* `inspect_pdf` to confirm the page count / metadata.
 
 ### Bookmarked report
@@ -249,9 +282,9 @@ The MCP error response always includes a `code` and a message:
 
 | `code` | Meaning | Fix |
 |---|---|---|
-| `VALIDATION_ERROR` | Zod rejected the input: wrong type, unknown key (strict), empty base64, PEM where DER is expected, out-of-range page index / range on `merge_pdfs` / `split_pdf` / `extract_pages` | Re-read the field’s schema (the message lists the offending path); for PEM run the `openssl … -outform DER` command in the message; page indices are 0-based. |
-| `PDF_PARSE_FAILED` | Input PDF is malformed or truncated (also double-encoded base64, PEM text or a nested `data:` URI passed as a PDF; `validate_pdf` on an unparsable file) | Re-encode the base64 once; verify the source PDF opens in a normal reader. |
-| `PDF_A_COMPLIANCE_VIOLATION` | Watermark `opacity < 1.0` under `pdfa1b`; `strict: true` with an engine PDF/A diagnostic (e.g. unembedded Helvetica); `print.userUnit` under `pdfa1b` | Set `opacity: 1.0` or `pdfa2b`+; add `embedFonts: true`; drop `userUnit` or use `pdfa2b`+. |
+| `VALIDATION_ERROR` | Zod rejected the input: wrong type, unknown key (strict), empty base64, PEM where DER is expected, out-of-range page index / range on `merge_pdfs` / `split_pdf` / `extract_pages`, an unsupported PNG (alpha / palette / 16-bit / interlaced), the 24 MiB image budget, a `link` URL outside `http:` / `https:` / `mailto:`, `encrypt` together with `pdfA`, more than 50 000 engine blocks | Re-read the field’s schema (the message lists the offending path); for PEM run the `openssl … -outform DER` command in the message; page indices are 0-based; flatten / re-export the PNG; split the document. |
+| `PDF_PARSE_FAILED` | Input PDF is malformed or truncated (also double-encoded base64, PEM text or a nested `data:` URI passed as a PDF; `validate_pdf` on an unparsable file; a compressed stream over the operator's decompression cap on `extract_attachments includeData: true`) | Re-encode the base64 once; verify the source PDF opens in a normal reader; for the cap, the operator raises `PDFNATIVE_MCP_MAX_INFLATE_BYTES` if the document is trusted. |
+| `PDF_A_COMPLIANCE_VIOLATION` | Watermark `opacity < 1.0` (text or image, defaults included) under `pdfa1b`; `strict: true` with an engine PDF/A diagnostic (`PDFA_NO_FONT_ENTRIES` unembedded Helvetica, `PDFA_UNEMBEDDED_FORM_FONT` form widget font, `PDFA_DEVICE_CMYK_IMAGE` CMYK JPEG); `print.userUnit` under `pdfa1b` | Set `opacity: 1.0` or `pdfa2b`+; add `embedFonts: true`; keep images RGB; flatten or drop `pdfA` for forms; drop `userUnit` or use `pdfa2b`+. |
 | `PRINT_ERROR` | Engine rejected `print` / `outputIntent` (box outside MediaBox, marks without TrimBox, non-RGB ICC) | Fix the boxes, supply `bleed` / `trimBox`, use an RGB ICC profile. |
 | `CHART_ERROR` | Chart cross-field rule violated (log scale with non-positive values, scatter without `xValues`, …) | The message carries the remedy. |
 | `METADATA_ERROR` | `update_metadata` could not rewrite `/Info` | Confirm the PDF opens; report with a reproduction if it persists. |
@@ -284,7 +317,7 @@ The MCP error response always includes a `code` and a message:
 | `INVALID_PATH` | `outputPath` empty / not a string | Pass a non-empty relative path. |
 | `INVALID_EXTENSION` | `outputPath` does not end in `.pdf` (`.md` for `draft_governance_issue`) | Fix the extension. |
 | `GOVERNANCE_VIOLATION` | `draft_governance_issue` draft breaks the governance contract (proposes a runtime dependency, missing reproduction, or `duplicateSearchPerformed: false`) | Remove the dependency proposal, include a reproduction, confirm the duplicate search. |
-| `[UNKNOWN_TOOL]` | **Protocol error, not a tool result:** `tools/call` with a tool name that does not exist → JSON-RPC `-32602` with message `[UNKNOWN_TOOL] Unknown tool: <name>` | Pick a name from `tools/list` (27 tools). |
+| `[UNKNOWN_TOOL]` | **Protocol error, not a tool result:** `tools/call` with a tool name that does not exist → JSON-RPC `-32602` with message `[UNKNOWN_TOOL] Unknown tool: <name>` | Pick a name from `tools/list` (28 tools). |
 | `UNKNOWN_RESOURCE` | **Protocol error:** `resources/read` with an unknown `pdfnative://` URI → JSON-RPC `-32602`, the code is carried in the message | List URIs with `resources/list`. |
 
 If a tool seems to return correct PDFs that downstream readers reject, run `inspect_pdf` and / or `verify_pdf` to confirm the byte-level structure.

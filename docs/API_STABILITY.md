@@ -42,13 +42,22 @@ A bump of `_meta.apiVersion` happens **only** in the cases listed in §3.
 >
 > **Output-schema conformance (1.6.0):** `structuredContent` always validates against the
 > tool's `outputSchema` — a 2026-07-28 MUST — including `verbosity: 'summary'` and `fields`
-> projections, file mode and `includeDiagnostics`. To make that true the six read tools
+> projections, file mode and `includeDiagnostics`. To make that true the seven read tools
 > (`inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`, `extract_attachments`,
-> `read_form_fields`) declare **projectable** output schemas: every property optional, no
+> `read_form_fields`, `inspect_layout`) declare **projectable** output schemas: every property optional, no
 > `required`, `additionalProperties: false` kept, and the summary-only scalars
 > (`attachmentCount`, `invalid`, `errorCount`, `warningCount`, `charCount`,
-> `extractableReason`) declared. Default (`'full'`) output is unchanged; only the schema
+> `extractableReason`, `blockCount`) declared. Default (`'full'`) output is unchanged; only the schema
 > metadata relaxed (`tests/schema-conformance.test.ts`, SDK Ajv 2020-12 validator).
+>
+> **Transport facts that are SDK behaviour, unchanged since 1.5.0:** on **stdio**, a request
+> sent before `initialize` is dropped without a reply (the specification requires the client
+> to initialise first), and JSON-RPC **batch arrays** (2025-03-26) are not accepted on stdio —
+> they are accepted over HTTP (tested). No major host batches. Input schemas declare **no
+> `$schema` keyword** by policy: MCP ≥ 2025-11-25 defaults to JSON Schema 2020-12, and some
+> hosts forward `inputSchema` verbatim to LLM function-calling APIs that reject unknown
+> keywords. Likewise there is no `$ref` / `$defs`, which is why the 13-kind block union is
+> repeated inline in `inspect_layout` and `tools/list` weighs ≈ 245 kB.
 
 ---
 
@@ -63,7 +72,7 @@ A bump of `_meta.apiVersion` happens **only** in the cases listed in §3.
 | **Error codes** (`code` on `ToolError`) | Stable. Removing or renaming is a major bump. |
 | `_meta.examples` | **Not** covered. May change at any time (at most two per tool since 1.6.0; every one is executable against its `inputSchema`). |
 | `description` strings, `serverInfo.instructions`, prompt texts | **Not** covered. May be reworded at any time — the `tools/list` *wording* is outside the byte-identical charter; tool-result `structuredContent` defaults are inside it. |
-| `tools/list` **structure** (types, enums, bounds, defaults, `required`, `additionalProperties`, annotations, example count) | Covered, and enforced by the catalogue parity gate: `scripts/tool-shape.mjs` fingerprints the catalogue with every description string stripped, `tests/catalogue-parity.test.ts` compares it with `tests/_fixtures/tool-shape.json`. Any structural change is a deliberate `--write` refresh reviewed under §3 / §5. |
+| `tools/list` **structure** (types, enums, bounds, defaults, `required`, `additionalProperties`, annotations, example count) | Covered, and enforced by two gates. *Drift:* `scripts/tool-shape.mjs` fingerprints the catalogue with every description string stripped and `tests/catalogue-parity.test.ts` compares it with `tests/_fixtures/tool-shape.json` — any structural change is a deliberate `--write` refresh reviewed under §3 / §5. *Compatibility:* `tests/catalogue-superset.test.ts` compares the live catalogue with the frozen **published 1.5.0** catalogue (`tests/_fixtures/tool-shape.v1.5.0.json`, never regenerated) and fails on any removal or narrowing — tool, input property, enum value, default, `required` added, `additionalProperties` tightened, or a numeric / length bound made stricter; the accepted 1.5.0 → 1.6.0 deltas (e.g. `watermark.required` dropped, read-tool `required` dropped, `lang` `oneOf` → `anyOf`) are enumerated in the test and must each still occur. |
 | Schema **`default`** values | Documented; changes are minor unless they alter generated output silently. |
 | Unknown input keys | Rejected with `VALIDATION_ERROR` at every nesting level (Zod `.strict()`), exactly as the published `additionalProperties: false` always declared. |
 
@@ -104,21 +113,64 @@ When a tool, field or error code is scheduled for removal:
 
 ## 5. Per-tool stability matrix
 
-All 27 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6.0'` and are considered **stable**:
+All 28 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6.0'` and are considered **stable**:
 
 `generate_basic_pdf`, `add_barcode`, `add_international_text`, `add_table`, `add_form`,
 `embed_image`, `prepare_signature_placeholder`, `sign_pdf`, `verify_pdf`, `validate_pdf`,
 `inspect_pdf`, `add_attachment`, `extract_attachments`, `extract_text`,
 `merge_pdfs`, `split_pdf`, `extract_pages`, `annotate_pdf`, `draft_governance_issue`,
 `read_form_fields`, `fill_form`, `add_chart`, `encrypt_pdf`, `decrypt_pdf`,
-`update_metadata`, `add_ltv`, `timestamp_pdf`.
+`update_metadata`, `add_ltv`, `timestamp_pdf`, `inspect_layout`.
 
-> **v1.6.0 minor bump rationale:** three **new tools** were added on pdfnative 1.7 —
+> **v1.6.0 minor bump rationale:** four **new tools** were added on pdfnative 1.7 —
 > `add_ltv` (PAdES B-LT: `/DSS` + `/VRI` via `addValidationInfo` / `embedValidationInfo`),
-> `timestamp_pdf` (PAdES B-LTA: `/DocTimeStamp` via `addDocumentTimestamp`) and
-> `update_metadata` (incremental `/Info` + XMP rewrite via `PdfModifier.updateMetadata`).
+> `timestamp_pdf` (PAdES B-LTA: `/DocTimeStamp` via `addDocumentTimestamp`),
+> `update_metadata` (incremental `/Info` + XMP rewrite via `PdfModifier.updateMetadata`) and
+> `inspect_layout` (read-only pagination dry run via `inspectDocumentLayout`; same `blocks`
+> schema as `generate_basic_pdf` plus `title`, `footerText`, `pdfA`, `normalize`, `embedFonts`,
+> `pageSize`, `margins`, `headerTemplate`, `footerTemplate`, `verbosity`, `fields`).
 >
-> Existing tools gained **optional inputs** with backward-compatible defaults:
+> **Full engine coverage (1.6.0, additive):**
+> - `generate_basic_pdf.blocks[].type` gains seven **enum values** — `table`, `image`, `link`,
+>   `toc`, `barcode`, `svg`, `formField` — on top of `heading`, `paragraph`, `list`, `pageBreak`,
+>   `spacer`, `chart` (13 kinds, every `DocumentBlock` of pdfnative 1.7). Each new member is a
+>   `const`-discriminated `oneOf` branch with `additionalProperties: false`; `table`, `barcode`,
+>   `formField` reuse the bodies of `add_table` / `add_barcode` / `add_form`. Bounds: `image`
+>   ≤ 12 000 000 base64 characters and a 24 MiB decoded budget per call (`VALIDATION_ERROR`);
+>   `svg.data` ≤ 100 000 characters; `link.url` ≤ 2048 characters, `http:` / `https:` /
+>   `mailto:` only; at most 50 000 engine blocks after newline splitting (`VALIDATION_ERROR`
+>   instead of the engine's `GENERATION_FAILED`).
+> - **Layout options** on the nine document tools (and the four pagination-relevant ones on
+>   `inspect_layout`): `pageSize` (enum `A4` | `Letter` | `Legal` | `A3` | `Tabloid`),
+>   `margins` (`top` / `right` / `bottom` / `left`, 0–200), `headerTemplate` /
+>   `footerTemplate` (`left` / `center` / `right` / `fontSize` / `color`), `compress`,
+>   `debug`. All optional, nothing emitted when absent — default output byte-identical.
+> - **`encrypt`** (build-time Standard Security Handler, the same fragment the page-tree
+>   tools already had) on `generate_basic_pdf`, `add_table`, `add_form`,
+>   `add_international_text`, `embed_image`, `add_barcode`, `add_chart`. Keeps the AcroForm;
+>   `encrypt` + `pdfA` → `VALIDATION_ERROR`; output is randomised and never cached. Not
+>   offered on `prepare_signature_placeholder` (the placeholder must stay signable) nor
+>   `add_attachment` (PDF/A-3 forbids encryption).
+> - `inspect_pdf`: `annotations` (boolean input), `check` value `annotations`, output
+>   `annotations[]` (opt-in) and `annotationCount` (presence-gated).
+> - `watermark` on `generate_basic_pdf` / `add_table`: `image` (`imageBase64` ≤ 12 000 000
+>   characters, 8 MiB decoded, `mimeType`, `opacity`, `width`, `height`) and `position`
+>   (`background` | `foreground`); `text` is no longer `required` (an image-only watermark is
+>   valid) — a loosening recorded in the superset gate.
+> - `add_form.fields[].fieldType` and the `formField` block gain the enum value `listbox`;
+>   both gain `placeholder`. `embed_image` gains `align` and `alt`.
+> - Operator environment: `PDFNATIVE_MCP_MAX_INFLATE_BYTES` (engine decompression cap;
+>   invalid value refuses to start). A capped stream surfaces as `PDF_PARSE_FAILED` on
+>   `extract_attachments includeData: true`; `extract_text` returns empty page text for a
+>   capped content stream (engine behaviour, no new code).
+> - **Bound kept:** `embed_image.imageBase64` keeps its 1.5.0 contract with no `maxLength`;
+>   the 12 M-character cap applies only to the new inline `image` block and watermark images
+>   (a bound on `embed_image` would have been a narrowing — §3 major).
+> - New PDF/A **diagnostics** (not error codes): `PDFA_UNEMBEDDED_FORM_FONT` (any form field
+>   under a PDF/A claim) and `PDFA_DEVICE_CMYK_IMAGE` (CMYK JPEG under PDF/A) — reported via
+>   `includeDiagnostics`, escalated to `PDF_A_COMPLIANCE_VIOLATION` by `strict: true`.
+>
+> Existing tools gained further **optional inputs** with backward-compatible defaults:
 > - every document-producing tool (`generate_basic_pdf`, `add_barcode`, `add_international_text`,
 >   `add_table`, `add_form`, `embed_image`, `prepare_signature_placeholder`, `add_attachment`,
 >   `add_chart`): `print` (boxes / `bleed` / `marks` / `userUnit`), `outputIntent`, `metadata`,
@@ -164,19 +216,25 @@ All 27 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 > `_meta.unmatchedFields` + `_meta.availableFields` when a `fields` path matches nothing;
 > `_meta.cached: true` on a response served from the opt-in cache; `verbosity: 'summary'`
 > keeps `ltvLevel` (`verify_pdf ltv: true`) and `docTimestampCount` / `trapped` /
-> `checksPassed` (`inspect_pdf`) when present. Error-path changes (no previously-succeeding
-> call changes): unknown or misspelt keys → `VALIDATION_ERROR` (contract enforcement, see
-> §2); `validate_pdf` on unparsable bytes → `PDF_PARSE_FAILED` (was a `valid: false` result
-> with an `Unparseable PDF:` error string); page-index / range errors on `merge_pdfs` /
-> `split_pdf` / `extract_pages` → `VALIDATION_ERROR` with a 0-based hint (was
-> `PDF_PARSE_FAILED`); PEM where DER base64 is expected, empty payloads and non-base64 input
+> `checksPassed` (`inspect_pdf`) when present. Error-path changes: unknown or misspelt keys
+> → `VALIDATION_ERROR` (contract enforcement, see §2 — a 1.5.0 call that carried a stray key
+> and was silently accepted now fails; `additionalProperties: false` always declared it
+> invalid); `validate_pdf` on unparsable bytes → `PDF_PARSE_FAILED`. **That one was a
+> previously-succeeding call** (1.5.0 returned `{ valid: false, errors: ['Unparseable PDF: …'] }`
+> with no `isError`); the contract is now stated explicitly: *a parse failure is not a
+> validation verdict* — `valid` describes PDF/UA structure of a PDF that opened, and a client
+> branching on `structuredContent.valid` must treat `isError` as "no verdict". Page-index /
+> range errors on `merge_pdfs` / `split_pdf` / `extract_pages` → `VALIDATION_ERROR` with a
+> 0-based hint (was `PDF_PARSE_FAILED` — a code correction, the meaning of `PDF_PARSE_FAILED`
+> itself is unchanged); PEM where DER base64 is expected, empty payloads and non-base64 input
 > → `VALIDATION_ERROR` with the `openssl` remedy (`sign_pdf` certificate / chain / key parse
 > failures were previously uncoded); PEM text, a nested `data:` URI or double-encoded base64
 > passed as a PDF → `PDF_PARSE_FAILED` with a hint (a `data:…;base64,` prefix is now
 > tolerated). `sign_pdf` is never served from the response cache (previously only with
 > `timestamp: true`), and the cache key is namespaced by `TOOL_API_VERSION/package version`.
 > `add_international_text.lang` uses `anyOf` instead of `oneOf` (same accepted values).
-> None of these touches a stable surface in §2.
+> None of these touches a stable surface in §2; the release notes carry a *Migrating from
+> 1.5.0* checklist for clients that relied on the old error paths.
 >
 > **New error codes** (additive): `TSA_NOT_CONFIGURED`, `TSA_REJECTED`,
 > `REVOCATION_NOT_CONFIGURED`, `NETWORK_HOST_NOT_ALLOWED`, `NETWORK_ERROR`, `LTV_NO_SIGNATURE`,
@@ -189,7 +247,9 @@ All 27 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 > `print.userUnit` under `pdfa1b`; in `add_chart` a PDF/A-class engine throw now maps to
 > `PDF_A_COMPLIANCE_VIOLATION` instead of the old catch-all `CHART_ERROR`), `CHART_ERROR`
 > (engine cross-field rules, now also for the `generate_basic_pdf` `chart` block),
-> `ENCRYPTED_SOURCE` (`update_metadata`, `add_ltv`, `timestamp_pdf`).
+> `ENCRYPTED_SOURCE` (`update_metadata`, `add_ltv`, `timestamp_pdf`), `VALIDATION_ERROR`
+> (unsupported PNG variants, image budget, link scheme, `encrypt` + `pdfA`, block-count cap),
+> `PDF_PARSE_FAILED` (a stream over the operator decompression cap).
 >
 > **Annotation change:** `sign_pdf` now advertises `annotations.openWorldHint: true`, because
 > `timestamp: true` performs egress to the operator-configured TSA (no request is made without
@@ -211,12 +271,20 @@ All 27 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 >    certificate) and count in `allValid` like any signature: a sound timestamp no longer fails
 >    the verdict, a tampered one still does. Inputs that were correctly verified before are
 >    unaffected.
+> 4. `add_form fieldType: 'textarea'` (and the `formField` block) now maps to the engine's
+>    `multilineText`. 1.5.0 passed the string `'textarea'` through unmapped — the engine's
+>    field-type union has no such member, so the widget fell through to a plain single-line
+>    text field without the multiline flag. The output now carries `/Ff 4096`, so the bytes
+>    differ for that input; every other `fieldType` is unchanged.
 >
 > **Placeholder sizing note:** the default `sign_pdf` placeholder size is now
-> `estimateContentsSize([certLen], algorithm)` = `max(16384, …)` instead of a flat 16384. The
-> result is identical for signer certificates up to roughly 10 KB; beyond that the reserved
-> `/Contents` grows, so the produced bytes differ from v1.5.0 only for very large certificates
-> (which previously risked `SIGNING_FAILED` on overflow). Pass `placeholderBytes` to pin it.
+> `estimateContentsSize([certLen], algorithm)` = `max(16384, …)` instead of a flat 16384, plus
+> 8192 bytes when `timestamp: true` (room for the RFC 3161 token). The result is identical for
+> signer certificates up to roughly 10 KB; beyond that the reserved `/Contents` grows, so the
+> produced bytes differ from v1.5.0 only for very large certificates (which previously risked
+> `SIGNING_FAILED` on overflow). To pin the size, build the placeholder with
+> `prepare_signature_placeholder` and its `placeholderBytes` input (`sign_pdf` has no such
+> input) and sign that document.
 >
 > **Engine-inherited byte changes (pdfnative 1.6 → 1.7), default inputs:** measured against
 > v1.5.0 with a fixed-input baseline (dates and trailer `/ID` normalised). Plain documents,
@@ -331,7 +399,7 @@ All 27 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 > shape. This is an opt-in token-saving feature. (Since 1.6.0 the read tools' `outputSchema`
 > declares every property optional, so a projection still validates against it — see §1.)
 
-Page-tree tools `merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative v1.4.0's page-tree API; `annotate_pdf` shipped in v1.4.0 on pdfnative v1.5.0's annotation writer; charts (`add_chart`), form fill/flatten (`read_form_fields`, `fill_form`) and the encrypted round-trip (`encrypt_pdf`, `decrypt_pdf`, `password`/`encrypt` on the page-tree and read-only tools) shipped in v1.5.0 on pdfnative v1.6.0; the PAdES LTV ladder (`add_ltv`, `timestamp_pdf`, `sign_pdf` `profile` / `timestamp`), `update_metadata`, print production and charts v2 shipped in v1.6.0 on pdfnative v1.7.0. `redact_pdf` stays **deferred by design** (pdfnative can overlay/flatten but not remove content — an overlay-only redaction would create false security) and will be added with the same stability guarantees once pdfnative exports a content-removal API. Native ECDSA verification also stays deferred: pdfnative still does not export `ecdsaVerifyHash`, so `verify_pdf` keeps its local P-256 implementation (no contract impact).
+Page-tree tools `merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative v1.4.0's page-tree API; `annotate_pdf` shipped in v1.4.0 on pdfnative v1.5.0's annotation writer; charts (`add_chart`), form fill/flatten (`read_form_fields`, `fill_form`) and the encrypted round-trip (`encrypt_pdf`, `decrypt_pdf`, `password`/`encrypt` on the page-tree and read-only tools) shipped in v1.5.0 on pdfnative v1.6.0; the PAdES LTV ladder (`add_ltv`, `timestamp_pdf`, `sign_pdf` `profile` / `timestamp`), `update_metadata`, `inspect_layout`, the 13 document block kinds, layout options, build-time `encrypt`, print production and charts v2 shipped in v1.6.0 on pdfnative v1.7.0. `redact_pdf` stays **deferred by design** (pdfnative can overlay/flatten but not remove content — an overlay-only redaction would create false security) and will be added with the same stability guarantees once pdfnative exports a content-removal API. Native ECDSA verification also stays deferred: pdfnative still does not export `ecdsaVerifyHash`, so `verify_pdf` keeps its local P-256 implementation (no contract impact).
 
 > **Design note / follow-up (v1.6.0).** Two places where the wrapper is thicker than it
 > should be, recorded here so they are not mistaken for contract:

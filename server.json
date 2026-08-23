@@ -39,7 +39,7 @@
         },
         {
           "name": "PDFNATIVE_MCP_CACHE_DIR",
-          "description": "Opt-in content-addressed response cache directory. SHA-256 keyed, 1h TTL, 256 MiB LRU. Tool output is stored as plaintext at rest. Never cached: encrypt_pdf, decrypt_pdf (so decrypted/protected bytes never linger on disk), add_ltv, timestamp_pdf, update_metadata, sign_pdf with timestamp=true (time- or network-dependent output), and any call with outputMode='file'.",
+          "description": "Opt-in content-addressed response cache directory. SHA-256 keyed, 1h TTL, 256 MiB LRU. Tool output is stored as plaintext at rest. Never cached: encrypt_pdf, decrypt_pdf (so decrypted/protected bytes never linger on disk), add_ltv, timestamp_pdf, update_metadata, sign_pdf (time- or network-dependent output, key material), any document call with encrypt, and any call with outputMode='file'.",
           "isRequired": false,
           "isSecret": false
         },

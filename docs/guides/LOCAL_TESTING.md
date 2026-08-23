@@ -150,13 +150,17 @@ npm run validate:pdfa
 #   && node scripts/validate-pdfa.mjs # veraPDF, one run per file, profile from the XMP claim
 ```
 
-The corpus is a **representative sample**, not an exhaustive feature matrix: 24
-files — 22 claiming PDF/A (one or two per document tool and per conformance level,
+The corpus is a **representative sample**, not an exhaustive feature matrix: 26
+files — 24 claiming PDF/A (one or two per document tool and per conformance level,
 of which 3 are negative canaries) plus 2 page-tree outputs that carry no claim.
 It covers plain text, outlines / page labels / lists, watermarks, charts, print
 boxes and marks, custom output intents, tables, international text, barcodes,
-images, attachments, PAdES signing, metadata updates and forms; it does not
-exercise every block type, every chart kind or every script. Every entry in
+images, attachments, PAdES signing, metadata updates, forms, a composite
+`generate_basic_pdf` document with `toc`, `table`, `link`, `barcode`, `svg` and
+`chart` blocks, and the layout options (Letter, margins, header / footer templates,
+`compress`); it does not exercise every chart kind, every script, an inline `image`
+or `formField` block under PDF/A, an image watermark or `inspect_layout` (which
+produces no PDF). Every entry in
 `test-output/pdfa/manifest.json` carries an `expectCompliant` flag and the
 validator compares veraPDF's verdict against it:
 
@@ -170,6 +174,8 @@ validator compares veraPDF's verdict against it:
 | `basic-pdfa2b-chart-bar.pdf` / `…-stackedbar.pdf` | chart blocks | 2b | compliant |
 | `basic-pdfa2b-print-metadata.pdf` | bleed, printer marks, `/Trapped` | 2b | compliant |
 | `basic-pdfa2b-custom-outputintent.pdf` | caller-supplied RGB ICC `outputIntent` | 2b | compliant |
+| `composite-blocks-pdfa2b.pdf` | `toc`, `table`, `link`, `barcode`, `svg` (shapes + `<text>`), `chart` blocks in one document | 2b | compliant |
+| `layout-letter-templates-compress-pdfa2b.pdf` | `pageSize: 'Letter'`, custom `margins`, `headerTemplate` / `footerTemplate`, `compress` (XMP stays plain) | 2b | compliant |
 | `table-pdfa2b.pdf` | `add_table` | 2b | compliant |
 | `chart-pdfa2b-scatter.pdf` | `add_chart` scatter | 2b | compliant |
 | `international-pdfa2u.pdf` | `add_international_text` Arabic + Latin | 2u | compliant |
@@ -244,7 +250,7 @@ The cleanest way to drive it interactively is the official
 npx @modelcontextprotocol/inspector node dist/cli.js
 ```
 
-From the Inspector you can list the 27 tools, inspect each schema and the
+From the Inspector you can list the 28 tools, inspect each schema and the
 `_meta.examples`, and issue `tools/call` requests — a fast way to confirm a new or
 changed tool behaves before writing assertions.
 

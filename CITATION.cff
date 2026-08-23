@@ -9,7 +9,8 @@ repository-code: "https://github.com/Nizoka/pdfnative-mcp"
 url: "https://github.com/Nizoka/pdfnative-mcp"
 abstract: >-
   Model Context Protocol (MCP) server bridging the zero-dependency pdfnative
-  library to AI clients. Provides 27 production-grade tools for PDF generation,
+  library to AI clients. Provides 28 production-grade tools for PDF generation
+  (13 document block kinds, page layout options, a read-only pagination preview),
   PDF/A archival with embedded fonts and conformance diagnostics, PDF/UA
   structural validation, native vector charts, embedded barcodes, multi-script
   text, smart tables, interactive forms (create, read, fill, flatten), embedded

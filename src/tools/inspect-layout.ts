@@ -8,11 +8,13 @@
  * primitives, so the result is a faithful, deterministic estimate.
  *
  * Only the inputs that can change the engine's answer are accepted:
- *   - `title`       reserves the title band on page 1
+ *   - `title`, `footerText`  reserve the title band / footer line
  *   - `pdfA`, `normalize`, `embedFonts`  change the text-measurement context
  *     (tagged mode, Unicode normalisation, Noto Sans metrics vs Helvetica)
- * Footer text, print boxes, watermarks and metadata never move a block, so
- * they are deliberately not part of the schema.
+ *   - `pageSize`, `margins`, `headerTemplate`, `footerTemplate`  change the content box
+ * Print boxes, watermarks, metadata, compression and encryption never move a
+ * block, so they are deliberately not part of the schema. Known engine gap: a
+ * `toc` block is measured as 0 pt (pinned in tests/inspect-layout.test.ts).
  */
 import { inspectDocumentLayout, type LayoutInspection } from 'pdfnative';
 import { z } from 'zod';

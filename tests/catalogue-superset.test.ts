@@ -48,7 +48,7 @@ const ACCEPTED_DELTAS = new Set<string>([
     'sign_pdf.annotations.openWorldHint: false -> true',
 ]);
 
-/** The six read tools' output schemas are projectable: every `required` dropped, at every depth (loosening only). */
+/** The six 1.5.0 read tools' output schemas are projectable: every `required` dropped, at every depth (loosening only). */
 const PROJECTABLE_OUTPUT = /^(inspect_pdf|verify_pdf|extract_text|validate_pdf|extract_attachments|read_form_fields)\.out.*: required removed$/;
 function accepted(issue: string): boolean {
     return ACCEPTED_DELTAS.has(issue) || PROJECTABLE_OUTPUT.test(issue);

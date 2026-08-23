@@ -1,12 +1,27 @@
 # Forms guide (for AI agents)
 
-pdfnative-mcp has **three** form tools. Pick by intent:
+pdfnative-mcp has **three** form tools (plus `formField` blocks inside `generate_basic_pdf`). Pick by intent:
 
 | Intent | Tool |
 | --- | --- |
 | **Create** a new fillable form from scratch | `add_form` |
+| **Mix** fields into a longer document (prose, tables, images, a contents page) | `generate_basic_pdf` with `formField` blocks — same field body as `add_form` |
+| **Create** a fillable form that is **password-protected** | `add_form` (or `generate_basic_pdf`) with `encrypt` — build-time encryption keeps the AcroForm; `encrypt_pdf` afterwards would drop it |
 | **Inspect** the fields of an existing form | `read_form_fields` (read-only) |
 | **Fill / flatten** an existing form | `fill_form` |
+
+## Field types you can create (`add_form`, `formField` block)
+
+| `fieldType` | Notes |
+| --- | --- |
+| `text` | single line; `value`, `placeholder` (hint while empty), `maxLength`, `readOnly`, `required`, `width` / `height`, `fontSize` |
+| `textarea` | multi-line (`/Ff 4096`). Since 1.6.0 this maps to the engine's `multilineText`; 1.5.0 passed the name through unmapped and produced a single-line field, so bytes change for this input |
+| `checkbox` | `checked` |
+| `radio` | `options` required; fields sharing a `name` form one group; `checked` |
+| `dropdown` | `options` required (1–100 entries); `value` |
+| `listbox` | v1.6.0 — `options` required; multi-select list |
+
+Every field needs a unique `name` (`/T`, 1–100 chars) and may carry a `label` rendered above it.
 
 `read_form_fields` and `fill_form` arrived in **v1.5.0** (pdfnative's
 `readFormFields` / `fillForm` / `flattenForm`; since pdfnative 1.7 the AcroForm
@@ -65,11 +80,15 @@ AcroForms — a template made by `add_form`, or any third-party fillable PDF.
 ## Creating templates with `add_form` — PDF/A and reproducibility
 
 - `add_form` shares the document-tool options: `pdfA`, `embedFonts`, `strict`,
-  `print`, `metadata`, `outputIntent` and an opt-in `creationDate` (ISO-8601).
-  Pin `creationDate` to get byte-identical templates from identical inputs on the
-  same host time zone; omitted, every call differs by the wall clock.
-- **Known limitation:** `add_form` + `pdfA` + `embedFonts: true` still fails
-  PDF/A-2b under veraPDF. The page text uses the embedded Noto Sans, but the
+  `print`, `metadata`, `outputIntent`, an opt-in `creationDate` (ISO-8601) and the
+  layout options (`pageSize`, `margins`, `headerTemplate` / `footerTemplate`,
+  `compress`, `debug`, `encrypt`). Pin `creationDate` to get byte-identical templates
+  from identical inputs on the same host time zone; omitted, every call differs by the
+  wall clock (`encrypt` output is randomised regardless, and never cached).
+- **Known limitation:** `add_form` (or a `formField` block) + `pdfA` + `embedFonts: true`
+  still fails PDF/A-2b under veraPDF — the wrapper reports it as the
+  `PDFA_UNEMBEDDED_FORM_FONT` diagnostic (`includeDiagnostics: true`; `strict: true`
+  fails the call). The page text uses the embedded Noto Sans, but the
   AcroForm default resources (`/AcroForm /DR /Helv`) reference the base-14
   Helvetica as an unembedded Type1 font (ISO 19005-2 rule 6.2.11.4.1). This is an
   engine-side gap tracked by the `form-pdfa2b.pdf` negative canary in the veraPDF
