@@ -46,6 +46,8 @@ export function guardBearer(request: Request, token: string | null): Response | 
     const header = request.headers.get('authorization') ?? '';
     const match = /^Bearer\s+(\S+)\s*$/i.exec(header);
     if (match !== null && sameSecret(match[1] as string, token)) return undefined;
+    // RFC 6750 §3.1: no error code when the request carried no credentials at all.
+    const challenge = header === '' ? 'Bearer realm="pdfnative-mcp"' : 'Bearer realm="pdfnative-mcp", error="invalid_token"';
     return new Response(
         JSON.stringify({
             jsonrpc: '2.0',
@@ -56,7 +58,7 @@ export function guardBearer(request: Request, token: string | null): Response | 
             status: 401,
             headers: {
                 'content-type': 'application/json',
-                'www-authenticate': 'Bearer realm="pdfnative-mcp", error="invalid_token"',
+                'www-authenticate': challenge,
             },
         },
     );

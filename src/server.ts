@@ -266,7 +266,10 @@ const CACHE_API_VERSION = `${TOOL_API_VERSION}/${PDFNATIVE_MCP_VERSION}`;
 
 /** True when this call's output must bypass the response cache. */
 function isCacheable(name: string, input: unknown): boolean {
-    return !isFileOutput(input) && !NON_CACHEABLE_TOOLS.has(name);
+    // Build-time encryption (`encrypt` on the document tools) randomises the bytes and
+    // takes passwords — same policy as encrypt_pdf: never persisted to the cache.
+    const encrypts = input !== null && typeof input === 'object' && (input as { encrypt?: unknown }).encrypt !== undefined;
+    return !isFileOutput(input) && !NON_CACHEABLE_TOOLS.has(name) && !encrypts;
 }
 
 /** True when the call's input requests a file-mode output (filesystem side-effect). */
@@ -851,7 +854,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: INSPECT_LAYOUT_NAME,
         title: 'Inspect document layout (dry run)',
         description:
-            "Pagination preview WITHOUT generating a PDF: how many pages a document will take and where every block lands (page, x, top, width, height in points). Takes the same `blocks` as generate_basic_pdf (plus title, pdfA, normalize, embedFonts — the only inputs that move a block). Use it to check that content fits on one page, to decide where to put pageBreak blocks, or to estimate before a large generate. Read-only, deterministic, no PDF bytes returned. Token-frugal: verbosity:'summary' (totalPages, blockCount), fields:['totalPages'].",
+            "Pagination preview WITHOUT generating a PDF: page count and where every block lands (page, x, top, width, height in points). Same `blocks` as generate_basic_pdf plus every input that moves a block (title, footerText, pdfA, normalize, embedFonts, pageSize, margins, headerTemplate, footerTemplate): pass what you will give generate_basic_pdf and the page count matches. Known engine gap: a 'toc' block is measured as 0 pt here (its real height depends on the headings), so documents with a toc may paginate one page later. Read-only, deterministic. Token-frugal: verbosity:'summary', fields:['totalPages'].",
         inputSchema: INSPECT_LAYOUT_INPUT_SCHEMA,
         outputSchema: projectableOutputSchema(
             INSPECT_LAYOUT_OUTPUT_SCHEMA,
@@ -899,7 +902,7 @@ COMMON PITFALLS:
   • inspect_pdf check:'signed' is structural (a signed field exists) — use verify_pdf for validity. checks lists only the keys you requested.
   • verbosity:'summary' keeps scalars (inspect: docTimestampCount/trapped/checksPassed when present; verify: ltvLevel with ltv:true) and drops arrays; use fields:[…] for dot-path projection — unmatched paths are reported in _meta.unmatchedFields.
   • Signer metadata (name, reason, location, contactInfo, signingTime) is frozen at placeholder time: set it on sign_pdf (auto-inject) or on prepare_signature_placeholder, not afterwards. Several unsigned placeholders → fieldName; extra signature → allowMultiple:true + new fieldName.
-  • outputMode:'file' needs PDFNATIVE_MCP_OUTPUT_DIR on the host (SECURITY_VIOLATION otherwise); paths are relative, .pdf, no '..'. With the opt-in response cache a hit carries _meta.cached:true (earlier bytes, same inputs).
+  • outputMode:'file' needs PDFNATIVE_MCP_OUTPUT_DIR on the host (SECURITY_VIOLATION otherwise); paths are relative, .pdf, no '..'. With the opt-in response cache a hit carries _meta.cached:true (earlier bytes, same inputs — including an earlier {date} placeholder).
   • Barcode data is the raw payload (never URL-encode); ecLevel applies to qr only; ean13 needs 12–13 digits.
   • Layout options on every document tool: pageSize (A4 default, Letter, Legal, A3, Tabloid), margins (all four), headerTemplate / footerTemplate with {page} {pages} {title} {date} (footerTemplate replaces the default footer, so footerText is then ignored), compress:true (FlateDecode streams, smaller file, different bytes), debug:true (guide rectangles).
   • generate_basic_pdf 'svg' blocks support paths, basic shapes and <text> only — no transform, <g>, gradients or CSS (silently ignored); 'image' blocks are capped at 24 MiB decoded per call; 'formField' blocks under pdfA inherit PDFA_UNEMBEDDED_FORM_FONT.

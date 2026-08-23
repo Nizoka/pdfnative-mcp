@@ -17,7 +17,7 @@
 import { z } from 'zod';
 import type { WatermarkImage, WatermarkOptions, WatermarkText } from 'pdfnative';
 import { ToolError } from './errors.js';
-import { decodeBase64Field } from './base64.js';
+import { IMAGE_BASE64_MAX_CHARS, decodeImageBase64 } from './image.js';
 
 /** Default text-watermark opacity applied by pdfnative when `opacity` is omitted. */
 const DEFAULT_WATERMARK_OPACITY = 0.15;
@@ -76,7 +76,8 @@ export const WATERMARK_INPUT_SCHEMA = {
                 imageBase64: {
                     type: 'string',
                     minLength: 4,
-                    description: 'Base64-encoded JPEG or PNG bytes (max 8 MiB decoded). Plain base64, no data: URI prefix required.',
+                    maxLength: IMAGE_BASE64_MAX_CHARS,
+                    description: 'Base64-encoded JPEG or 8-bit opaque PNG bytes (max 8 MiB decoded; alpha-channel, palette and interlaced PNGs are rejected with a remedy). Plain base64, no data: URI prefix.',
                 },
                 mimeType: {
                     type: 'string',
@@ -115,7 +116,7 @@ export const WATERMARK_INPUT_SCHEMA = {
 const unitInterval = z.number().min(0).max(1);
 
 const WatermarkImageSchema = z.strictObject({
-    imageBase64: z.string().min(4),
+    imageBase64: z.string().min(4).max(IMAGE_BASE64_MAX_CHARS),
     mimeType: z.enum(MIME_TYPES),
     opacity: unitInterval.optional(),
     width: z.number().gt(0).max(14400).optional(),
@@ -162,30 +163,15 @@ export function assertWatermarkPdfACompatible(
     }
 }
 
-/** JPEG SOI marker (FF D8 FF) or the 8-byte PNG signature. */
-function sniffImageType(bytes: Uint8Array): 'image/jpeg' | 'image/png' | null {
-    if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
-    const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-    if (bytes.length >= 8 && png.every((b, i) => bytes[i] === b)) return 'image/png';
-    return null;
-}
-
 /**
  * Decode and validate the watermark image at the boundary: base64 → bytes,
  * size bound, and the magic number must agree with the declared `mimeType`
  * (so a PNG mislabelled as JPEG fails with a coded error instead of an engine throw).
  */
 export function decodeWatermarkImage(image: NonNullable<WatermarkInput['image']>): Uint8Array {
-    const bytes = decodeBase64Field(image.imageBase64, 'watermark.image.imageBase64');
+    const bytes = decodeImageBase64(image.imageBase64, image.mimeType, 'watermark.image.imageBase64');
     if (bytes.length > MAX_WATERMARK_IMAGE_BYTES) {
         throw new ToolError('VALIDATION_ERROR', `watermark.image.imageBase64 decodes to ${bytes.length} bytes; the limit is ${MAX_WATERMARK_IMAGE_BYTES} bytes.`);
-    }
-    const sniffed = sniffImageType(bytes);
-    if (sniffed === null) {
-        throw new ToolError('VALIDATION_ERROR', 'watermark.image.imageBase64 is neither a JPEG (FF D8 FF) nor a PNG (89 50 4E 47…) — only those two formats are supported.');
-    }
-    if (sniffed !== image.mimeType) {
-        throw new ToolError('VALIDATION_ERROR', `watermark.image.mimeType is '${image.mimeType}' but the bytes are ${sniffed}. Set mimeType to match the actual image.`);
     }
     return bytes;
 }

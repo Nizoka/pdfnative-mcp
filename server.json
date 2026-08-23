@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.github.Nizoka/pdfnative-mcp",
-  "description": "PDF generation, PDF/A and PDF/UA checks, charts, forms, encryption, PAdES LTV signing. 28 tools.",
+  "description": "MCP server for PDF: generate, PDF/A, PAdES sign/verify (LTV), forms, merge/split, encrypt. 28 tools.",
   "repository": {
     "url": "https://github.com/Nizoka/pdfnative-mcp",
     "source": "github"
@@ -58,7 +58,7 @@
         },
         {
           "name": "PDFNATIVE_MCP_MAX_INFLATE_BYTES",
-          "description": "Per-stream decompression cap in bytes for FlateDecode content (zip-bomb mitigation; engine default 104857600 = 100 MiB). Positive integer >= 1024; an invalid value refuses to start the server. Lower it on shared hosts, raise it for trusted archives of large scanned documents. A stream exceeding the cap fails the call with PDF_PARSE_FAILED.",
+          "description": "Per-stream decompression cap in bytes for FlateDecode content (zip-bomb mitigation; engine default 104857600 = 100 MiB). Positive integer >= 1024; an invalid value refuses to start the server. Lower it on shared hosts, raise it for trusted archives of large scanned documents. Over the cap, extract_attachments fails with PDF_PARSE_FAILED (remedy names this variable); extract_text returns empty text for the affected page (the engine skips undecodable content streams); inspect_pdf and the document tools are unaffected.",
           "isRequired": false,
           "isSecret": false,
           "format": "number"

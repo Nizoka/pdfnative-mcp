@@ -23,6 +23,9 @@
 import type { PageTemplate, PdfLayoutOptions } from 'pdfnative';
 import { z } from 'zod';
 
+import { ENCRYPT_INPUT_SCHEMA, EncryptSchema, toEncryptionOptions } from './encryption.js';
+import { ToolError } from './errors.js';
+
 /** Page-size presets — keys of pdfnative's `PAGE_SIZES` (width × height in points). */
 export const PAGE_SIZE_PRESETS = {
     A4: { width: 595.28, height: 841.89 },
@@ -41,7 +44,7 @@ const MARGIN_SCHEMA = { type: 'number', minimum: 0, maximum: 200 } as const;
 const TEMPLATE_TEXT_SCHEMA = {
     type: 'string',
     maxLength: 200,
-    description: 'Text with optional placeholders {page} {pages} {title} {date} (date = YYYY-MM-DD wall clock at build time, not creationDate).',
+    description: 'Placeholders: {page} {pages} {title} {date} (build-day wall clock, not creationDate).',
 } as const;
 
 const TEMPLATE_SCHEMA = (zone: 'top' | 'bottom') =>
@@ -50,14 +53,14 @@ const TEMPLATE_SCHEMA = (zone: 'top' | 'bottom') =>
         additionalProperties: false,
         description:
             zone === 'top'
-                ? 'Header line rendered at the top of every page (left / center / right zones). Reserves 15 pt of content height.'
-                : 'Footer line rendered at the bottom of every page. Replaces the default footer entirely: when set, footerText is ignored and page numbers appear only if you include {page}/{pages}.',
+                ? 'Running header on every page (left / center / right zones); reserves 15 pt.'
+                : 'Running footer on every page. Replaces the default footer: footerText is then ignored and page numbers appear only via {page}/{pages}.',
         properties: {
             left: TEMPLATE_TEXT_SCHEMA,
             center: TEMPLATE_TEXT_SCHEMA,
             right: TEMPLATE_TEXT_SCHEMA,
-            fontSize: { type: 'number', minimum: 6, maximum: 14, description: 'Font size in points. Default 7.' },
-            color: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$', description: 'Hex colour, e.g. "#666666".' },
+            fontSize: { type: 'number', minimum: 6, maximum: 14, description: 'Default 7.' },
+            color: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$', description: 'Hex colour.' },
         },
     }) as const;
 
@@ -66,13 +69,13 @@ export const LAYOUT_INPUT_PROPERTIES = {
     pageSize: {
         type: 'string',
         enum: PAGE_SIZE_KEYS,
-        description: 'Page-size preset (portrait): A4 595.28×841.89 (default), Letter 612×792, Legal 612×1008, A3 841.89×1190.55, Tabloid 792×1224 pt. print.* boxes must fit the resulting MediaBox.',
+        description: 'Portrait page preset (points): A4 595.28×841.89 (default), Letter 612×792, Legal 612×1008, A3 841.89×1190.55, Tabloid 792×1224. print.* boxes must fit it.',
     },
     margins: {
         type: 'object',
         additionalProperties: false,
         required: ['top', 'right', 'bottom', 'left'],
-        description: 'Page margins in points (all four required; 0–200). Default { top: 45, right: 36, bottom: 35, left: 36 }.',
+        description: 'Margins in points, all four required (0–200). Default 45 / 36 / 35 / 36.',
         properties: {
             top: MARGIN_SCHEMA,
             right: MARGIN_SCHEMA,
@@ -84,11 +87,15 @@ export const LAYOUT_INPUT_PROPERTIES = {
     footerTemplate: TEMPLATE_SCHEMA('bottom'),
     compress: {
         type: 'boolean',
-        description: 'FlateDecode content/font/CMap streams (ISO 32000-1 §7.3.8). Default false. Output bytes change (smaller); PDF/A conformance is unaffected (XMP stays uncompressed).',
+        description: 'FlateDecode the streams (smaller file, different bytes; PDF/A unaffected, XMP stays plain). Default false.',
     },
     debug: {
         type: 'boolean',
-        description: 'Development aid: draw the margin box, block bounds and table cell outlines as thin stroked rectangles on every page. Text geometry is unchanged. Default false.',
+        description: 'Draw margin / block / cell guide rectangles (unmarked content — not for PDF/UA output). Geometry unchanged. Default false.',
+    },
+    encrypt: {
+        ...ENCRYPT_INPUT_SCHEMA,
+        description: 'Encrypt at build time (AES-128 default / AES-256) and KEEP the AcroForm — unlike encrypt_pdf, which rebuilds the page tree. Exclusive with pdfA. Randomised output, never cached.',
     },
 } as const;
 
@@ -115,6 +122,7 @@ export const LayoutInputShape = {
     footerTemplate: TemplateSchema.optional(),
     compress: z.boolean().optional(),
     debug: z.boolean().optional(),
+    encrypt: EncryptSchema.optional(),
 } as const;
 
 export type TemplateInput = z.infer<typeof TemplateSchema>;
@@ -127,9 +135,17 @@ export interface LayoutInput {
     footerTemplate?: TemplateInput;
     compress?: boolean;
     debug?: boolean;
+    encrypt?: z.infer<typeof EncryptSchema>;
 }
 
-type LayoutFragment = Pick<PdfLayoutOptions, 'pageWidth' | 'pageHeight' | 'margins' | 'headerTemplate' | 'footerTemplate' | 'compress' | 'debug'>;
+/** PDF/A forbids encryption (ISO 19005-1 §6.3.2): reject the pair before the engine does, with a stable code. */
+export function assertLayoutPdfACompatible(layout: Pick<LayoutInput, 'encrypt'>, pdfA: string | undefined): void {
+    if (layout.encrypt !== undefined && pdfA !== undefined) {
+        throw new ToolError('VALIDATION_ERROR', 'encrypt and pdfA are mutually exclusive (ISO 19005-1 §6.3.2 forbids encryption in PDF/A). Drop one of them.');
+    }
+}
+
+type LayoutFragment = Pick<PdfLayoutOptions, 'pageWidth' | 'pageHeight' | 'margins' | 'headerTemplate' | 'footerTemplate' | 'compress' | 'debug' | 'encryption'>;
 
 function toTemplate(t: TemplateInput): PageTemplate {
     return {
@@ -160,5 +176,6 @@ export function toLayoutOptions(input: LayoutInput): LayoutFragment {
     if (input.footerTemplate !== undefined) out.footerTemplate = toTemplate(input.footerTemplate);
     if (input.compress !== undefined) out.compress = input.compress;
     if (input.debug !== undefined) out.debug = input.debug;
+    if (input.encrypt !== undefined) out.encryption = toEncryptionOptions(input.encrypt);
     return out;
 }

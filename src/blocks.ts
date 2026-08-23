@@ -15,13 +15,13 @@ import { z } from 'zod';
 import { BARCODE_BODY_PROPERTIES, BLOCK_ALIGN_ENUM, BarcodeBodyShape, assertBarcodePayload, toBarcodeBlock } from './barcode.js';
 import { ToolError } from './errors.js';
 import { FORM_FIELD_PROPERTIES, FormFieldShape, assertFormFieldOptions, toFormFieldBlock } from './form.js';
-import { IMAGE_PAYLOAD_PROPERTIES, ImageByteBudget, ImagePayloadShape, decodeImageBase64 } from './image.js';
+import { BOUNDED_IMAGE_PAYLOAD_PROPERTIES, BoundedImagePayloadShape, ImageByteBudget, decodeImageBase64 } from './image.js';
 import { TABLE_BODY_PROPERTIES, TableBodyShape, assertRowsMatchHeaders, toTableBlock } from './table.js';
 
 const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const LINK_SCHEMES = /^(?:https?:|mailto:)/i;
 // eslint-disable-next-line no-control-regex -- C0 / DEL are exactly what the engine rejects
-const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/;
 const SVG_DATA_MAX_CHARS = 100_000;
 
 const ALIGN_PROPERTY = {
@@ -53,10 +53,10 @@ export const EXTENDED_BLOCK_SCHEMAS = [
         type: 'object',
         additionalProperties: false,
         required: ['type', 'imageBase64', 'mimeType'],
-        description: 'Inline JPEG/PNG image. Without width/height the pixel size is used as points and clamped to the content width; with one dimension the aspect ratio is kept. The decoded bytes of all images in one call are capped at 24 MiB.',
+        description: 'Inline JPEG/PNG image. Without width/height the pixel size is used as points and clamped to the content width; with one dimension the aspect ratio is kept. The decoded bytes of all image blocks in one call are capped at 24 MiB (a watermark image has its own 8 MiB cap).',
         properties: {
             type: { const: 'image' },
-            ...IMAGE_PAYLOAD_PROPERTIES,
+            ...BOUNDED_IMAGE_PAYLOAD_PROPERTIES,
             width: { type: 'number', minimum: 10, maximum: 800, description: 'Render width in points.' },
             height: { type: 'number', minimum: 10, maximum: 1000, description: 'Render height in points.' },
             align: ALIGN_PROPERTY,
@@ -105,7 +105,7 @@ export const EXTENDED_BLOCK_SCHEMAS = [
         additionalProperties: false,
         required: ['type', 'data'],
         description:
-            "Vector drawing from an SVG path `d` string or SVG markup. Supported: <path> <rect> (rx/ry) <circle> <ellipse> <line> <polyline> <polygon> and <text>/<tspan> (x, y, font-size, fill, text-anchor, dx/dy); fill / stroke / stroke-width attributes; double-quoted attributes only. NOT supported (silently ignored): transform, <g>, <use>, <image>, <defs>/<clipPath>, gradients, opacity, CSS/style, dash patterns, text word-wrap. No external reference is ever fetched (no XML parser: entities other than &amp; &lt; &gt; &quot; &apos; &#n; are dropped). Pure path operators — PDF/A-safe at every level.",
+            "Vector drawing from an SVG path `d` string or SVG markup. Supported: <path> <rect> (rx/ry) <circle> <ellipse> <line> <polyline> <polygon> and <text>/<tspan> (x, y, font-size, fill, text-anchor, dx/dy); fill / stroke / stroke-width attributes; double-quoted attributes only. NOT supported (silently ignored): transform, <g>, <use>, <image>, <defs>/<clipPath>, gradients, opacity, CSS/style, dash patterns, text word-wrap. No external reference is ever fetched (no XML parser: entities other than &amp; &lt; &gt; &quot; &apos; &nbsp; &#n; are dropped). Pure path operators — PDF/A-safe at every level.",
         properties: {
             type: { const: 'svg' },
             data: { type: 'string', minLength: 1, maxLength: SVG_DATA_MAX_CHARS, description: 'Path `d` string or SVG markup (≤ 100 000 characters).' },
@@ -145,7 +145,7 @@ export const ExtendedBlockSchemas = [
     z.strictObject({ type: z.literal('table'), ...TableBodyShape }),
     z.strictObject({
         type: z.literal('image'),
-        ...ImagePayloadShape,
+        ...BoundedImagePayloadShape,
         width: z.number().min(10).max(800).optional(),
         height: z.number().min(10).max(1000).optional(),
         align: z.enum(BLOCK_ALIGN_ENUM).default('left'),

@@ -36,7 +36,9 @@ describe('guardBearer', () => {
             const res = guardBearer(req(header), TOKEN);
             expect(res, String(header)).toBeDefined();
             expect(res!.status).toBe(401);
-            expect(res!.headers.get('www-authenticate')).toMatch(/^Bearer /);
+            expect(res!.headers.get('www-authenticate')).toMatch(/^Bearer realm="pdfnative-mcp"/);
+            // RFC 6750 §3.1: the error attribute only when credentials were actually presented.
+            expect(res!.headers.get('www-authenticate')?.includes('error=')).toBe(header !== undefined);
             const body = await res!.text();
             expect(body).not.toContain(TOKEN);
             expect(JSON.parse(body)).toMatchObject({ jsonrpc: '2.0', id: null, error: { code: -32600 } });

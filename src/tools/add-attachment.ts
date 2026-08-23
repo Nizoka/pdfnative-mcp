@@ -30,6 +30,13 @@ import { ToolError } from '../errors.js';
 import { emitPdf, type OutputResult } from '../output.js';
 import { PRINT_INPUT_PROPERTIES, PrintInputShape, toDocumentMetadata, toPrintLayout } from '../print.js';
 import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, toLayoutOptions } from '../layout.js';
+
+// Build-time encryption is not offered here: a signature placeholder must stay signable and a
+// PDF/A-3 attachment container may not be encrypted (ISO 19005-1 §6.3.2).
+const { encrypt: _encryptProperty, ...UNENCRYPTED_LAYOUT_PROPERTIES } = LAYOUT_INPUT_PROPERTIES;
+const { encrypt: _encryptShape, ...UnencryptedLayoutShape } = LayoutInputShape;
+void _encryptProperty;
+void _encryptShape;
 import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 export const ADD_ATTACHMENT_NAME = 'add_attachment';
@@ -87,7 +94,7 @@ export const ADD_ATTACHMENT_INPUT_SCHEMA = {
             },
         },
         ...PRINT_INPUT_PROPERTIES,
-        ...LAYOUT_INPUT_PROPERTIES,
+        ...UNENCRYPTED_LAYOUT_PROPERTIES,
         ...DIAGNOSTIC_INPUT_PROPERTIES,
         outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
         outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf (no absolute paths, no '..')." },
@@ -111,7 +118,7 @@ const InputSchema = z.strictObject({
         .min(1)
         .max(20),
     ...PrintInputShape,
-    ...LayoutInputShape,
+    ...UnencryptedLayoutShape,
     ...DiagnosticInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),

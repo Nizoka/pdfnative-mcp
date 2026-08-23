@@ -119,6 +119,33 @@ export async function sendWebResponse(res: ServerResponse, response: Response): 
 export function guardLoopback(request: Request): Response | undefined {
     return (
         hostHeaderValidationResponse(request, localhostAllowedHostnames()) ??
-        originValidationResponse(request, localhostAllowedOrigins())
+        originValidationResponse(request, localhostAllowedOrigins()) ??
+        originPortResponse(request)
     );
+}
+
+/**
+ * The SDK's Origin check is port-agnostic (any `http://localhost:<n>` passes).
+ * A local web page served on another port is still a cross-site caller, so
+ * additionally require the Origin port to be this server's own port.
+ */
+function originPortResponse(request: Request): Response | undefined {
+    const origin = request.headers.get('origin');
+    if (origin === null || origin === '') return undefined;
+    let originPort: string;
+    try {
+        originPort = new URL(origin).port;
+    } catch {
+        return forbidden('Invalid Origin header');
+    }
+    const ownPort = new URL(request.url).port;
+    if (originPort === ownPort) return undefined;
+    return forbidden(`Origin port ${originPort === '' ? '(default)' : originPort} does not match the server port ${ownPort}`);
+}
+
+function forbidden(message: string): Response {
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32600, message } }), {
+        status: 403,
+        headers: { 'content-type': 'application/json' },
+    });
 }

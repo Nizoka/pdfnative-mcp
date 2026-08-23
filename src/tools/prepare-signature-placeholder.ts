@@ -29,6 +29,13 @@ import { ToolError } from '../errors.js';
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
 import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
 import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, toLayoutOptions } from '../layout.js';
+
+// Build-time encryption is not offered here: a signature placeholder must stay signable and a
+// PDF/A-3 attachment container may not be encrypted (ISO 19005-1 §6.3.2).
+const { encrypt: _encryptProperty, ...UNENCRYPTED_LAYOUT_PROPERTIES } = LAYOUT_INPUT_PROPERTIES;
+const { encrypt: _encryptShape, ...UnencryptedLayoutShape } = LayoutInputShape;
+void _encryptProperty;
+void _encryptShape;
 import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 export const PREPARE_SIGNATURE_PLACEHOLDER_NAME = 'prepare_signature_placeholder';
@@ -145,7 +152,7 @@ export const PREPARE_SIGNATURE_PLACEHOLDER_INPUT_SCHEMA = {
             },
         },
         ...PRINT_INPUT_PROPERTIES,
-        ...LAYOUT_INPUT_PROPERTIES,
+        ...UNENCRYPTED_LAYOUT_PROPERTIES,
         ...DIAGNOSTIC_INPUT_PROPERTIES,
         outputMode: {
             type: 'string',
@@ -184,7 +191,7 @@ const InputSchema = z.strictObject({
     pdfA: PdfASchema.optional(),
     blocks: z.array(BlockSchema).max(2000).optional(),
     ...PrintInputShape,
-    ...LayoutInputShape,
+    ...UnencryptedLayoutShape,
     ...DiagnosticInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),

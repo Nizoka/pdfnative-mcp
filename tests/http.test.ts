@@ -115,6 +115,17 @@ describe('src/http.ts bridge', () => {
         const badOrigin = new Request('http://127.0.0.1:1234/mcp', { method: 'POST', headers: { host: '127.0.0.1:1234', origin: 'http://evil.example.com' } });
         expect(guardLoopback(badOrigin)?.status).toBe(403);
     });
+
+    it('guardLoopback pins the Origin port: a local page on another port is still cross-site', async () => {
+        for (const origin of ['http://localhost:3000', 'http://127.0.0.1', 'https://localhost', 'http://[::1]:9999']) {
+            const r = new Request('http://127.0.0.1:1234/mcp', { method: 'POST', headers: { host: '127.0.0.1:1234', origin } });
+            const res = guardLoopback(r);
+            expect(res?.status, origin).toBe(403);
+            expect(await res!.text()).toMatch(/Origin port/);
+        }
+        const same = new Request('http://127.0.0.1:1234/mcp', { method: 'POST', headers: { host: '127.0.0.1:1234', origin: 'http://[::1]:1234' } });
+        expect(guardLoopback(same)).toBeUndefined();
+    });
 });
 
 describe('src/http.ts bridge — client disconnect aborts the in-flight request', () => {

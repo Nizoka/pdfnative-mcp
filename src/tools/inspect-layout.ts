@@ -21,6 +21,7 @@ import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
 import { NORMALIZE_ENUM, NORMALIZE_FIELD_DESCRIPTION, NormalizeSchema } from '../normalize.js';
 import { DIAGNOSTIC_INPUT_PROPERTIES, latinFontEntries, mapBuildError } from '../diagnostics.js';
 import { DOCUMENT_BLOCKS_INPUT_SCHEMA, DocumentBlocksSchema, toDocumentBlocks } from './generate-basic-pdf.js';
+import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, toLayoutOptions } from '../layout.js';
 
 export const INSPECT_LAYOUT_NAME = 'inspect_layout';
 
@@ -35,6 +36,11 @@ export const INSPECT_LAYOUT_INPUT_SCHEMA = {
             maxLength: 200,
         },
         blocks: DOCUMENT_BLOCKS_INPUT_SCHEMA,
+        footerText: {
+            type: 'string',
+            maxLength: 200,
+            description: 'Footer text as you would pass it to generate_basic_pdf (reserves the footer band).',
+        },
         pdfA: {
             type: 'string',
             enum: [...PDF_A_ENUM],
@@ -50,6 +56,11 @@ export const INSPECT_LAYOUT_INPUT_SCHEMA = {
             default: false,
             description: `Measure with the embedded Noto Sans Latin metrics instead of Helvetica — pass the same value you will give generate_basic_pdf. (${DIAGNOSTIC_INPUT_PROPERTIES.embedFonts.description})`,
         },
+        // The layout options move every block: pass exactly what generate_basic_pdf will get.
+        pageSize: LAYOUT_INPUT_PROPERTIES.pageSize,
+        margins: LAYOUT_INPUT_PROPERTIES.margins,
+        headerTemplate: LAYOUT_INPUT_PROPERTIES.headerTemplate,
+        footerTemplate: LAYOUT_INPUT_PROPERTIES.footerTemplate,
         verbosity: {
             type: 'string',
             enum: ['summary', 'full'],
@@ -120,9 +131,14 @@ export const INSPECT_LAYOUT_OUTPUT_SCHEMA = {
 const InputSchema = z.strictObject({
     title: z.string().min(1).max(200),
     blocks: DocumentBlocksSchema,
+    footerText: z.string().max(200).optional(),
     pdfA: PdfASchema.optional(),
     normalize: NormalizeSchema.optional(),
     embedFonts: z.boolean().optional(),
+    pageSize: LayoutInputShape.pageSize,
+    margins: LayoutInputShape.margins,
+    headerTemplate: LayoutInputShape.headerTemplate,
+    footerTemplate: LayoutInputShape.footerTemplate,
     verbosity: z.enum(['summary', 'full']).optional(),
     fields: z.array(z.string().min(1)).max(16).optional(),
 });
@@ -179,7 +195,7 @@ export async function inspectLayout(rawInput: unknown): Promise<InspectLayoutRes
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, blocks, pdfA, normalize, embedFonts } = parsed.data;
+    const { title, blocks, footerText, pdfA, normalize, embedFonts, pageSize, margins, headerTemplate, footerTemplate } = parsed.data;
 
     const docBlocks = toDocumentBlocks(blocks);
     const fontEntries = await latinFontEntries(embedFonts);
@@ -190,11 +206,13 @@ export async function inspectLayout(rawInput: unknown): Promise<InspectLayoutRes
             {
                 title,
                 blocks: docBlocks,
+                ...(footerText !== undefined ? { footerText } : {}),
                 ...(fontEntries.length > 0 ? { fontEntries } : {}),
             },
             {
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
                 ...(normalize !== undefined ? { normalize } : {}),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate }),
             },
         );
     } catch (err) {

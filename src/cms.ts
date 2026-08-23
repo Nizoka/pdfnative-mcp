@@ -63,13 +63,27 @@ const OID_EC_PUBLIC_KEY = '1.2.840.10045.2.1';
 const OID_ECDSA_SHA256 = '1.2.840.10045.4.3.2';
 const OID_MESSAGE_DIGEST = '1.2.840.113549.1.9.4';
 
+/** Indexed child of a DER node; a missing child means the structure is shorter than CMS requires. */
+function child(children: readonly DerNode[], index: number, what: string): DerNode {
+    const node = children[index];
+    if (node === undefined) throw new ToolError('CMS_PARSE_FAILED', `${what}: expected element ${index} (structure has ${children.length})`);
+    return node;
+}
+
+/** Byte at `index`; the caller has already checked the length. */
+function byteAt(bytes: Uint8Array, index: number): number {
+    const b = bytes[index];
+    if (b === undefined) throw new ToolError('CMS_PARSE_FAILED', `unexpected end of data at byte ${index}`);
+    return b;
+}
+
 function decodeOid(value: Uint8Array): string {
     if (value.length === 0) throw new ToolError('CMS_PARSE_FAILED', 'empty OID');
-    const first = value[0]!;
+    const first = byteAt(value, 0);
     const parts: string[] = [String(Math.floor(first / 40)), String(first % 40)];
     let acc = 0n;
     for (let i = 1; i < value.length; i++) {
-        const b = value[i]!;
+        const b = byteAt(value, i);
         acc = (acc << 7n) | BigInt(b & 0x7f);
         if ((b & 0x80) === 0) {
             parts.push(acc.toString());
@@ -101,12 +115,12 @@ function rawBytes(node: DerNode, source: Uint8Array): Uint8Array {
 function findAttribute(attrs: readonly DerNode[], oid: string): DerNode | null {
     for (const attr of attrs) {
         if (attr.tag !== 0x30 || attr.children.length < 2) continue;
-        const oidNode = attr.children[0]!;
+        const oidNode = child(attr.children, 0, 'Attribute');
         if (oidNode.tag !== 0x06) continue;
         if (decodeOid(oidNode.value) !== oid) continue;
-        const setNode = attr.children[1]!;
+        const setNode = child(attr.children, 1, 'Attribute');
         if (setNode.tag !== 0x31 || setNode.children.length === 0) continue;
-        return setNode.children[0]!;
+        return child(setNode.children, 0, 'Attribute values');
     }
     return null;
 }
@@ -156,7 +170,7 @@ function pickSignerCert(certNodes: readonly DerNode[], sidNode: DerNode, cms: Ui
             }
         }
     }
-    return rawBytes(certNodes[0]!, cms);
+    return rawBytes(child(certNodes, 0, 'certificates'), cms);
 }
 
 /**
@@ -193,16 +207,16 @@ export function parseCmsSignedData(cms: Uint8Array): ParsedCms {
     if (contentInfo.children.length < 2) {
         throw new ToolError('CMS_PARSE_FAILED', 'ContentInfo: missing children');
     }
-    const ciOid = contentInfo.children[0]!;
+    const ciOid = child(contentInfo.children, 0, 'ContentInfo');
     expectTag(ciOid, 0x06, 'ContentInfo.contentType');
     if (decodeOid(ciOid.value) !== OID_SIGNED_DATA) {
         throw new ToolError('CMS_PARSE_FAILED', 'ContentInfo is not SignedData');
     }
-    const explicitWrap = contentInfo.children[1]!;
+    const explicitWrap = child(contentInfo.children, 1, 'ContentInfo');
     if (explicitWrap.tag !== 0xa0 || explicitWrap.children.length === 0) {
         throw new ToolError('CMS_PARSE_FAILED', 'ContentInfo: missing [0] EXPLICIT');
     }
-    const signedData = explicitWrap.children[0]!;
+    const signedData = child(explicitWrap.children, 0, 'ContentInfo [0]');
     expectTag(signedData, 0x30, 'SignedData');
     if (signedData.children.length < 5) {
         throw new ToolError('CMS_PARSE_FAILED', 'SignedData: insufficient fields');
@@ -217,7 +231,7 @@ export function parseCmsSignedData(cms: Uint8Array): ParsedCms {
     // Optional certs [0] IMPLICIT, optional crls [1] IMPLICIT, then signerInfos SET
     let certsNode: DerNode | null = null;
     while (cursor < sdChildren.length) {
-        const node = sdChildren[cursor]!;
+        const node = child(sdChildren, cursor, 'SignedData');
         if (node.tag === 0xa0) {
             certsNode = node;
             cursor++;
@@ -232,7 +246,7 @@ export function parseCmsSignedData(cms: Uint8Array): ParsedCms {
     if (cursor >= sdChildren.length) {
         throw new ToolError('CMS_PARSE_FAILED', 'SignedData: missing signerInfos');
     }
-    const signerInfos = sdChildren[cursor]!;
+    const signerInfos = child(sdChildren, cursor, 'SignedData');
     if (signerInfos.tag !== 0x31 || signerInfos.children.length === 0) {
         throw new ToolError('CMS_PARSE_FAILED', 'SignedData: empty signerInfos');
     }
@@ -245,7 +259,7 @@ export function parseCmsSignedData(cms: Uint8Array): ParsedCms {
     }
     const certificatesDer = certNodes.map((c) => rawBytes(c, cms));
 
-    const signerInfo = signerInfos.children[0]!;
+    const signerInfo = child(signerInfos.children, 0, 'SignerInfos');
     expectTag(signerInfo, 0x30, 'SignerInfo');
     if (signerInfo.children.length < 5) {
         throw new ToolError('CMS_PARSE_FAILED', 'SignerInfo: insufficient fields');
@@ -253,11 +267,11 @@ export function parseCmsSignedData(cms: Uint8Array): ParsedCms {
     // version, sid, digestAlgorithm, [signedAttrs?], signatureAlgorithm, signature, [unsignedAttrs?]
     let siCursor = 0;
     siCursor++; // version
-    const sidNode = signerInfo.children[siCursor++]!; // IssuerAndSerialNumber (SEQUENCE) or [0] SubjectKeyIdentifier
+    const sidNode = child(signerInfo.children, siCursor++, 'SignerInfo'); // IssuerAndSerialNumber (SEQUENCE) or [0] SubjectKeyIdentifier
     // RFC 5652 imposes no order on `certificates`: pick the one whose serial number
     // matches SignerInfo.sid (fall back to the first certificate for SKI-form sids).
     const signerCertDer = pickSignerCert(certNodes, sidNode, cms);
-    const digestAlgNode = signerInfo.children[siCursor++]!;
+    const digestAlgNode = child(signerInfo.children, siCursor++, 'SignerInfo');
     expectTag(digestAlgNode, 0x30, 'SignerInfo.digestAlgorithm');
     const digestOidNode = digestAlgNode.children[0];
     if (digestOidNode === undefined || digestOidNode.tag !== 0x06) {
@@ -268,14 +282,14 @@ export function parseCmsSignedData(cms: Uint8Array): ParsedCms {
     let signedAttrsValueDer: Uint8Array | null = null;
     let messageDigest: Uint8Array | null = null;
     let hasEssSigningCertV2 = false;
-    const maybeSignedAttrs = signerInfo.children[siCursor]!;
+    const maybeSignedAttrs = child(signerInfo.children, siCursor, 'SignerInfo');
     if (maybeSignedAttrs.tag === 0xa0) {
         // [0] IMPLICIT SET OF Attribute — value bytes are concatenated Attribute SEQUENCEs.
         // `derDecode` does not populate `.value` for constructed nodes, so slice the
         // content range out of `cms` using the first/last child offsets.
         if (maybeSignedAttrs.children.length > 0) {
-            const firstChild = maybeSignedAttrs.children[0]!;
-            const lastChild = maybeSignedAttrs.children[maybeSignedAttrs.children.length - 1]!;
+            const firstChild = child(maybeSignedAttrs.children, 0, 'signedAttrs');
+            const lastChild = child(maybeSignedAttrs.children, maybeSignedAttrs.children.length - 1, 'signedAttrs');
             signedAttrsValueDer = cms.subarray(
                 firstChild.offset,
                 lastChild.offset + lastChild.totalLength,
@@ -294,16 +308,16 @@ export function parseCmsSignedData(cms: Uint8Array): ParsedCms {
         siCursor++;
     }
 
-    const sigAlg = signerInfo.children[siCursor++]!;
+    const sigAlg = child(signerInfo.children, siCursor++, 'SignerInfo');
     expectTag(sigAlg, 0x30, 'SignerInfo.signatureAlgorithm');
     if (sigAlg.children.length === 0) {
         throw new ToolError('CMS_PARSE_FAILED', 'signatureAlgorithm missing OID');
     }
-    const algOidNode = sigAlg.children[0]!;
+    const algOidNode = child(sigAlg.children, 0, 'signatureAlgorithm');
     expectTag(algOidNode, 0x06, 'signatureAlgorithm.OID');
     const algorithm = algorithmFromOid(decodeOid(algOidNode.value), digestAlgorithm);
 
-    const signatureNode = signerInfo.children[siCursor++]!;
+    const signatureNode = child(signerInfo.children, siCursor++, 'SignerInfo');
     expectTag(signatureNode, 0x04, 'SignerInfo.signature');
     const signatureValue = signatureNode.value;
 
@@ -335,8 +349,8 @@ export function decodeEcdsaSignature(der: Uint8Array): { r: bigint; s: bigint } 
     if (root.children.length < 2) {
         throw new ToolError('CMS_PARSE_FAILED', 'ECDSA-Sig-Value: missing r/s');
     }
-    const rNode = root.children[0]!;
-    const sNode = root.children[1]!;
+    const rNode = child(root.children, 0, 'ECDSA-Sig-Value');
+    const sNode = child(root.children, 1, 'ECDSA-Sig-Value');
     expectTag(rNode, 0x02, 'ECDSA-Sig-Value.r');
     expectTag(sNode, 0x02, 'ECDSA-Sig-Value.s');
     return { r: asn1Int(rNode.value), s: asn1Int(sNode.value) };

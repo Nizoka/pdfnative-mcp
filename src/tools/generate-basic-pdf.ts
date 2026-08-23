@@ -39,7 +39,7 @@ import {
     toViewerPreferences,
 } from '../doc-features.js';
 import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
-import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, toLayoutOptions } from '../layout.js';
+import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, assertLayoutPdfACompatible, toLayoutOptions } from '../layout.js';
 import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 export const GENERATE_BASIC_PDF_NAME = 'generate_basic_pdf';
@@ -162,6 +162,14 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
     required: ['title', 'blocks'],
 } as const;
 
+/**
+ * Ceiling on engine blocks after newline splitting. Below the engine's own
+ * 100 000 guard so the failure is a coded VALIDATION_ERROR with an agent
+ * remedy rather than the engine's "raise layout.maxBlocks" (an option this
+ * server deliberately does not expose).
+ */
+const MAX_ENGINE_BLOCKS = 50_000;
+
 /** The `blocks` input — every DocumentBlock kind pdfnative offers; shared with inspect_layout. */
 export const DOCUMENT_BLOCKS_INPUT_SCHEMA = GENERATE_BASIC_PDF_INPUT_SCHEMA.properties.blocks;
 
@@ -242,6 +250,12 @@ export function toDocumentBlocks(blocks: DocumentBlocksInput): DocumentBlock[] {
     if (docBlocks.length === 0) {
         throw new ToolError('VALIDATION_ERROR', 'blocks must contain at least one block with renderable content.');
     }
+    if (docBlocks.length > MAX_ENGINE_BLOCKS) {
+        throw new ToolError(
+            'VALIDATION_ERROR',
+            `The document expands to ${docBlocks.length} blocks after splitting paragraphs on newlines, over the ${MAX_ENGINE_BLOCKS} limit. Split it into several documents (merge_pdfs can join them) or use fewer newline-separated paragraphs.`,
+        );
+    }
     return docBlocks;
 }
 
@@ -252,10 +266,11 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
     }
     const {
         title, blocks, footerText, pdfA, watermark, normalize, outline, pageLabels, viewerPreferences,
-        print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, strict, includeDiagnostics, embedFonts, outputMode, outputPath,
+        print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt, strict, includeDiagnostics, embedFonts, outputMode, outputPath,
     } = parsed.data;
     assertWatermarkPdfACompatible(watermark, pdfA);
     assertPrintPdfACompatible(print, pdfA);
+    assertLayoutPdfACompatible({ encrypt }, pdfA);
 
     const docBlocks = toDocumentBlocks(blocks);
     const docMetadata = toDocumentMetadata(metadata);
@@ -280,7 +295,7 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
                 ...(normalize !== undefined ? { normalize } : {}),
                 ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
-                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt }),
                 ...collector.layout,
             },
         );

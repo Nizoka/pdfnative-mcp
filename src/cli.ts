@@ -154,7 +154,10 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-    const message = err instanceof Error ? err.stack ?? err.message : String(err);
+    // Configuration errors (weak token, bad cap) are reported as one clean line; anything
+    // unexpected keeps its stack so the operator can file it.
+    const configError = err instanceof Error && /PDFNATIVE_MCP_/.test(err.message);
+    const message = err instanceof Error ? (configError ? err.message : err.stack ?? err.message) : String(err);
     log(`fatal: ${message}`);
     process.exit(1);
 });

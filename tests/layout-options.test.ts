@@ -163,11 +163,14 @@ describe('layout fragment — behaviour', () => {
     });
 
     it('{date} is the engine wall-clock date (YYYY-MM-DD) and is NOT tied to creationDate', async () => {
-        const pdf = latin1(await generateBasicPdf({ ...TWO_PAGE_DOC, footerTemplate: { left: 'Built {date}' } }));
-        const now = new Date();
-        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        expect(pdf).toContain(`Built ${today}`);
-        expect(pdf).not.toContain('Built 2026-01-15');
+        // Sample the clock on both sides of the build so a local-midnight boundary cannot flake.
+        const ymd = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const before = ymd(new Date());
+        const pdf = latin1(await generateBasicPdf({ ...TWO_PAGE_DOC, footerTemplate: { left: 'Built {date}' }, creationDate: '2021-06-01T00:00:00Z' }));
+        const after = ymd(new Date());
+        expect(pdf.includes(`Built ${before}`) || pdf.includes(`Built ${after}`)).toBe(true);
+        // Pinned creationDate (2021) does not feed the placeholder.
+        expect(pdf).not.toContain('Built 2021-06-01');
     });
 
     it('compress:true Flate-encodes page content and shrinks the file; compress omitted ⇒ bytes unchanged', async () => {

@@ -11,7 +11,7 @@ import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
 import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
-import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, toLayoutOptions } from '../layout.js';
+import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, assertLayoutPdfACompatible, toLayoutOptions } from '../layout.js';
 import { FORM_FIELD_PROPERTIES, FormFieldSchema, assertFormFieldOptions, toFormFieldBlock } from '../form.js';
 import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
@@ -86,8 +86,9 @@ export async function addForm(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, fields, footerText, pdfA, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
+    const { title, fields, footerText, pdfA, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
     assertPrintPdfACompatible(print, pdfA);
+    assertLayoutPdfACompatible({ encrypt }, pdfA);
 
     for (const field of fields) assertFormFieldOptions(field);
 
@@ -111,7 +112,7 @@ export async function addForm(rawInput: unknown): Promise<OutputResult> {
             {
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
-                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt }),
                 ...collector.layout,
             },
         );

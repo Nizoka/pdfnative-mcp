@@ -154,14 +154,14 @@ export function hasSmartTableOption(t: TableBodyInput): boolean {
 
 /** Every row must have exactly as many cells as there are headers. */
 export function assertRowsMatchHeaders(t: Pick<TableBodyInput, 'headers' | 'rows'>, where = ''): void {
-    for (let i = 0; i < t.rows.length; i++) {
-        if (t.rows[i]!.length !== t.headers.length) {
+    t.rows.forEach((row, i) => {
+        if (row.length !== t.headers.length) {
             throw new ToolError(
                 'VALIDATION_ERROR',
-                `${where}Row ${i} has ${t.rows[i]!.length} cell(s) but headers defines ${t.headers.length} column(s).`,
+                `${where}Row ${i} has ${row.length} cell(s) but headers defines ${t.headers.length} column(s).`,
             );
         }
-    }
+    });
 }
 
 export function toTableBlock(t: TableBodyInput): TableBlock {

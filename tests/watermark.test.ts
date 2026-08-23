@@ -134,8 +134,8 @@ describe('watermark schema + mapper', () => {
     it('rejects bytes that are not JPEG / PNG, or disagree with mimeType', () => {
         const text = Buffer.from('not an image at all').toString('base64');
         expect(() => decodeWatermarkImage({ imageBase64: text, mimeType: 'image/png' })).toThrow(expect.objectContaining({ code: 'VALIDATION_ERROR' }));
-        expect(() => decodeWatermarkImage({ imageBase64: PNG_B64, mimeType: 'image/jpeg' })).toThrow(/bytes are image\/png/);
-        expect(() => decodeWatermarkImage({ imageBase64: JPEG_B64, mimeType: 'image/png' })).toThrow(/bytes are image\/jpeg/);
+        expect(() => decodeWatermarkImage({ imageBase64: PNG_B64, mimeType: 'image/jpeg' })).toThrow(/does not match mimeType 'image\/jpeg'/);
+        expect(() => decodeWatermarkImage({ imageBase64: JPEG_B64, mimeType: 'image/png' })).toThrow(/does not match mimeType 'image\/png'/);
         expect(() => decodeWatermarkImage({ imageBase64: 'data:image/png;base64,@@@@', mimeType: 'image/png' })).toThrow(/not valid base64/);
     });
 

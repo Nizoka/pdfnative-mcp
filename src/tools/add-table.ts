@@ -30,7 +30,7 @@ import {
     toViewerPreferences,
 } from '../doc-features.js';
 import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
-import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, toLayoutOptions } from '../layout.js';
+import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, assertLayoutPdfACompatible, toLayoutOptions } from '../layout.js';
 import { TABLE_BODY_PROPERTIES, TableBodyShape, assertRowsMatchHeaders, hasSmartTableOption, toTableBlock } from '../table.js';
 import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
@@ -119,9 +119,10 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, headers, rows, infoItems, footerText, autoFitColumns, clipCells, wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, cellBorders, cellVAlign, pdfA, watermark, viewerPreferences, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
+    const { title, headers, rows, infoItems, footerText, autoFitColumns, clipCells, wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, cellBorders, cellVAlign, pdfA, watermark, viewerPreferences, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
     assertWatermarkPdfACompatible(watermark, pdfA);
     assertPrintPdfACompatible(print, pdfA);
+    assertLayoutPdfACompatible({ encrypt }, pdfA);
 
     const tableBody = { headers, rows, autoFitColumns, clipCells, wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, cellBorders, cellVAlign };
     assertRowsMatchHeaders(tableBody);
@@ -132,7 +133,7 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
     const layout = {
         ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
         ...toPrintLayout({ print, outputIntent, creationDate }),
-        ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug }),
+        ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt }),
         ...collector.layout,
     };
     const docMetadata = toDocumentMetadata(metadata);

@@ -115,7 +115,9 @@ function byteRangeOrNull(value: unknown): readonly [number, number, number, numb
         if (typeof entry !== 'number' || !Number.isFinite(entry) || entry < 0) return null;
         nums.push(entry);
     }
-    return [nums[0]!, nums[1]!, nums[2]!, nums[3]!] as const;
+    const [x0, y0, x1, y1] = nums;
+    if (x0 === undefined || y0 === undefined || x1 === undefined || y1 === undefined) return null;
+    return [x0, y0, x1, y1] as const;
 }
 
 function isAllZeroBytes(bytes: Uint8Array): boolean {
@@ -300,7 +302,9 @@ function rectOrUndefined(value: unknown): readonly [number, number, number, numb
         if (typeof entry !== 'number' || !Number.isFinite(entry)) return undefined;
         nums.push(entry);
     }
-    return [nums[0]!, nums[1]!, nums[2]!, nums[3]!] as const;
+    const [x0, y0, x1, y1] = nums;
+    if (x0 === undefined || y0 === undefined || x1 === undefined || y1 === undefined) return undefined;
+    return [x0, y0, x1, y1] as const;
 }
 
 /** Read `/TrimBox`, `/BleedBox`, `/ArtBox`, `/CropBox` and `/UserUnit` from a page dictionary. */

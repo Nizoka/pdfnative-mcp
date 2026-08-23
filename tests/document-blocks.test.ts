@@ -174,3 +174,80 @@ describe('add_form — textarea maps to the engine multiline field', () => {
         assertValidPdf(out.base64!);
     });
 });
+
+describe('build-time encryption on the document tools', () => {
+    const doc = { title: 'E', blocks: [{ type: 'paragraph', text: 'secret' }, { type: 'formField', fieldType: 'text', name: 'keep-me' }] };
+
+    it('encrypts at build time and KEEPS the AcroForm (unlike encrypt_pdf); pdfA + encrypt is rejected up-front', async () => {
+        const out = await generateBasicPdf({ ...doc, encrypt: { ownerPassword: 'owner-secret', userPassword: 'open', algorithm: 'aes256' } });
+        const text = latin1(out.base64);
+        expect(text).toContain('/Encrypt');
+        expect(text).toContain('/AcroForm');
+        const { inspectPdf } = await import('../src/tools/inspect-pdf.js');
+        const info = await inspectPdf({ pdfBase64: out.base64!, password: 'open' });
+        expect(info.encryption).not.toBe('none');
+        await expect(inspectPdf({ pdfBase64: out.base64! })).rejects.toMatchObject({ code: 'PASSWORD_REQUIRED' });
+        await expect(generateBasicPdf({ ...doc, pdfA: 'pdfa2b', encrypt: { ownerPassword: 'owner-secret' } })).rejects.toMatchObject({
+            code: 'VALIDATION_ERROR',
+            message: expect.stringContaining('mutually exclusive'),
+        });
+    });
+
+    it('is not offered on prepare_signature_placeholder nor add_attachment (must stay signable / PDF/A-3)', async () => {
+        const { prepareSignaturePlaceholder } = await import('../src/tools/prepare-signature-placeholder.js');
+        const { addAttachment } = await import('../src/tools/add-attachment.js');
+        await expect(prepareSignaturePlaceholder({ title: 'P', blocks: [{ type: 'paragraph', text: 'x' }], encrypt: { ownerPassword: 'owner-secret' } })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+        await expect(addAttachment({ title: 'A', blocks: [{ type: 'paragraph', text: 'x' }], attachments: [{ filename: 'a.txt', mimeType: 'text/plain', dataBase64: 'YQ==' }], encrypt: { ownerPassword: 'owner-secret' } })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    });
+
+    it('is never served from the response cache (fresh IV/salt per call)', async () => {
+        const { mkdtempSync, readdirSync, rmSync } = await import('node:fs');
+        const { tmpdir } = await import('node:os');
+        const { join } = await import('node:path');
+        const { callToolDirect } = await import('../src/server.js');
+        const dir = mkdtempSync(join(tmpdir(), 'pdfnative-enc-cache-'));
+        process.env['PDFNATIVE_MCP_CACHE_DIR'] = dir;
+        try {
+            const args = { ...doc, encrypt: { ownerPassword: 'owner-secret' }, creationDate: '2026-01-15T09:00:00Z' };
+            const a = await callToolDirect('generate_basic_pdf', args);
+            const b = await callToolDirect('generate_basic_pdf', args);
+            expect(a.isError).not.toBe(true);
+            expect((b._meta as Record<string, unknown> | undefined)?.['cached']).toBeUndefined();
+            expect(readdirSync(dir).filter((f) => f.endsWith('.json'))).toHaveLength(0);
+        } finally {
+            delete process.env['PDFNATIVE_MCP_CACHE_DIR'];
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('boundary guards added after review', () => {
+    it('alpha-channel / palette / interlaced PNGs are rejected with a remedy before the engine runs', async () => {
+        // Minimal IHDR-only PNGs (the engine would reject them anyway; we only read the header).
+        const png = (colourType: number, bitDepth = 8, interlace = 0): string => {
+            const b = Buffer.alloc(33, 0);
+            Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]).copy(b);
+            b.writeUInt32BE(1, 16);
+            b.writeUInt32BE(1, 20);
+            b[24] = bitDepth;
+            b[25] = colourType;
+            b[28] = interlace;
+            return b.toString('base64');
+        };
+        for (const [blob, re] of [[png(6), /alpha channel/], [png(3), /palette/], [png(2, 16), /bit depth 16/], [png(2, 8, 1), /interlaced/]] as const) {
+            await expect(generateBasicPdf({ title: 'I', blocks: [{ type: 'image', imageBase64: blob, mimeType: 'image/png' }] })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', message: expect.stringMatching(re) });
+        }
+    });
+
+    it('a document that expands past the engine block ceiling fails with a VALIDATION_ERROR remedy, not GENERATION_FAILED', async () => {
+        const huge = Array.from({ length: 3 }, () => ({ type: 'paragraph', text: 'a\n'.repeat(20_000) }));
+        await expect(generateBasicPdf({ title: 'H', blocks: huge })).rejects.toMatchObject({
+            code: 'VALIDATION_ERROR',
+            message: expect.stringMatching(/expands to \d+ blocks.*Split it/),
+        });
+    });
+
+    it('link URLs with C1 control characters are rejected (the engine would strip them silently)', async () => {
+        await expect(generateBasicPdf({ title: 'L', blocks: [{ type: 'link', text: 'x', url: 'https://example.com/\u0085x' }] })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    });
+});

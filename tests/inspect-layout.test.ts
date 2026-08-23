@@ -87,6 +87,50 @@ describe('inspect_layout — pagination matches generate_basic_pdf', () => {
         });
     }
 
+    it('layout options move blocks exactly as in generate_basic_pdf (Letter, wide margins, header, footer)', async () => {
+        const paragraphs = Array.from({ length: 60 }, (_, i) => ({ type: 'paragraph', text: `Paragraph ${i + 1} of a long document body that wraps over a few lines on the page.` }));
+        const plain = { title: 'L', blocks: paragraphs };
+        const styled = { ...plain, pageSize: 'Letter', margins: { top: 100, right: 100, bottom: 100, left: 100 }, headerTemplate: { left: '{title}' }, footerTemplate: { right: '{page}/{pages}' }, footerText: 'ignored when footerTemplate is set' };
+        const a = await inspectLayout(plain);
+        const b = await inspectLayout(styled);
+        expect(b.pageWidth).toBe(612);
+        expect(b.pageHeight).toBe(792);
+        expect(b.margins).toEqual({ t: 100, r: 100, b: 100, l: 100 });
+        expect(b.totalPages).toBeGreaterThanOrEqual(a.totalPages);
+        expect(b.totalPages).toBe(await pdfPageCount(styled));
+    });
+
+    it('accepts every block kind (table, image, link, barcode, svg, formField, chart) and paginates like the generator', async () => {
+        const JPEG = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/wAARCAABAAEDASIA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AJQAB/9k=';
+        const doc = {
+            title: 'All kinds',
+            blocks: [
+                { type: 'heading', text: 'H', level: 1 },
+                { type: 'table', headers: ['a'], rows: [['1']] },
+                { type: 'image', imageBase64: JPEG, mimeType: 'image/jpeg', width: 40, height: 40 },
+                { type: 'link', text: 'l', url: 'https://example.com' },
+                { type: 'barcode', format: 'qr', data: 'x', width: 60 },
+                { type: 'svg', data: 'M0 0 L10 10', viewBox: [0, 0, 10, 10], width: 50, height: 50 },
+                { type: 'formField', fieldType: 'text', name: 'f' },
+                { type: 'chart', chartType: 'bar', series: [{ label: 's', values: [1] }] },
+            ],
+        };
+        const layout = await inspectLayout(doc);
+        const kinds = layout.pages.flatMap((p) => p.blocks.map((b) => b.type));
+        for (const k of ['heading', 'table', 'image', 'link', 'barcode', 'svg', 'formField', 'chart']) expect(kinds, k).toContain(k);
+        expect(layout.totalPages).toBe(await pdfPageCount(doc));
+    });
+
+    it("engine gap: a 'toc' block is measured as 0 pt by the dry run (documented; flips when pdfnative passes the headings to estimateBlockHeight)", async () => {
+        const doc = { title: 'T', blocks: [{ type: 'toc' }, { type: 'heading', text: 'One', level: 1 }, { type: 'heading', text: 'Two', level: 2 }] };
+        const layout = await inspectLayout(doc);
+        const toc = layout.pages[0]!.blocks.find((b) => b.type === 'toc');
+        expect(toc).toBeDefined();
+        // When this assertion starts failing the engine has fixed the gap: drop the caveat from the
+        // inspect_layout description and the docs, and assert a positive height instead.
+        expect(toc!.height).toBe(0);
+    });
+
     it('the long table reports more than one page and one slice per page', async () => {
         const layout = await inspectLayout(LONG_TABLE);
         expect(layout.totalPages).toBeGreaterThan(1);
@@ -135,7 +179,7 @@ describe('inspect_layout — pagination matches generate_basic_pdf', () => {
 describe('inspect_layout — validation', () => {
     it('rejects an unknown top-level key', async () => {
         await expect(inspectLayout({ ...SHORT, outputMode: 'file' })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
-        await expect(inspectLayout({ ...SHORT, footerText: 'x' })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+        await expect(inspectLayout({ ...SHORT, watermark: { text: 'x' } })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     });
 
     it('rejects a malformed block, a missing title and an empty block list', async () => {
@@ -160,7 +204,7 @@ describe('inspect_layout — MCP surface', () => {
         expect(tool).toBeDefined();
         expect(tool.annotations).toEqual({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false });
         expect(tool.title).toBe('Inspect document layout (dry run)');
-        expect(tool.description?.length ?? 0).toBeLessThanOrEqual(600);
+        expect(tool.description?.length ?? 0).toBeLessThanOrEqual(700);
         const examples = (tool._meta as { examples: Array<{ input: unknown }> }).examples;
         expect(examples).toHaveLength(2);
         for (const ex of examples) {

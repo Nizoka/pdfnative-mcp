@@ -1035,7 +1035,8 @@
        "properties": {
         "imageBase64": {
          "type": "string",
-         "minLength": 4
+         "minLength": 4,
+         "maxLength": 12000000
         },
         "mimeType": {
          "type": "string",
@@ -1700,6 +1701,50 @@
     "debug": {
      "type": "boolean"
     },
+    "encrypt": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "ownerPassword"
+     ],
+     "properties": {
+      "ownerPassword": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 4096
+      },
+      "userPassword": {
+       "type": "string",
+       "maxLength": 4096
+      },
+      "algorithm": {
+       "type": "string",
+       "enum": [
+        "aes128",
+        "aes256"
+       ],
+       "default": "aes128"
+      },
+      "permissions": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "print": {
+         "type": "boolean"
+        },
+        "copy": {
+         "type": "boolean"
+        },
+        "modify": {
+         "type": "boolean"
+        },
+        "extractText": {
+         "type": "boolean"
+        }
+       }
+      }
+     }
+    },
     "strict": {
      "type": "boolean",
      "default": false
@@ -2098,6 +2143,50 @@
     },
     "debug": {
      "type": "boolean"
+    },
+    "encrypt": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "ownerPassword"
+     ],
+     "properties": {
+      "ownerPassword": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 4096
+      },
+      "userPassword": {
+       "type": "string",
+       "maxLength": 4096
+      },
+      "algorithm": {
+       "type": "string",
+       "enum": [
+        "aes128",
+        "aes256"
+       ],
+       "default": "aes128"
+      },
+      "permissions": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "print": {
+         "type": "boolean"
+        },
+        "copy": {
+         "type": "boolean"
+        },
+        "modify": {
+         "type": "boolean"
+        },
+        "extractText": {
+         "type": "boolean"
+        }
+       }
+      }
+     }
     },
     "strict": {
      "type": "boolean",
@@ -2815,6 +2904,50 @@
     "debug": {
      "type": "boolean"
     },
+    "encrypt": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "ownerPassword"
+     ],
+     "properties": {
+      "ownerPassword": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 4096
+      },
+      "userPassword": {
+       "type": "string",
+       "maxLength": 4096
+      },
+      "algorithm": {
+       "type": "string",
+       "enum": [
+        "aes128",
+        "aes256"
+       ],
+       "default": "aes128"
+      },
+      "permissions": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "print": {
+         "type": "boolean"
+        },
+        "copy": {
+         "type": "boolean"
+        },
+        "modify": {
+         "type": "boolean"
+        },
+        "extractText": {
+         "type": "boolean"
+        }
+       }
+      }
+     }
+    },
     "strict": {
      "type": "boolean",
      "default": false
@@ -3098,7 +3231,8 @@
        "properties": {
         "imageBase64": {
          "type": "string",
-         "minLength": 4
+         "minLength": 4,
+         "maxLength": 12000000
         },
         "mimeType": {
          "type": "string",
@@ -3477,6 +3611,50 @@
     },
     "debug": {
      "type": "boolean"
+    },
+    "encrypt": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "ownerPassword"
+     ],
+     "properties": {
+      "ownerPassword": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 4096
+      },
+      "userPassword": {
+       "type": "string",
+       "maxLength": 4096
+      },
+      "algorithm": {
+       "type": "string",
+       "enum": [
+        "aes128",
+        "aes256"
+       ],
+       "default": "aes128"
+      },
+      "permissions": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "print": {
+         "type": "boolean"
+        },
+        "copy": {
+         "type": "boolean"
+        },
+        "modify": {
+         "type": "boolean"
+        },
+        "extractText": {
+         "type": "boolean"
+        }
+       }
+      }
+     }
     },
     "strict": {
      "type": "boolean",
@@ -3921,6 +4099,50 @@
     "debug": {
      "type": "boolean"
     },
+    "encrypt": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "ownerPassword"
+     ],
+     "properties": {
+      "ownerPassword": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 4096
+      },
+      "userPassword": {
+       "type": "string",
+       "maxLength": 4096
+      },
+      "algorithm": {
+       "type": "string",
+       "enum": [
+        "aes128",
+        "aes256"
+       ],
+       "default": "aes128"
+      },
+      "permissions": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "print": {
+         "type": "boolean"
+        },
+        "copy": {
+         "type": "boolean"
+        },
+        "modify": {
+         "type": "boolean"
+        },
+        "extractText": {
+         "type": "boolean"
+        }
+       }
+      }
+     }
+    },
     "strict": {
      "type": "boolean",
      "default": false
@@ -4026,8 +4248,7 @@
     },
     "imageBase64": {
      "type": "string",
-     "minLength": 4,
-     "maxLength": 12000000
+     "minLength": 4
     },
     "mimeType": {
      "type": "string",
@@ -4317,6 +4538,50 @@
     },
     "debug": {
      "type": "boolean"
+    },
+    "encrypt": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "ownerPassword"
+     ],
+     "properties": {
+      "ownerPassword": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 4096
+      },
+      "userPassword": {
+       "type": "string",
+       "maxLength": 4096
+      },
+      "algorithm": {
+       "type": "string",
+       "enum": [
+        "aes128",
+        "aes256"
+       ],
+       "default": "aes128"
+      },
+      "permissions": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "print": {
+         "type": "boolean"
+        },
+        "copy": {
+         "type": "boolean"
+        },
+        "modify": {
+         "type": "boolean"
+        },
+        "extractText": {
+         "type": "boolean"
+        }
+       }
+      }
+     }
     },
     "strict": {
      "type": "boolean",
@@ -7949,6 +8214,50 @@
     "debug": {
      "type": "boolean"
     },
+    "encrypt": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "ownerPassword"
+     ],
+     "properties": {
+      "ownerPassword": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 4096
+      },
+      "userPassword": {
+       "type": "string",
+       "maxLength": 4096
+      },
+      "algorithm": {
+       "type": "string",
+       "enum": [
+        "aes128",
+        "aes256"
+       ],
+       "default": "aes128"
+      },
+      "permissions": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "print": {
+         "type": "boolean"
+        },
+        "copy": {
+         "type": "boolean"
+        },
+        "modify": {
+         "type": "boolean"
+        },
+        "extractText": {
+         "type": "boolean"
+        }
+       }
+      }
+     }
+    },
     "strict": {
      "type": "boolean",
      "default": false
@@ -9577,6 +9886,10 @@
       ]
      }
     },
+    "footerText": {
+     "type": "string",
+     "maxLength": 200
+    },
     "pdfA": {
      "type": "string",
      "enum": [
@@ -9598,6 +9911,102 @@
     "embedFonts": {
      "type": "boolean",
      "default": false
+    },
+    "pageSize": {
+     "type": "string",
+     "enum": [
+      "A4",
+      "Letter",
+      "Legal",
+      "A3",
+      "Tabloid"
+     ]
+    },
+    "margins": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "top",
+      "right",
+      "bottom",
+      "left"
+     ],
+     "properties": {
+      "top": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 200
+      },
+      "right": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 200
+      },
+      "bottom": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 200
+      },
+      "left": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 200
+      }
+     }
+    },
+    "headerTemplate": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "left": {
+       "type": "string",
+       "maxLength": 200
+      },
+      "center": {
+       "type": "string",
+       "maxLength": 200
+      },
+      "right": {
+       "type": "string",
+       "maxLength": 200
+      },
+      "fontSize": {
+       "type": "number",
+       "minimum": 6,
+       "maximum": 14
+      },
+      "color": {
+       "type": "string",
+       "pattern": "^#[0-9a-fA-F]{6}$"
+      }
+     }
+    },
+    "footerTemplate": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "left": {
+       "type": "string",
+       "maxLength": 200
+      },
+      "center": {
+       "type": "string",
+       "maxLength": 200
+      },
+      "right": {
+       "type": "string",
+       "maxLength": 200
+      },
+      "fontSize": {
+       "type": "number",
+       "minimum": 6,
+       "maximum": 14
+      },
+      "color": {
+       "type": "string",
+       "pattern": "^#[0-9a-fA-F]{6}$"
+      }
+     }
     },
     "verbosity": {
      "type": "string",

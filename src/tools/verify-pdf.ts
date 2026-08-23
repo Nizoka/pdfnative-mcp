@@ -291,7 +291,7 @@ function hashBytes(digest: CmsDigest, bytes: Uint8Array): Uint8Array {
 function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
     if (a.length !== b.length) return false;
     let diff = 0;
-    for (let i = 0; i < a.length; i++) diff |= a[i]! ^ b[i]!;
+    for (let i = 0; i < a.length; i++) diff |= (a[i] ?? 0) ^ (b[i] ?? 0);
     return diff === 0;
 }
 
@@ -868,9 +868,9 @@ function evaluateRevocation(signerCert: X509Certificate, dss: DssMaterial | null
 
 function minLevel(levels: readonly LtvLevel[]): LtvLevel {
     if (levels.length === 0) return 'B-B';
-    let min = LTV_ORDER.length - 1;
-    for (const level of levels) min = Math.min(min, LTV_ORDER.indexOf(level));
-    return LTV_ORDER[min]!;
+    let min: LtvLevel = LTV_ORDER[LTV_ORDER.length - 1] ?? 'B-B';
+    for (const level of levels) if (LTV_ORDER.indexOf(level) < LTV_ORDER.indexOf(min)) min = level;
+    return min;
 }
 
 /** Decorate every non-timestamp signature with its LTV view and compute the document level. */
