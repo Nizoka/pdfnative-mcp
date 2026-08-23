@@ -11,6 +11,12 @@ applyTo: "tests/**"
   - npm run test:watch
   - npm run test:coverage
   - npm run typecheck:all
+  - npm run examples:check (runs every examples/*.json live; multi-step examples are chained)
+  - npm run validate:pdfa (veraPDF, 24-file corpus with negative canaries; `VERAPDF_REQUIRED=1` to fail closed)
+
+## Catalogue parity
+- `tests/catalogue-parity.test.ts` compares the live `tools/list` structure with `tests/_fixtures/tool-shape.json`.
+- After a deliberate schema change: `npm run build && node scripts/tool-shape.mjs --write`, then review the fixture diff under docs/API_STABILITY.md §5. Never refresh it to silence an accidental change.
 
 ## Test focus
 - Validate tool success and tool error paths.

@@ -27,8 +27,9 @@ stay byte-identical. The worked example is [`examples/pades-ltv-ladder.json`](..
   "timestamp": true,                      // B-T — requires PDFNATIVE_MCP_TSA_URL
   "certDerBase64": "<signer cert DER>",
   "certChainDerBase64": ["<intermediate CA DER>"],
-  "rsaKeyPkcs1DerBase64": "<PKCS#1 DER>",
-  "signerName": "Alice Example", "reason": "Approved for archival"
+  "rsaKeyPkcs1DerBase64": "<PKCS#1 or PKCS#8 DER>",   // DER, not PEM
+  "signerName": "Alice Example", "reason": "Approved for archival",
+  "signingTime": "2026-01-15T10:00:00+01:00"   // optional; timezone offsets accepted
 }}
 // 2. B-LT
 { "tool": "add_ltv", "arguments": { "pdfBase64": "<from 1>", "mode": "online" } }
@@ -145,10 +146,12 @@ chains and certificates without AIA / CRL-DP yield nothing → `LTV_EMPTY`; pass
 
 ## Document timestamps
 
-`timestamp_pdf` appends a `/DocTimeStamp` covering the whole document. The token is
-verified (status, message imprint, random 64-bit nonce) by pdfnative **before** it is
-written — a rejected or tampered TSA response (`TSA_REJECTED`) never lands in the
-file. Field names default to `DocTimeStamp1` and auto-suffix on re-runs; raise
+`timestamp_pdf` appends a `/DocTimeStamp` covering the whole document. Before the
+token is embedded, its **status, message imprint and random 64-bit nonce** are
+checked — a rejected or mismatching TSA response (`TSA_REJECTED`) never lands in the
+file. The token's **own CMS signature** is not verified at embedding time; that is
+`verify_pdf`'s job (see below), which is also where TSA trust is evaluated when
+`trustedRootsDerBase64` is supplied. Field names default to `DocTimeStamp1` and auto-suffix on re-runs; raise
 `placeholderBytes` (default 12288, max 65536) for TSAs that return large certificate
 chains. Re-run **before the previous TSA certificate expires** to keep the archival
 chain unbroken. A document timestamp on an unsigned PDF is allowed but proves only
@@ -175,8 +178,9 @@ Default `verify_pdf` output is unchanged except that every signature now carries
 `subFilter`, and `/DocTimeStamp` entries appear with `isDocTimestamp: true` — they
 are verified as RFC 3161 tokens (imprint vs. ByteRange digest, token SignerInfo vs.
 the embedded TSA certificate) and **count in `allValid` like any signature**: a
-sound timestamp never fails the verdict, a tampered one (imprint mismatch, broken
-token signature, untrusted TSA when roots are supplied) does. (Before v1.6.0 a
+sound timestamp passes, a tampered one (imprint mismatch, broken token signature,
+untrusted TSA when roots are supplied) is reported `valid: false` and makes
+`allValid: false`. (Before v1.6.0 a
 document timestamp was parsed as a CMS signature and produced `allValid: false` on
 every B-LTA file.)
 
@@ -205,7 +209,10 @@ non-timestamp signatures) and a fixed `caveats[]`:
 Chain trust (`chainTrust`) walks the intermediate certificates carried in the CMS
 (`sign_pdf certChainDerBase64`) up to one of the supplied roots; a document
 timestamp whose TSA signature does not verify (or whose TSA is untrusted when roots
-are supplied) is reported `valid: false` and flips `allValid`.
+are supplied) is reported `valid: false` and flips `allValid` to `false` — the same
+rule as for ordinary signatures, stated once more here because it matters for CI
+gates. With `verbosity: 'summary'` and `ltv: true`, `ltvLevel` is kept in the
+projected result.
 
 In other words, `verify_pdf` proves integrity and reports the evidence the document
 carries; it is not a full trust-anchor validator. Use `inspect_pdf` with
@@ -227,13 +234,26 @@ carries; it is not a full trust-anchor validator. Use `inspect_pdf` with
 | `LTV_MATERIAL_INVALID` | `add_ltv` (offline) | A DER blob did not parse; the message names `field[index]`. |
 | `LTV_ERROR` | `add_ltv`, `timestamp_pdf` | Any other engine failure; the message carries the engine text. |
 | `PLACEHOLDER_AMBIGUOUS` / `SIGNATURE_FIELD_NOT_FOUND` | `sign_pdf` | Pass / fix `fieldName`. |
-| `ENCRYPTED_SOURCE` | `add_ltv`, `timestamp_pdf` | Unencrypted PDFs only — `decrypt_pdf` first (this drops signatures, so decrypt *before* signing). |
+| `ENCRYPTED_SOURCE` | `add_ltv`, `timestamp_pdf` | Unencrypted PDFs only. Do **not** reach for `decrypt_pdf` here — it rebuilds the page tree and would destroy the signatures. Sign, add LTV and timestamp the unencrypted document, then `encrypt_pdf` last. |
+| `VALIDATION_ERROR` | `sign_pdf`, `verify_pdf` | A certificate / chain / key / root blob is PEM where DER is expected, empty, or malformed; the message carries the `openssl … -outform DER \| base64 -w0` remedy. A `data:…;base64,` prefix is tolerated. |
 
 ## Caching
 
-`add_ltv`, `timestamp_pdf` and `sign_pdf` with `timestamp: true` are never served
-from the opt-in response cache (`PDFNATIVE_MCP_CACHE_DIR`): their output embeds a
-token minted at call time or material fetched at call time.
+`sign_pdf` (every call, not only `timestamp: true`), `add_ltv` and `timestamp_pdf`
+are never served from the opt-in response cache (`PDFNATIVE_MCP_CACHE_DIR`): their
+output embeds a signature computed at call time, a token minted at call time or
+material fetched at call time.
+
+## Reproducibility
+
+A B-B signature with a pinned `signingTime` (on `sign_pdf`, or frozen earlier via
+`prepare_signature_placeholder signingTime`) is byte-identical across runs **on the
+same host time zone** — the engine serialises local time
+(`D:20260115100000+01'00'`), so pinned dates are deterministic per host, not portable
+across zones (set `TZ=UTC` if you need portability). RSA signatures are deterministic;
+ECDSA signatures are randomised by their nonce. Anything above B-B is never
+reproducible: TSA tokens (`sign_pdf timestamp: true`, `timestamp_pdf`) and online
+`add_ltv` embed material minted or fetched at call time.
 
 ## Design note / follow-up
 

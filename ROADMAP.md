@@ -37,7 +37,7 @@ Priorities may shift based on community feedback and sponsorship.
 - [x] **`add_table` autoFit + clipCells** — transparently switches to the document-block backend when set.
 - [x] **MCP `outputSchema`** advertised per tool (per the MCP 2025-06-18 spec).
 - [x] **`initCrypto()` boot** — first signing/inspection no longer pays an init penalty.
-- [x] **npm metadata** — 39 keywords, refreshed description, ⭐ star call-out.
+- [x] **npm metadata** — expanded keyword set (39 at the time; 132 today), refreshed description, ⭐ star call-out.
 
 ### v1.0.0 — First stable release
 
@@ -120,13 +120,22 @@ Priorities may shift based on community feedback and sponsorship.
 - [x] **Network charter** — no egress by default; only operator-configured TSA / OCSP / CRL endpoints (`PDFNATIVE_MCP_TSA_URL`, `PDFNATIVE_MCP_TSA_AUTH`, `PDFNATIVE_MCP_REVOCATION`, `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS`, `PDFNATIVE_MCP_NETWORK_TIMEOUT_MS`) behind an SSRF guard; URLs never come from tool arguments. Mirrored in `.github/ai-governance.json` / `AGENT_RULES.md`.
 - [x] **Print production** — `print` (TrimBox / BleedBox / ArtBox / CropBox, `bleed` shorthand, crop + registration `marks`, `/UserUnit`), `metadata` (`/Author` / `/Subject` / `/Keywords` / `/Trapped`), `outputIntent` (custom RGB ICC) on every document tool; `viewerPreferences` print-dialog defaults; `inspect_pdf pages: true` reports the boxes; merge / split / extract preserve them.
 - [x] **Charts v2** — `stackedBar` / `stackedBarH` / `area` / `scatter`, secondary axis (`axis2`), `axis.scale: 'log'`, `xAxis.type: 'linear' | 'time'`, `dataLabels`, `labelStride` (automatic) / `labelRotation`; engine cross-field rules surfaced as `CHART_ERROR`.
-- [x] **Honest PDF/A** — `embedFonts` (Noto Sans Latin; base-14 Helvetica is not embedded), `strict` (fail instead of warn), `includeDiagnostics` (`structuredContent.diagnostics`) on every document tool; advisory veraPDF script (`npm run validate:pdfa`) and a non-blocking CI workflow.
+- [x] **Honest PDF/A** — `embedFonts` (Noto Sans Latin; base-14 Helvetica is not embedded) on the eight Latin document tools, `strict` (fail instead of warn), `includeDiagnostics` (`structuredContent.diagnostics`); a 24-file veraPDF corpus with negative canaries (`npm run validate:pdfa`, `PASS` / `FAIL` / `XFAIL` / `XPASS` / `INFRA` / `SKIP`), `VERAPDF_REQUIRED=1` fail-closed mode, and a CI workflow with a SHA-256-pinned veraPDF 1.30.2 (advisory in 1.6.0).
+- [x] **Reproducible bytes** — opt-in `creationDate` on all nine document tools (pins `/CreationDate`, XMP dates and the trailer `/ID`), `signingTime` on `prepare_signature_placeholder`, timezone offsets on `sign_pdf signingTime`, `modDate` on `update_metadata`; byte-identical on the same host time zone. `reproducible_output`, `print_ready`, `pades_ladder` and `pdfa_valid` MCP prompts.
+- [x] **HTTP bearer token** — opt-in `PDFNATIVE_MCP_HTTP_TOKEN` (constant-time compare, 401 + `WWW-Authenticate` otherwise); without it HTTP mode stays loopback-only with no authentication.
+- [x] **Strict boundaries** — Zod `.strict()` on every schema (unknown keys → `VALIDATION_ERROR`), unknown tool → JSON-RPC `-32602` `[UNKNOWN_TOOL]`, base64 / PEM-vs-DER hints, catalogue-parity gate (`scripts/tool-shape.mjs` + `tests/catalogue-parity.test.ts`), compacted `tools/list` (≈ 174 kB).
 - [x] **`inspect_pdf` signature inventory** — `signatures: true`, `dss` / `docTimestampCount` / `trapped`, new `check` values `dss` / `docTimestamp` / `trapped`.
 - [x] **Colour-emoji sequences** — flag and ZWJ sequences render as single glyphs (engine; no API change).
 - [x] **Fix: signer metadata** — `signerName` / `reason` / `location` / `contactInfo` never reached the `/Sig` dictionary on pdfnative < 1.7; now baked at placeholder time.
-- [x] **Fix: `verify_pdf` on B-LTA documents** — `/DocTimeStamp` entries are verified as RFC 3161 tokens and no longer flip `allValid`.
+- [x] **Fix: `verify_pdf` on B-LTA documents** — `/DocTimeStamp` entries are verified as RFC 3161 tokens and count in `allValid` like any signature (a sound timestamp passes; a tampered or TSA-untrusted one fails) instead of always failing as a mis-parsed CMS signature.
 
 _v1.6.0 is the active release. `redact_pdf` stays **deferred** by design (overlay/flatten ≠ content removal)._
+
+### v1.7.0 — follow-ups
+
+- [ ] **veraPDF blocking in CI** — drop `continue-on-error` from `.github/workflows/verapdf.yml` once the `paths:` filter caveat is resolved; the corpus, canaries and `VERAPDF_REQUIRED=1` are already in place.
+- [ ] **`add_form` + PDF/A: embed the AcroForm `/DR` font** — upstream pdfnative fix so `/AcroForm /DR /Helv` is no longer an unembedded Type1 font (ISO 19005-2 rule 6.2.11.4.1); tracked by the `form-pdfa2b.pdf` negative canary, to be filed via `draft_governance_issue`. Flip the canary's expectation when it lands.
+- [ ] **Offline `/VRI` composition upstream** — delegate `add_ltv mode: 'offline'` to a pdfnative helper once one exists (no change to inputs, outputs or error codes).
 
 ---
 
@@ -158,4 +167,4 @@ this project's faithful, thin-wrapper philosophy.
 - **Feature requests:** [open an issue](https://github.com/Nizoka/pdfnative-mcp/issues/new?template=feature_request.md)
 - **Pull requests:** community contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Sponsorship:** sponsored features get prioritised — see [funding options](https://github.com/sponsors/Nizoka)
-- **Discussion:** weigh in on the [v0.4.0 milestone](https://github.com/Nizoka/pdfnative-mcp/milestones)
+- **Discussion:** weigh in on the [open milestones](https://github.com/Nizoka/pdfnative-mcp/milestones)

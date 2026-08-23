@@ -1,6 +1,6 @@
 # Contributing to pdfnative-mcp
 
-Thanks for considering a contribution! This project is intentionally small, focused, and high-quality — the bar is **zero runtime dependencies beyond `@modelcontextprotocol/sdk`, `pdfnative`, and `zod`**.
+Thanks for considering a contribution! This project is intentionally small, focused, and high-quality — the bar is **exactly three runtime dependencies — `pdfnative`, the MCP SDK (`@modelcontextprotocol/server` ^2.0.0) and `zod` — and no new one, ever**.
 
 ## Quick start
 
@@ -39,13 +39,15 @@ For the full local-verification workflow — quality gate, examples-as-tests, ch
 3. Add tests in `tests/tools.test.ts` (or a dedicated file).
 4. Document the tool in `README.md`.
 5. Add a worked example under `examples/` (it is automatically executed by `tests/examples.test.ts` — run `npm run examples:check`).
-6. Bump the changelog.
+6. Refresh the catalogue-parity fixture: `npm run build && node scripts/tool-shape.mjs --write` updates `tests/_fixtures/tool-shape.json`, which `tests/catalogue-parity.test.ts` compares against the live `tools/list` (structure only — descriptions are stripped, so wording never trips it). Any fixture diff is a deliberate schema change and is reviewed under [docs/API_STABILITY.md](docs/API_STABILITY.md) §5 (it may need a `TOOL_API_VERSION` bump).
+7. Bump the changelog.
 
 ## PDF/A validation (veraPDF)
 
 The server's PDF/A claims are checked against the official reference validator,
 [veraPDF](https://verapdf.org). `npm run validate:pdfa` builds `dist/`, drives the
-tool handlers to write a corpus of PDF/A-claiming documents to `test-output/pdfa/`
+tool handlers to write a 24-file corpus to `test-output/pdfa/` — 22 PDF/A-claiming
+documents, 3 of them negative canaries, plus 2 page-tree outputs without a claim
 (`scripts/generate-pdfa-corpus.mjs` — a representative sample, not an
 exhaustive feature matrix: outline / page labels / nested lists, watermark under
 1b and 2b, chart blocks, print boxes and metadata, a caller-supplied ICC
@@ -69,6 +71,8 @@ accepting everything. The `add_form` entry is also flagged `false` as a known
 engine gap (non-embedded AcroForm `/DR` default-appearance font, 6.2.11.4.1);
 flip it deliberately when that is fixed upstream.
 
+Per file the validator reports `PASS` / `FAIL` / `XFAIL` / `XPASS` / `INFRA` /
+`SKIP`; exit 0 = every expectation met, 1 = `FAIL` or `XPASS`, 3 = `INFRA`.
 Without veraPDF installed (or with a broken Java) the validator prints install
 hints and exits 0 — labelled `SKIPPED`, not a pass — so local development never
 blocks; set `VERAPDF_REQUIRED=1` to fail closed instead (exit 3, `INFRA`). In CI
@@ -80,7 +84,7 @@ package manifest. The job is **advisory in 1.6.0** (the validate step has
 land in the job summary and the `verapdf-report` artifact) and is planned to
 become **blocking in 1.7.0** — note the `paths:` filter caveat in the workflow
 header before making it a required check. veraPDF is an external CI tool, not a
-dependency — the zero-runtime-dependency policy is unchanged.
+dependency — the no-new-runtime-dependency policy is unchanged.
 
 Installing veraPDF locally (Java 8+ required):
 

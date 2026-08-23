@@ -15,21 +15,33 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 | A QR code or barcode | `add_barcode` |
 | Non-Latin text (Arabic, Hindi, CJK, …) | `add_international_text` |
 | A tabular report | `add_table` |
-| An interactive AcroForm | `add_form` |
+| A **new** interactive AcroForm | `add_form` |
+| List the fields of an **existing** AcroForm | `read_form_fields` |
+| Fill / flatten an **existing** AcroForm | `fill_form` |
+| A native vector chart (bar, line, area, scatter, pie, …) | `add_chart` *(or a `chart` block in `generate_basic_pdf`)* |
 | Embed a JPEG/PNG into a PDF | `embed_image` |
 | Digitally sign any PDF | `sign_pdf` *(auto-injects placeholder)* |
-| Customize the signature placeholder before signing | `prepare_signature_placeholder` → `sign_pdf` |
-| **Factur-X / ZUGFeRD invoice** or any PDF with attachments | `add_attachment` *(NOT `generate_basic_pdf`)* |
+| Customize the signature placeholder before signing (`subFilter`, `reserveTimestamp`, `placeholderBytes`, signer metadata, `signingTime`) | `prepare_signature_placeholder` → `sign_pdf` |
+| Embed revocation material (PAdES B-LT, `/DSS`) | `add_ltv` |
+| Append a document timestamp (PAdES B-LTA) | `timestamp_pdf` |
+| **Factur-X / ZUGFeRD invoice** or any PDF with attachments | `add_attachment` *(NOT `generate_basic_pdf` — only `add_attachment` embeds files)* |
 | **Pull embedded files back out** (e.g. Factur-X XML) | `extract_attachments` |
-| Inspect / assert metadata | `inspect_pdf` |
-| Verify all PAdES signatures | `verify_pdf` |
+| Inspect / assert metadata ("does a signed field exist?") | `inspect_pdf` |
+| Verify all PAdES signatures (cryptographic validity) | `verify_pdf` |
 | Validate PDF/UA accessibility structure | `validate_pdf` |
 | Extract plain text | `extract_text` |
+| Rewrite title / author / subject / keywords of an existing PDF | `update_metadata` |
 | Join several PDFs into one | `merge_pdfs` |
 | Split one PDF into per-range documents | `split_pdf` |
 | Keep an arbitrary page subset (one PDF) | `extract_pages` |
+| Password-protect a PDF (AES-128 / AES-256) | `encrypt_pdf` |
+| Produce an unencrypted copy | `decrypt_pdf` *(to merely read an encrypted PDF, pass `password` to the read tools instead)* |
 | Overlay markup annotations on a PDF (review layer) | `annotate_pdf` |
 | Draft a GitHub issue for a human to submit | `draft_governance_issue` |
+
+Ambiguities resolved: `add_attachment` vs `generate_basic_pdf` — only `add_attachment` embeds files (PDF/A-3); `inspect_pdf check:'signed'` is structural ("a signed field exists"), cryptographic validity is `verify_pdf`'s job; `sign_pdf` auto-injects its placeholder, use `prepare_signature_placeholder` only to customise it first (signer metadata is frozen at placeholder time).
+
+Input validation is strict: unknown top-level or nested keys are rejected with `VALIDATION_ERROR` ("Unrecognized key"), matching `additionalProperties: false`. Calling a tool name that does not exist is a JSON-RPC protocol error (`-32602`, `[UNKNOWN_TOOL] Unknown tool: <name>`), not an `isError` result.
 
 ---
 
@@ -45,11 +57,13 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 - `sign_pdf` **auto-injects** a `/Sig` placeholder when missing (since v1.0.0). You can sign **any** PDF in a single call — no need to run `prepare_signature_placeholder` first.
 - All key/cert material is **DER, base64-encoded** (no PEM). Convert with:
   - cert: `openssl x509 -in cert.pem -outform DER | base64 -w0` → `certDerBase64`
-  - RSA key (PKCS#1!): `openssl rsa -in key.pem -outform DER -traditional | base64 -w0` → `rsaKeyPkcs1DerBase64`
+  - RSA key (PKCS#1 or PKCS#8 DER): `openssl rsa -in key.pem -outform DER -traditional | base64 -w0` (or `openssl pkey -in key.pem -outform DER | base64 -w0`) → `rsaKeyPkcs1DerBase64`
   - ECDSA key (PKCS#8 or SEC1): `openssl pkey -in key.pem -outform DER | base64 -w0` → `ecPrivateKeyDerBase64`
   - ECDSA scalar form: `ecPrivateScalarHex` = 64 hex chars (raw P-256 `d`)
+- Base64 inputs (`pdfBase64` and every DER field) tolerate a `data:…;base64,` prefix. PEM where DER is expected → `VALIDATION_ERROR` with the exact `openssl` remedy; double-encoded base64, PEM text or a nested `data:` URI passed as a PDF → `PDF_PARSE_FAILED` with a hint; an empty payload → `VALIDATION_ERROR`.
 - After signing, call `verify_pdf` to confirm. Without `trustedRootsDerBase64`, `chainTrust` is `'self-signed'` or `'unverified'` — that is expected.
-- RSA and EC-DER keys sign through a constant-time `node:crypto` provider (with a transparent pure-JS fallback); the raw-scalar `ecPrivateScalarHex` path uses the pure-JS signer. Signatures are interoperable either way.
+- RSA and EC-DER keys sign through a constant-time `node:crypto` provider (with a transparent pure-JS fallback); the raw-scalar `ecPrivateScalarHex` path uses the pure-JS signer. "Constant-time" applies to signing with DER keys only — verification (`verify_pdf`) runs in pure JS. Signatures are interoperable either way.
+- `signingTime` (ISO-8601, timezone offsets accepted, e.g. `2026-01-15T10:00:00+01:00`) pins `/Sig /M`; also available on `prepare_signature_placeholder`, where it is frozen at placeholder time. Pinned dates are byte-identical on the **same host time zone** only (the engine serialises local time) — set `TZ=UTC` for portable output. TSA tokens and ECDSA signatures (random nonce) are never reproducible.
 - **v1.6.0 (pdfnative 1.7):** `profile: 'pades'` gives an ETSI EN 319 142-1 baseline signature (`ETSI.CAdES.detached`, ESS signing-certificate-v2); `algorithm` also accepts `rsa-sha384` / `rsa-sha512`; `certChainDerBase64` carries intermediates. `timestamp: true` (B-T) needs the operator-configured `PDFNATIVE_MCP_TSA_URL` — otherwise `TSA_NOT_CONFIGURED`, no request is made.
 - Signer metadata (`signerName`, `reason`, `location`, `contactInfo`) is **baked into the placeholder** (earlier engines dropped it): when you pre-built the placeholder with `prepare_signature_placeholder`, set them there.
 - Several unsigned placeholders → pass `fieldName` (else `PLACEHOLDER_AMBIGUOUS`); to add a second signature next to an existing one, pass `allowMultiple: true` + a fresh `fieldName`.
@@ -58,11 +72,12 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 - B-B `sign_pdf` → B-T `sign_pdf timestamp: true` → B-LT `add_ltv` → B-LTA `timestamp_pdf`. `verify_pdf ltv: true` reports `ltvLevel` and per-signature `profile` / `timestamp` / `revocation`.
 - `add_ltv mode: 'online'` (default) needs `PDFNATIVE_MCP_REVOCATION` + `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS` on the server (`REVOCATION_NOT_CONFIGURED` otherwise). `mode: 'offline'` embeds DER certificates / OCSP responses / CRLs you supply — zero network, for air-gapped pipelines. Self-signed chains yield nothing online (`LTV_EMPTY`).
 - `timestamp_pdf` re-runs extend the chain (`DocTimeStamp1`, `DocTimeStamp2`, …); raise `placeholderBytes` for TSAs that return large chains (`TSA_REJECTED` / `LTV_ERROR`).
-- Document timestamps are verified as RFC 3161 tokens and count in `allValid` like any signature (a sound one never fails the verdict, a tampered one does); `verify_pdf` reads revocation status from embedded `/DSS` material only. See [`guides/LTV.md`](guides/LTV.md).
+- Document timestamps are verified as RFC 3161 tokens and count in `allValid` like any signature (sound ⇒ pass, tampered or TSA-untrusted ⇒ fail); `verify_pdf` reads revocation status from embedded `/DSS` material only. `timestamp_pdf` checks the token's status, imprint and nonce before embedding; the token's own CMS signature is verified by `verify_pdf`. See [`guides/LTV.md`](guides/LTV.md).
 
 ### Print production
 - Every document tool accepts `print: { bleed }` (TrimBox = MediaBox inset, BleedBox = MediaBox) or explicit `trimBox` / `bleedBox` / `artBox` / `cropBox` (points, inside the MediaBox), `marks: true | { crop, registration, length, offset, weight }` (needs a TrimBox), and `userUnit` (not under `pdfa1b`). `bleed` and `trimBox` are mutually exclusive.
 - `metadata: { author, subject, keywords, trapped }` writes `/Info` (+ XMP under PDF/A); `outputIntent` replaces the built-in sRGB intent with your RGB ICC profile (CMYK profiles are rejected → `PRINT_ERROR`).
+- `creationDate` (ISO-8601) on the nine document tools (`generate_basic_pdf`, `add_table`, `add_form`, `add_international_text`, `embed_image`, `add_barcode`, `add_attachment`, `add_chart`, `prepare_signature_placeholder`) pins `/Info /CreationDate` (+ XMP dates on PDF/A) and therefore the trailer `/ID` — reproducible bytes on the same host time zone. Omit it and output is byte-identical to before.
 - Read the boxes back with `inspect_pdf pages: true`; they survive `merge_pdfs` / `split_pdf` / `extract_pages`. See [`guides/PRINT.md`](guides/PRINT.md).
 
 ### Charts v2
@@ -72,7 +87,7 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 ### Combining / carving PDFs (page-tree)
 - `merge_pdfs` joins 2–50 PDFs (`pdfsBase64[]`) into one. `split_pdf` cuts one PDF into one document per `ranges[]` entry (`{ start, end? }`, 0-based inclusive). `extract_pages` keeps an arbitrary `pages[]` subset (0-based) in a single PDF.
 - `split_pdf` returns a **multi-output** result (`{ mode, count, totalSizeBytes, parts[] }`); in `file` mode each part is written to an indexed path (`report.pdf` → `report-1.pdf`, …).
-- **Encrypted sources** open with `password` (one password applied to every source of `merge_pdfs`); a missing or wrong password throws `PASSWORD_REQUIRED` / `PASSWORD_INVALID`. The output is unencrypted unless `encrypt` is set. Oversize output throws `OUTPUT_TOO_LARGE`.
+- **Encrypted sources** open with `password` (one password applied to every source of `merge_pdfs`); a missing or wrong password throws `PASSWORD_REQUIRED` / `PASSWORD_INVALID` — these tools never raise `ENCRYPTED_SOURCE`. The output is unencrypted unless `encrypt` is set. Oversize output throws `OUTPUT_TOO_LARGE`; an out-of-range page index or range is a `VALIDATION_ERROR` whose message reminds you that indices are 0-based.
 
 ### Bookmarks, page labels & nested lists
 - `generate_basic_pdf` accepts `outline: 'auto'` (derive bookmarks from headings) or an explicit `[{ title, pageIndex, children?, open? }]` tree, plus `pageLabels: [{ startPage, style?, prefix?, start? }]` for viewer page numbering.
@@ -105,6 +120,7 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 - After generating a tagged/PDF-A document, call `validate_pdf` to assert PDF/UA structural conformance.
 - **Honesty note (v1.6.0):** the Latin document tools render text through the viewer's base-14 Helvetica, which is **not embedded** — veraPDF rejects such a PDF/A claim (ISO 19005 §6.2.11.4.1). For a valid claim pass `embedFonts: true` (Noto Sans Latin, about 0.3 MiB; `add_international_text` always embeds). `strict: true` fails with `PDF_A_COMPLIANCE_VIOLATION` instead of producing a non-conformant file; `includeDiagnostics: true` echoes the engine diagnostics (e.g. `PDFA_NO_FONT_ENTRIES`) in `structuredContent.diagnostics`.
 - `print.userUnit` is rejected under `pdfa1b`.
+- **Known limitations (engine-side):** `add_form` + `pdfA` + `embedFonts: true` still fails PDF/A-2b under veraPDF — the AcroForm `/DR /Helv` is an unembedded Type1 font (ISO 19005-2 rule 6.2.11.4.1). `prepare_signature_placeholder` + `pdfA` is **not** conformant until signed (empty `/Contents`, ISO 19005-2 6.4.3); once signed with `sign_pdf profile: 'pades'` it passes. `inspect_pdf` reports the PDF/A claim, not its validity.
 - See [`guides/PDFA.md`](guides/PDFA.md) for the per-tool capability matrix.
 
 ### International text
@@ -124,30 +140,38 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 
 ### Text extraction
 - `extract_text` returning `extractable: false` is **not an error**. The PDF uses subset fonts without `/ToUnicode` CMaps; the `extractableReason` field explains. The file is not corrupt.
-- Encrypted PDFs are rejected with `EXTRACTION_UNSUPPORTED`.
+- Encrypted PDFs open with `password` (missing / wrong → `PASSWORD_REQUIRED` / `PASSWORD_INVALID`). `EXTRACTION_UNSUPPORTED` is a legacy code that is never raised.
 
 ### Token-frugal reads (v1.2.0)
-The four read-only tools — `inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text` — accept two **optional** inputs that shrink the response (typically ~90% fewer output tokens for large results) without losing the fields you branch on:
+The six read-only tools — `inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`, `extract_attachments`, `read_form_fields` — accept two **optional** inputs that shrink the response (typically ~90% fewer output tokens for large results) without losing the fields you branch on:
 
 - `verbosity: 'summary'` returns a compact scalar-only verdict and drops the heavy arrays / full text:
-  - `inspect_pdf` → `{ version, pageCount, encryption, pdfA, signatureCount, hasSignaturePlaceholder, attachmentCount }` (drops `attachments[]`, `info`, `perPage`).
-  - `verify_pdf` → `{ signatureCount, allValid, invalid, summary }` (drops `signatures[]`).
+  - `inspect_pdf` → `{ version, pageCount, encryption, pdfA, signatureCount, hasSignaturePlaceholder, attachmentCount }` plus `docTimestampCount` / `trapped` / `checksPassed` when present (drops `attachments[]`, `info`, `perPage`, `dss`).
+  - `verify_pdf` → `{ signatureCount, allValid, invalid, summary }` plus `ltvLevel` when `ltv: true` (drops `signatures[]`).
   - `validate_pdf` → `{ standard, valid, errorCount, warningCount, summary }` (drops `errors[]`, `warnings[]`).
   - `extract_text` → `{ pageCount, extractedPageCount, extractable, charCount }` (drops `pages[]`, `fullText`).
   - `extract_attachments` → `{ attachmentCount }` (drops `attachments[]`).
-- `fields: ['a', 'b.c']` projects the structured result to named dot-paths (an array segment maps over every element, e.g. `['signatures.valid']`). It composes **after** `verbosity`; unknown paths are omitted leniently.
+- `fields: ['a', 'b.c']` projects the structured result to named dot-paths (an array segment maps over every element, e.g. `['signatures.valid']`). It composes **after** `verbosity`; unknown paths are omitted leniently, and when something is unmatched the result carries `_meta.unmatchedFields` + `_meta.availableFields` so you can correct the path.
+- `inspect_pdf check: [...]` returns `checks` with **only the requested keys** plus `checksPassed` (their AND). `check: 'signed'` is structural — at least one signature field with signed content; an extra unsigned placeholder does not negate it, and validity stays `verify_pdf`'s job.
 
 Defaults are unchanged: omit both and you get the full v1.1.0-identical response. Smallest "is this PDF signed and valid?" probe: `{ pdfBase64, verbosity: 'summary', fields: ['allValid'] }`.
+
+### Response cache
+With `PDFNATIVE_MCP_CACHE_DIR` set, a repeated identical call (same tool, same input) may be answered from cache — the result then carries `_meta.cached: true` and returns the **earlier** call's bytes (e.g. the old `/CreationDate`) within the 1 h TTL. Never cached: `encrypt_pdf`, `decrypt_pdf`, `sign_pdf` (every call), `add_ltv`, `timestamp_pdf`, `update_metadata`, and any `outputMode: 'file'` call. The key is namespaced by the tool API + package version, so an upgrade never serves old bytes.
 
 > **PDF bytes delivery:** generated PDFs (base64 mode) are returned **once** as an embedded `resource` content block (a `data:application/pdf;base64,…` URI), not duplicated into `structuredContent` (which is `{ mode, sizeBytes }`, plus `diagnostics[]` when `includeDiagnostics: true` and a `summary` for `add_ltv`). Read the bytes from the resource block.
 
 ### Protocol (v1.6.0)
 - The server speaks MCP 2026-07-28 (stateless, `server/discover`, `resultType`, cache hints) and falls back automatically to the 2025-era `initialize` handshake. Whatever your host negotiates, the `tools/call` payload is the same.
 - `tools/list` and `prompts/list` are safe to cache for 24 h (`cacheScope: 'public'`); `resources/*` results are private and must not be cached.
+- Six MCP prompts are advertised: `governance_contract`, `draft_issue_workflow`, `pades_ladder`, `print_ready`, `reproducible_output`, `pdfa_valid` — read the one matching your workflow before the first call.
+- Over HTTP (`PDFNATIVE_MCP_PORT`), the operator may require a bearer token (`PDFNATIVE_MCP_HTTP_TOKEN`): send `Authorization: Bearer <token>` or every `/mcp` request is answered 401. Without it HTTP mode has no authentication (loopback bind + Host/Origin guard only). stdio is unaffected.
+- Operator environment, for reference (an agent never sets these): `PDFNATIVE_MCP_OUTPUT_DIR` (file-mode sandbox), `PDFNATIVE_MCP_CACHE_DIR` (opt-in response cache), `PDFNATIVE_MCP_PORT` / `PDFNATIVE_MCP_HTTP_TOKEN` (HTTP transport), `PDFNATIVE_MCP_TSA_URL` / `PDFNATIVE_MCP_TSA_AUTH` (RFC 3161 TSA, the auth value is a secret never echoed), `PDFNATIVE_MCP_REVOCATION` + `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS` (online LTV), `PDFNATIVE_MCP_NETWORK_TIMEOUT_MS` (1000–120000 ms, default 10000). Full table: AGENTS.md §4.
 
 ### File output mode
 - `outputMode: 'file'` only works if the host process set `PDFNATIVE_MCP_OUTPUT_DIR`. Otherwise the call returns `SecurityError`.
 - `outputPath` must be **relative**, end in `.pdf`, and contain no path traversal segments.
+- Files written this way are listed as MCP resources (`pdfnative://output/{+path}`); the result also carries a `resource_link`.
 
 ---
 
@@ -183,7 +207,7 @@ Defaults are unchanged: omit both and you get the full v1.1.0-identical response
 2. *(optional)* `inspect_pdf` to confirm the document, or `validate_pdf` when `pdfA` is set (the chart carries `/Figure` + `/Alt`).
 
 ### Update metadata of an existing PDF
-1. `update_metadata` with `author` / `keywords` / … (pin `modDate` for reproducible bytes).
+1. `update_metadata` with `author` / `keywords` / … (pin `modDate` for reproducible bytes on the same host time zone; XMP dates are rewritten too).
 2. `sign_pdf` / `timestamp_pdf` again if the latest revision must be signed — the update is an unsigned incremental revision.
 
 ### Watermarked report
@@ -212,7 +236,8 @@ Defaults are unchanged: omit both and you get the full v1.1.0-identical response
 
 Every tool ships:
 - `_meta.apiVersion` = `'1.6.0'` — see [`API_STABILITY.md`](API_STABILITY.md).
-- `_meta.examples`   — at least one worked example per tool. Inspect the `ListTools` response to discover them.
+- `_meta.examples`   — one or two executable worked examples per tool (the rest live in [`../examples/`](../examples)). Inspect the `ListTools` response to discover them.
+- Read tools declare a projectable `outputSchema` (every property optional, `additionalProperties: false`) so `structuredContent` validates under `verbosity` / `fields` as well.
 
 You can rely on these fields when negotiating capabilities before calling a tool.
 
@@ -224,27 +249,42 @@ The MCP error response always includes a `code` and a message:
 
 | `code` | Meaning | Fix |
 |---|---|---|
-| `VALIDATION_ERROR` | Zod rejected the input | Re-read the field’s schema (the message lists the offending path). |
-| `PDF_PARSE_FAILED` | Input PDF is malformed or truncated | Re-encode the base64; verify the source PDF opens in a normal reader. |
+| `VALIDATION_ERROR` | Zod rejected the input: wrong type, unknown key (strict), empty base64, PEM where DER is expected, out-of-range page index / range on `merge_pdfs` / `split_pdf` / `extract_pages` | Re-read the field’s schema (the message lists the offending path); for PEM run the `openssl … -outform DER` command in the message; page indices are 0-based. |
+| `PDF_PARSE_FAILED` | Input PDF is malformed or truncated (also double-encoded base64, PEM text or a nested `data:` URI passed as a PDF; `validate_pdf` on an unparsable file) | Re-encode the base64 once; verify the source PDF opens in a normal reader. |
 | `PDF_A_COMPLIANCE_VIOLATION` | Watermark `opacity < 1.0` under `pdfa1b`; `strict: true` with an engine PDF/A diagnostic (e.g. unembedded Helvetica); `print.userUnit` under `pdfa1b` | Set `opacity: 1.0` or `pdfa2b`+; add `embedFonts: true`; drop `userUnit` or use `pdfa2b`+. |
 | `PRINT_ERROR` | Engine rejected `print` / `outputIntent` (box outside MediaBox, marks without TrimBox, non-RGB ICC) | Fix the boxes, supply `bleed` / `trimBox`, use an RGB ICC profile. |
 | `CHART_ERROR` | Chart cross-field rule violated (log scale with non-positive values, scatter without `xValues`, …) | The message carries the remedy. |
 | `METADATA_ERROR` | `update_metadata` could not rewrite `/Info` | Confirm the PDF opens; report with a reproduction if it persists. |
 | `GENERATION_FAILED` | Generic engine throw while building | The message carries the engine text. |
+| `ATTACHMENT_BUILD_FAILED` | `add_attachment`: the engine threw while building the PDF/A-3 document (bad MIME type, unreadable payload, …) | The message carries the engine text; fix the attachment it names. |
+| `PLACEHOLDER_FAILED` | `sign_pdf` (auto-inject) / `prepare_signature_placeholder`: the engine could not inject the `/Sig` placeholder | Check the source PDF opens; for a custom `pageIndex` confirm the page exists. |
+| `VERIFY_FAILED` | `verify_pdf`: structural failure before signature checks (ByteRange beyond the file, unsupported EC public-key encoding) | Re-encode the base64; confirm the PDF is not truncated. |
 | `TSA_NOT_CONFIGURED` / `TSA_REJECTED` | No `PDFNATIVE_MCP_TSA_URL`, or the TSA answered with a failure / bad imprint / bad nonce | Operator configures the TSA; check auth; raise `placeholderBytes`. |
 | `REVOCATION_NOT_CONFIGURED` | `add_ltv mode: 'online'` without `PDFNATIVE_MCP_REVOCATION` + allow-list | Operator configures both, or use `mode: 'offline'`. |
 | `NETWORK_HOST_NOT_ALLOWED` / `NETWORK_ERROR` | Responder URL not allow-listed / internal address, or the request failed (timeout, HTTP status, size cap) | Allow-list the host verbatim; check connectivity and env values. |
 | `LTV_NO_SIGNATURE` / `LTV_EMPTY` / `LTV_MATERIAL_INVALID` / `LTV_ERROR` | No signed signature; nothing collectable; offline DER blob does not parse; other LTV failure | Sign first; use offline material; export DER not PEM. |
 | `PLACEHOLDER_AMBIGUOUS` / `SIGNATURE_FIELD_NOT_FOUND` | Several unsigned placeholders without `fieldName`, or `fieldName` unknown | List fields with `inspect_pdf signatures: true` and pass `fieldName`. |
-| `ENCRYPTED_SOURCE` | Encrypted input on `annotate_pdf`, `update_metadata`, `add_ltv`, `timestamp_pdf` | `decrypt_pdf` first. |
+| `ENCRYPTED_SOURCE` | Encrypted input on `annotate_pdf`, `update_metadata`, `add_ltv`, `timestamp_pdf` (the only tools that raise it; no `password` input) | `annotate_pdf` / `update_metadata`: run `decrypt_pdf` first (drops signatures/AcroForm), then `encrypt_pdf` again. `add_ltv` / `timestamp_pdf`: `decrypt_pdf` would drop the signatures — sign / timestamp the unencrypted document and encrypt last. |
+| `PASSWORD_REQUIRED` / `PASSWORD_INVALID` | Encrypted source without `password`, or the password did not open it (read-only and page-tree tools, `fill_form`, `decrypt_pdf`) | Pass the `password` input (user or owner password both work). |
+| `ENCRYPTION_UNSUPPORTED` | Security handler this server cannot open | The document uses an unsupported scheme. |
+| `ENCRYPTION_ERROR` | Re-encryption failed (e.g. no Web Crypto CSPRNG) | Run under a runtime with Web Crypto available. |
 | `MISSING_PLACEHOLDER` | `sign_pdf` called with `autoInjectPlaceholder: false` on a PDF without `/Sig` | Set `autoInjectPlaceholder: true` (the default) or call `prepare_signature_placeholder` first. |
-| `EXTRACTION_UNSUPPORTED` | Encrypted PDF passed to `extract_text` / `extract_attachments` | Decrypt the PDF outside the server first. |
+| `FORM_FIELD_NOT_FOUND` | `fill_form` value key matched no field | Use `read_form_fields` to list names, or `onUnknownField: 'ignore'`. |
+| `FORM_VALUE_TYPE_ERROR` | Wrong value type / choice not in options | Match the field type; use a valid option. |
+| `FORM_UNSUPPORTED` | Tried to fill / flatten a signature field | Sign with `sign_pdf` instead. |
+| `EXTRACTION_UNSUPPORTED` | **Legacy — never raised.** Kept in the contract for compatibility only | Encrypted reads use `password` (`PASSWORD_REQUIRED` / `PASSWORD_INVALID` otherwise). |
 | `ATTACHMENT_NOT_FOUND` | `extract_attachments` `filename` filter matched no embedded file | Omit `filename`, or call `inspect_pdf` to list the real attachment names. |
 | `ATTACHMENT_TOO_LARGE` | An `add_attachment` payload exceeds the 8 MiB per-file cap | Compress / shrink the payload, or split it across files. |
 | `OUTPUT_TOO_LARGE` | Generated PDF over 50 MiB, or extracted attachments over the 16 MiB/file · 32 MiB aggregate caps | Reduce embedded images / split documents; for extraction use `includeData: false` or the `filename` filter. |
 | `UNSUPPORTED_LANG` | `add_international_text` `lang` not in the supported set | Use a supported code (see the international-text pitfalls). |
 | `FONT_LOAD_FAILED` | A bundled Noto font module failed to load | Retry; if it persists the install is corrupt — reinstall `pdfnative`. |
-| `SIGNING_FAILED` / `CMS_PARSE_FAILED` / `EC_KEY_PARSE_FAILED` / `EC_CURVE_UNSUPPORTED` | Signing or key/cert material problem | Re-check the DER encodings; ECDSA keys must be P-256. |
+| `SIGNING_FAILED` / `CMS_PARSE_FAILED` / `EC_KEY_PARSE_FAILED` / `EC_CURVE_UNSUPPORTED` | Signing or key/cert material problem | Re-check the DER encodings; ECDSA keys must be P-256. (Unparsable cert / chain / key blobs are `VALIDATION_ERROR` with the `openssl` remedy.) |
 | `SECURITY_VIOLATION` | Sandbox or path-traversal rejection | Check `PDFNATIVE_MCP_OUTPUT_DIR` is set and `outputPath` is relative + ends in `.pdf`. |
+| `MISSING_OUTPUT_PATH` | `outputMode: 'file'` without `outputPath` | Pass a relative `outputPath`. |
+| `INVALID_PATH` | `outputPath` empty / not a string | Pass a non-empty relative path. |
+| `INVALID_EXTENSION` | `outputPath` does not end in `.pdf` (`.md` for `draft_governance_issue`) | Fix the extension. |
+| `GOVERNANCE_VIOLATION` | `draft_governance_issue` draft breaks the governance contract (proposes a runtime dependency, missing reproduction, or `duplicateSearchPerformed: false`) | Remove the dependency proposal, include a reproduction, confirm the duplicate search. |
+| `[UNKNOWN_TOOL]` | **Protocol error, not a tool result:** `tools/call` with a tool name that does not exist → JSON-RPC `-32602` with message `[UNKNOWN_TOOL] Unknown tool: <name>` | Pick a name from `tools/list` (27 tools). |
+| `UNKNOWN_RESOURCE` | **Protocol error:** `resources/read` with an unknown `pdfnative://` URI → JSON-RPC `-32602`, the code is carried in the message | List URIs with `resources/list`. |
 
 If a tool seems to return correct PDFs that downstream readers reject, run `inspect_pdf` and / or `verify_pdf` to confirm the byte-level structure.

@@ -63,10 +63,31 @@ pass `password` to ingest encrypted sources and `encrypt` to protect the result
 | `PASSWORD_INVALID` | Supplied `password` did not open the document. |
 | `ENCRYPTION_UNSUPPORTED` | The document uses a security handler this server cannot open. |
 | `ENCRYPTION_ERROR` | Re-encryption failed (e.g. no Web Crypto CSPRNG available). |
-| `ENCRYPTED_SOURCE` | Encrypted input on a tool without a `password` input: `annotate_pdf`, `update_metadata`, `add_ltv`, `timestamp_pdf` (v1.6.0). Run `decrypt_pdf` first. |
+| `ENCRYPTED_SOURCE` | Encrypted input on one of the four incremental-update tools that have no `password` input (v1.6.0). The remedy depends on the tool: **`annotate_pdf` / `update_metadata`** → `decrypt_pdf` first (drops signatures and the AcroForm), edit, then `encrypt_pdf` again. **`add_ltv` / `timestamp_pdf`** → do *not* decrypt — `decrypt_pdf` would destroy the signatures you are trying to extend; sign, add LTV and timestamp the unencrypted document, and run `encrypt_pdf` last. The page-tree tools (`merge_pdfs` / `split_pdf` / `extract_pages`) and the read tools take `password` and never raise this code. |
+
+The legacy `EXTRACTION_UNSUPPORTED` code is no longer raised: encrypted reads take `password`.
+
+## Base64 boundary
+
+`pdfBase64` (and the page-tree `pdfsBase64`) tolerate a `data:application/pdf;base64,`
+prefix. An empty payload is a `VALIDATION_ERROR`; PEM text, a nested `data:` URI or a
+double-encoded base64 string is reported as `PDF_PARSE_FAILED` with a hint naming the
+likely cause, rather than as a mysterious parse failure.
+
+## Caching
+
+`encrypt_pdf` and `decrypt_pdf` always bypass the opt-in response cache
+(`PDFNATIVE_MCP_CACHE_DIR`): the cache stores tool output in plaintext at rest, and
+neither the unencrypted bytes of a deliberately-protected document nor the freshly
+protected bytes (minted with a random IV / salt, so never reproducible anyway) should
+linger on disk. The same applies to the page-tree tools in file mode (no file-mode call
+is ever cached).
 
 ## Safety notes
 
 - Passwords are never logged or echoed back in responses or errors.
 - RC4 is read-only: any output this server writes is AES-128 or AES-256.
-- `pdfA` and encryption are mutually exclusive (PDF/A forbids encryption).
+- PDF/A forbids encryption. The server does not need to enforce a conflict because the
+  two never meet: the document tools have no `encrypt` input, and `encrypt_pdf` (like
+  the page-tree `encrypt` option) rebuilds the document without the XMP packet, so any
+  PDF/A claim on the source is dropped rather than carried into an encrypted file.

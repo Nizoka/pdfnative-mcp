@@ -24,16 +24,31 @@ A bump of `_meta.apiVersion` happens **only** in the cases listed in §3.
 > fallback to the legacy `initialize` handshake for `2025-11-25`, `2025-06-18` and
 > `2025-03-26` clients on both stdio and HTTP. The `tools/call` payload (`content`,
 > `structuredContent`, `isError`) is identical on both paths. Tool schemas are JSON Schema
-> **2020-12**, `serverInfo` advertises `title` + `description`, and input-validation
-> failures are returned as tool-execution errors (`isError: true`) — none of which affect
-> `_meta.apiVersion`.
+> **2020-12**, `serverInfo` advertises `title` + `description` + `websiteUrl`, and
+> input-validation failures are returned as tool-execution errors (`isError: true`) — none of
+> which affect `_meta.apiVersion`.
 >
-> **One transport-level correction in 1.6.0:** `resources/read` on an unknown URI now
+> **Two transport-level corrections in 1.6.0:** `resources/read` on an unknown URI now
 > answers the JSON-RPC error code **`-32602`** (Invalid params), which the 2026-07-28
-> specification mandates for resource-not-found on every protocol revision. Previously the
-> SDK 1.x path surfaced it as a generic error. This is a protocol-level error code, not a
-> `ToolError` `code` (the `UNKNOWN_RESOURCE` tool code is unchanged and still carried in the
-> message), so it is outside the §2 matrix.
+> specification mandates for resource-not-found on every protocol revision (previously the
+> SDK 1.x path surfaced it as a generic error); and `tools/call` naming a tool that does not
+> exist is now a JSON-RPC **`-32602`** protocol error with the message
+> `[UNKNOWN_TOOL] Unknown tool: <name>` instead of an `isError: true` result, because the
+> specification classifies unknown tools as protocol errors and reserves `isError` for
+> execution failures (the in-process `callToolDirect` helper keeps returning `isError`). Both
+> are protocol-level error codes, not `ToolError` `code`s (`UNKNOWN_RESOURCE` is unchanged and
+> still carried in the message; `UNKNOWN_TOOL` is a message marker only), so they are outside
+> the §2 matrix.
+>
+> **Output-schema conformance (1.6.0):** `structuredContent` always validates against the
+> tool's `outputSchema` — a 2026-07-28 MUST — including `verbosity: 'summary'` and `fields`
+> projections, file mode and `includeDiagnostics`. To make that true the six read tools
+> (`inspect_pdf`, `verify_pdf`, `validate_pdf`, `extract_text`, `extract_attachments`,
+> `read_form_fields`) declare **projectable** output schemas: every property optional, no
+> `required`, `additionalProperties: false` kept, and the summary-only scalars
+> (`attachmentCount`, `invalid`, `errorCount`, `warningCount`, `charCount`,
+> `extractableReason`) declared. Default (`'full'`) output is unchanged; only the schema
+> metadata relaxed (`tests/schema-conformance.test.ts`, SDK Ajv 2020-12 validator).
 
 ---
 
@@ -46,9 +61,11 @@ A bump of `_meta.apiVersion` happens **only** in the cases listed in §3.
 | Required **output fields** | Stable. Removing or renaming is a major bump. |
 | Field **types** (string/number/bool/enum) | Stable. Narrowing accepted values is a major bump. |
 | **Error codes** (`code` on `ToolError`) | Stable. Removing or renaming is a major bump. |
-| `_meta.examples` | **Not** covered. May change at any time. |
-| `description` strings | **Not** covered. May be reworded at any time. |
+| `_meta.examples` | **Not** covered. May change at any time (at most two per tool since 1.6.0; every one is executable against its `inputSchema`). |
+| `description` strings, `serverInfo.instructions`, prompt texts | **Not** covered. May be reworded at any time — the `tools/list` *wording* is outside the byte-identical charter; tool-result `structuredContent` defaults are inside it. |
+| `tools/list` **structure** (types, enums, bounds, defaults, `required`, `additionalProperties`, annotations, example count) | Covered, and enforced by the catalogue parity gate: `scripts/tool-shape.mjs` fingerprints the catalogue with every description string stripped, `tests/catalogue-parity.test.ts` compares it with `tests/_fixtures/tool-shape.json`. Any structural change is a deliberate `--write` refresh reviewed under §3 / §5. |
 | Schema **`default`** values | Documented; changes are minor unless they alter generated output silently. |
+| Unknown input keys | Rejected with `VALIDATION_ERROR` at every nesting level (Zod `.strict()`), exactly as the published `additionalProperties: false` always declared. |
 
 ---
 
@@ -125,14 +142,41 @@ All 27 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 > `signatures[]` (opt-in) and `perPage[].trimBox` / `bleedBox` / `artBox` / `cropBox` /
 > `userUnit` (only when set on the page, and only with `pages: true`). Three changes land in
 > **default** output: `verify_pdf` signatures now always carry `subFilter` (a new key, `null`
-> when absent); `inspect_pdf` `checks` carries three extra `false` keys (`dss`,
-> `docTimestamp`, `trapped`) whenever `check` is used — the same additive precedent as the
-> `placeholder` / `attachments` keys in v1.0.0; and the `draft_governance_issue` draft
+> when absent); `inspect_pdf` `checks` now contains **only the keys named in `check`** —
+> earlier releases echoed every check name with `false` for the ones not requested, which
+> misled agents into reading `signed: false` as "not signed" (the unrequested keys were
+> never promised; `checksPassed` is unchanged and `check: 'signed'` is now true when at
+> least one signature field carries signed content, so an extra unsigned placeholder no
+> longer negates it); and the `draft_governance_issue` draft
 > markdown and `complianceReport.humanGate` string changed because the `HUMAN_GATE` charter
 > sentence was reworded to state the single permitted egress class (a deliberate charter
-> update — the field keeps its type and meaning, only the quoted text differs). The first two
-> are "new optional output field" changes per §3; the third is free-text carried verbatim
+> update — the field keeps its type and meaning, only the quoted text differs). The first is
+> a "new optional output field" change per §3, the second removes keys that were only ever
+> present when the opt-in `check` input was used, and the third is free-text carried verbatim
 > from the governance charter and has never been promised stable.
+>
+> **Review round 2 (still 1.6.0, `_meta.apiVersion` unchanged).** Additive inputs:
+> `creationDate` (ISO-8601) on the nine document tools — pins `/CreationDate`, the XMP dates
+> and therefore the trailer `/ID`; `signingTime` on `prepare_signature_placeholder`
+> (`/Sig /M` is frozen at placeholder time); `sign_pdf.signingTime` accepts time-zone
+> offsets; `rsaKeyPkcs1DerBase64` also accepts PKCS#8 DER. Pinned dates are byte-identical
+> on the **same host time zone** (the engine serialises local time). Additive outputs:
+> `_meta.unmatchedFields` + `_meta.availableFields` when a `fields` path matches nothing;
+> `_meta.cached: true` on a response served from the opt-in cache; `verbosity: 'summary'`
+> keeps `ltvLevel` (`verify_pdf ltv: true`) and `docTimestampCount` / `trapped` /
+> `checksPassed` (`inspect_pdf`) when present. Error-path changes (no previously-succeeding
+> call changes): unknown or misspelt keys → `VALIDATION_ERROR` (contract enforcement, see
+> §2); `validate_pdf` on unparsable bytes → `PDF_PARSE_FAILED` (was a `valid: false` result
+> with an `Unparseable PDF:` error string); page-index / range errors on `merge_pdfs` /
+> `split_pdf` / `extract_pages` → `VALIDATION_ERROR` with a 0-based hint (was
+> `PDF_PARSE_FAILED`); PEM where DER base64 is expected, empty payloads and non-base64 input
+> → `VALIDATION_ERROR` with the `openssl` remedy (`sign_pdf` certificate / chain / key parse
+> failures were previously uncoded); PEM text, a nested `data:` URI or double-encoded base64
+> passed as a PDF → `PDF_PARSE_FAILED` with a hint (a `data:…;base64,` prefix is now
+> tolerated). `sign_pdf` is never served from the response cache (previously only with
+> `timestamp: true`), and the cache key is namespaced by `TOOL_API_VERSION/package version`.
+> `add_international_text.lang` uses `anyOf` instead of `oneOf` (same accepted values).
+> None of these touches a stable surface in §2.
 >
 > **New error codes** (additive): `TSA_NOT_CONFIGURED`, `TSA_REJECTED`,
 > `REVOCATION_NOT_CONFIGURED`, `NETWORK_HOST_NOT_ALLOWED`, `NETWORK_ERROR`, `LTV_NO_SIGNATURE`,
@@ -208,7 +252,13 @@ All 27 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 > | encrypt_pdf | changed | non-deterministic by design (random IV / salt) |
 > | sign_pdf | n/a | needs key material; covered by real sign → verify round-trips for every algorithm. Default placeholder size is bounded below by 16384 and only grows for signer certificates above ~10 KB; `signingTime` now lands in `/M` (see above) |
 >
-> The MCP SDK v2 migration itself is byte-transparent on every tool result.
+> The MCP SDK v2 migration itself is byte-transparent on every tool result. The table was
+> produced with a scratchpad baseline script (v1.5.0 checkout + fixed inputs); there is no
+> in-repo reproduction script for it yet — `creationDate` / `signingTime` now make the date
+> normalisation unnecessary, so a future run can compare raw bytes. The
+> `add_international_text` row covers Arabic / Hebrew / Latin inputs together; the UAX #9
+> reason applies to the RTL inputs, and the Latin input has not been re-measured in
+> isolation.
 
 > **v1.5.0 minor bump rationale:** five **new tools** were added — `add_chart`
 > (native vector charts on pdfnative 1.6's `ChartBlock`), `read_form_fields` and
@@ -277,9 +327,9 @@ All 27 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 > File mode (`{ mode, sizeBytes, filePath }`) is unchanged.
 >
 > **Summary / projected responses are intentional subsets.** When `verbosity: 'summary'` or
-> `fields` is supplied, `structuredContent` is a pruned projection that does not claim to
-> satisfy the full `outputSchema` (which describes the default `'full'` shape). This is an
-> opt-in token-saving feature; the `outputSchema` contract continues to describe full output.
+> `fields` is supplied, `structuredContent` is a pruned projection of the default `'full'`
+> shape. This is an opt-in token-saving feature. (Since 1.6.0 the read tools' `outputSchema`
+> declares every property optional, so a projection still validates against it — see §1.)
 
 Page-tree tools `merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative v1.4.0's page-tree API; `annotate_pdf` shipped in v1.4.0 on pdfnative v1.5.0's annotation writer; charts (`add_chart`), form fill/flatten (`read_form_fields`, `fill_form`) and the encrypted round-trip (`encrypt_pdf`, `decrypt_pdf`, `password`/`encrypt` on the page-tree and read-only tools) shipped in v1.5.0 on pdfnative v1.6.0; the PAdES LTV ladder (`add_ltv`, `timestamp_pdf`, `sign_pdf` `profile` / `timestamp`), `update_metadata`, print production and charts v2 shipped in v1.6.0 on pdfnative v1.7.0. `redact_pdf` stays **deferred by design** (pdfnative can overlay/flatten but not remove content — an overlay-only redaction would create false security) and will be added with the same stability guarantees once pdfnative exports a content-removal API. Native ECDSA verification also stays deferred: pdfnative still does not export `ecdsaVerifyHash`, so `verify_pdf` keeps its local P-256 implementation (no contract impact).
 

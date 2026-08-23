@@ -66,14 +66,15 @@ describe('colour-emoji flag & ZWJ sequences (pdfnative 1.7 bundled font, no API 
     });
 
     it('is deterministic and differs from the per-codepoint fallback text', async () => {
-        const seq = { title: 'S', lang: ['emoji'], paragraphs: ['\u{1F1EB}\u{1F1F7}'] };
+        // creationDate pinned: /CreationDate and the trailer /ID otherwise follow the wall clock.
+        const seq = { title: 'S', lang: ['emoji'], paragraphs: ['\u{1F1EB}\u{1F1F7}'], creationDate: '2026-01-15T09:00:00Z' };
         // Strip the wall-clock /CreationDate so a second boundary between calls cannot flake.
         const norm = (b64: string | undefined): string =>
             Buffer.from(b64 ?? '', 'base64').toString('latin1').replace(/D:\d{14}[^)]*\)/g, 'D:X)');
         const a = await addInternationalText(seq);
         const b = await addInternationalText(seq);
         expect(norm(a.base64)).toBe(norm(b.base64));
-        const split = await addInternationalText({ title: 'S', lang: ['emoji'], paragraphs: ['\u{1F1EB} \u{1F1F7}'] });
+        const split = await addInternationalText({ title: 'S', lang: ['emoji'], paragraphs: ['\u{1F1EB} \u{1F1F7}'], creationDate: '2026-01-15T09:00:00Z' });
         expect(norm(split.base64)).not.toBe(norm(a.base64));
     });
 });

@@ -45,10 +45,16 @@
         },
         {
           "name": "PDFNATIVE_MCP_PORT",
-          "description": "Bind to an HTTP port instead of stdio (Streamable HTTP MCP transport, loopback only).",
+          "description": "Bind to an HTTP port instead of stdio (Streamable HTTP MCP transport, loopback only). No authentication unless PDFNATIVE_MCP_HTTP_TOKEN is set.",
           "isRequired": false,
           "isSecret": false,
           "format": "number"
+        },
+        {
+          "name": "PDFNATIVE_MCP_HTTP_TOKEN",
+          "description": "Opt-in bearer token for the HTTP transport (at least 16 characters, no whitespace). When set, every request to /mcp must carry 'Authorization: Bearer <token>'; otherwise 401. Never logged or echoed.",
+          "isRequired": false,
+          "isSecret": true
         },
         {
           "name": "PDFNATIVE_MCP_TSA_URL",

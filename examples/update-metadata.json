@@ -1,5 +1,5 @@
 {
-  "description": "Rewrite the /Info dictionary of an existing PDF as an incremental update (pdfnative 1.7 PdfModifier.updateMetadata); XMP stays in sync on PDF/A files. Pin modDate for reproducible bytes. Earlier revisions and their signatures are preserved verbatim.",
+  "description": "Rewrite the /Info dictionary of an existing PDF as an incremental update (pdfnative 1.7 PdfModifier.updateMetadata); XMP stays in sync on PDF/A files. Pin modDate for byte-identical output on the same host time zone (the engine serialises local time). Earlier revisions and their signatures are preserved verbatim.",
   "tool": "update_metadata",
   "arguments": {
     "pdfBase64": "<any unencrypted PDF base64>",

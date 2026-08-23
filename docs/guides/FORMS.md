@@ -57,10 +57,24 @@ AcroForms — a template made by `add_form`, or any third-party fillable PDF.
 
 | Code | Meaning |
 | --- | --- |
-| `FORM_FIELD_NOT_FOUND` | A value key matched no field. Use `onUnknownField: 'ignore'` to skip. |
+| `FORM_FIELD_NOT_FOUND` | A value key matched no field. The message itself names the remedy: list the real names with `read_form_fields`, or pass `onUnknownField: 'ignore'` to skip unknown keys. |
 | `FORM_VALUE_TYPE_ERROR` | Wrong value type, or a choice value not in the field's options. |
 | `FORM_UNSUPPORTED` | Tried to fill/flatten a signature field. |
 | `PASSWORD_REQUIRED` / `PASSWORD_INVALID` | Encrypted source needs / rejected the `password`. |
+
+## Creating templates with `add_form` — PDF/A and reproducibility
+
+- `add_form` shares the document-tool options: `pdfA`, `embedFonts`, `strict`,
+  `print`, `metadata`, `outputIntent` and an opt-in `creationDate` (ISO-8601).
+  Pin `creationDate` to get byte-identical templates from identical inputs on the
+  same host time zone; omitted, every call differs by the wall clock.
+- **Known limitation:** `add_form` + `pdfA` + `embedFonts: true` still fails
+  PDF/A-2b under veraPDF. The page text uses the embedded Noto Sans, but the
+  AcroForm default resources (`/AcroForm /DR /Helv`) reference the base-14
+  Helvetica as an unembedded Type1 font (ISO 19005-2 rule 6.2.11.4.1). This is an
+  engine-side gap tracked by the `form-pdfa2b.pdf` negative canary in the veraPDF
+  corpus; `inspect_pdf` will still report the claim. Do not rely on a PDF/A claim
+  on a form until the upstream fix lands — see [PDFA.md](PDFA.md#known-limitations-engine-gaps-documented-honestly).
 
 ## Non-WinAnsi text
 

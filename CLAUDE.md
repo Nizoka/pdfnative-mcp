@@ -10,8 +10,8 @@ is about *contributing to* the codebase, not *using* the server.
 `pdfnative-mcp` is a thin, faithful **Model Context Protocol** server wrapping the
 zero-dependency [`pdfnative`](https://github.com/Nizoka/pdfnative) PDF engine.
 TypeScript (strict, ESM-only), Node ≥ 22, `@modelcontextprotocol/server` (MCP SDK v2,
-protocol 2026-07-28 with automatic 2025-era fallback). **27 tools**, MCP prompts +
-resources. Current release: **1.6.0** (on pdfnative 1.7.0).
+protocol 2026-07-28 with automatic 2025-era fallback). **27 tools**, 6 MCP prompts +
+resources. Three runtime dependencies (pdfnative, the MCP SDK, zod). Current release: **1.6.0** (on pdfnative 1.7.0).
 
 ## Commands
 
@@ -22,7 +22,8 @@ npm run lint           # eslint src
 npm test               # vitest run
 npm run test:coverage  # vitest run --coverage  (enforces thresholds)
 npm run examples:check # runs examples/*.json live through the tools/call handler
-npm run validate:pdfa  # advisory: veraPDF over a generated PDF/A corpus (skips when veraPDF is absent; non-blocking in CI)
+npm run validate:pdfa  # advisory: veraPDF over the 24-file PDF/A corpus (skips when veraPDF is absent; VERAPDF_REQUIRED=1 fails closed; non-blocking in CI)
+node scripts/tool-shape.mjs --write   # ONLY after a deliberate tools/list schema change — refreshes tests/_fixtures/tool-shape.json (catalogue parity gate)
 ```
 
 **Quality gate (run before every commit/PR):**
@@ -37,20 +38,20 @@ functions 90 · lines 91. New code must keep the aggregate above these; never lo
 ## Architecture map
 
 - `src/cli.ts` — entry point (stdio via `serveStdio` by default; Streamable HTTP via `createMcpHandler` when `PDFNATIVE_MCP_PORT` is set; both with the SDK's legacy fallback).
-- `src/http.ts` — Node `http` ↔ Web `Request`/`Response` bridge and the Host/Origin loopback guard for the HTTP transport.
-- `src/server.ts` — the `TOOLS` registry (with MCP `annotations`), request handlers on the low-level `Server` (not `McpServer.registerTool`, which would validate `structuredContent` and break the projections), `dispatchOutput` (duck-typed result → content builder), `SERVER_INSTRUCTIONS`, `SERVER_CACHE_HINTS`, and the `resources` / `prompts` capabilities. `TOOL_API_VERSION` lives here.
+- `src/http.ts` — Node `http` ↔ Web `Request`/`Response` bridge and the Host/Origin loopback guard for the HTTP transport (disconnect detection per response, not per socket). `src/auth.ts` — opt-in bearer token (`PDFNATIVE_MCP_HTTP_TOKEN`).
+- `src/server.ts` — the `TOOLS` registry (with MCP `annotations`), request handlers on the low-level `Server` (not `McpServer.registerTool`; the read tools' output schemas are projectable — every property optional — so `structuredContent` always validates, asserted by `tests/schema-conformance.test.ts`), `dispatchOutput` (duck-typed result → content builder), `SERVER_INSTRUCTIONS`, `SERVER_CACHE_HINTS`, and the `resources` / `prompts` capabilities. `TOOL_API_VERSION` lives here.
 - `src/tools/<name>.ts` — one file per tool: a hand-written JSON Schema `as const`, a **parallel Zod schema** (kept in lock-step), and the handler.
-- Shared schema/util modules: `src/network.ts` (operator-configured TSA / OCSP / CRL providers + SSRF guard — the **only** egress path), `src/print.ts` (print-production `print` / `outputIntent` / `metadata` schema + mappers), `src/diagnostics.ts` (PDF/A diagnostics sink, `strict` / `includeDiagnostics` / `embedFonts`, `mapBuildError`), `src/encryption.ts` (password + `encrypt` schema, `mapDecryptError`), `src/chart.ts` (charts v2 schema + `toChartBlock`), `src/cms.ts` (CMS parser), `src/pdf-introspection.ts` (signature widgets, `/DSS`, page boxes), `src/pagetree.ts` (`mapPageTreeError`), `src/pdfa.ts`, `src/doc-features.ts`, `src/watermark.ts`, `src/projection.ts` (token-frugal `verbosity`/`fields`), `src/output.ts` (sandboxed file write), `src/resources.ts`.
-- `tests/` — one `*.test.ts` per tool/module; shared fixtures are `_`-prefixed (`_pdf-assert.ts`, `_cert-fixtures.ts`, `_pagetree-fixtures.ts`, `_encrypted-fixtures.ts`, `_ltv-fixtures.ts` (offline mock PKI + RFC 3161 / OCSP / CRL providers), `_tsa-server.ts` (loopback TSA), `_http-fixture.ts`, `_mcp-harness.ts`). `tests/http-modern.test.ts` asserts the MCP 2026-07-28 conformance.
+- Shared schema/util modules: `src/network.ts` (operator-configured TSA / OCSP / CRL providers + SSRF guard — the **only** egress path), `src/print.ts` (print-production `print` / `outputIntent` / `metadata` / `creationDate` schema + mappers), `src/diagnostics.ts` (PDF/A diagnostics sink, `strict` / `includeDiagnostics` / `embedFonts`, `mapBuildError`), `src/encryption.ts` (password + `encrypt` schema, `mapDecryptError`), `src/chart.ts` (charts v2 schema + `toChartBlock`), `src/cms.ts` (CMS parser), `src/pdf-introspection.ts` (signature widgets, `/DSS`, page boxes), `src/pagetree.ts` (`mapPageTreeError` — page-index errors → `VALIDATION_ERROR`), `src/base64.ts` (base64 / DER boundary decoding with agent-facing diagnostics — use it for every `pdfBase64` / DER input), `src/pdfa.ts`, `src/doc-features.ts`, `src/watermark.ts`, `src/projection.ts` (token-frugal `verbosity`/`fields`), `src/output.ts` (sandboxed file write), `src/resources.ts`.
+- `tests/` — one `*.test.ts` per tool/module; shared fixtures are `_`-prefixed (`_pdf-assert.ts`, `_cert-fixtures.ts`, `_pagetree-fixtures.ts`, `_encrypted-fixtures.ts`, `_ltv-fixtures.ts` (offline mock PKI + RFC 3161 / OCSP / CRL providers), `_tsa-server.ts` (loopback TSA), `_http-fixture.ts`, `_mcp-harness.ts`). `tests/http-modern.test.ts` asserts the MCP 2026-07-28 conformance; `tests/catalogue-parity.test.ts` compares `tools/list` with the structural fixture `tests/_fixtures/tool-shape.json`.
 
 ## Non-negotiable conventions
 
 1. **Zero new runtime dependencies.** Only `pdfnative`, `@modelcontextprotocol/server`, `zod`. Adding one is a governance blocker (`.github/AGENT_RULES.md`).
 2. **Faithful thin wrapper.** Surface pdfnative behaviour honestly; don't reimplement engine features on raw primitives, and don't over-promise (e.g. `encrypt_pdf`/`decrypt_pdf` rebuild the page tree and drop signatures/AcroForm — say so).
 3. **Strict TypeScript.** No `any` (use `unknown` + narrowing). No unused locals/params.
-4. **Validate every input** at the boundary with Zod; keep the JSON Schema and Zod schema aligned (they are hand-kept in sync).
-5. **Additive & byte-identical.** Default responses for existing tools stay byte-identical across releases; new behaviour is opt-in. New inputs get backward-compatible defaults. See `docs/API_STABILITY.md` before touching any schema or error code — a schema/error change may require a `TOOL_API_VERSION` bump.
-6. **Security.** Never write outside `PDFNATIVE_MCP_OUTPUT_DIR` (use `src/output.ts` helpers — they reject absolute paths, traversal, NUL bytes, non-`.pdf`). Never log or echo passwords, keys, certificate material, or `PDFNATIVE_MCP_TSA_AUTH`. Never add an egress path outside `src/network.ts`, and never let a tool argument supply a URL — endpoints come only from the operator environment.
+4. **Validate every input** at the boundary with Zod — every object schema is `.strict()` (unknown keys → `VALIDATION_ERROR`), matching `additionalProperties: false`; keep the JSON Schema and Zod schema aligned (they are hand-kept in sync). Unknown tool names are a JSON-RPC `-32602` protocol error (`[UNKNOWN_TOOL]`), not an `isError` result.
+5. **Additive & byte-identical.** Default responses for existing tools stay byte-identical across releases; new behaviour is opt-in. New inputs get backward-compatible defaults. See `docs/API_STABILITY.md` before touching any schema or error code — a schema/error change may require a `TOOL_API_VERSION` bump and always needs a reviewed `tests/_fixtures/tool-shape.json` refresh. Wording (descriptions, `_meta.examples` ≤ 2 per tool, `SERVER_INSTRUCTIONS`) is free to change.
+6. **Security.** Never write outside `PDFNATIVE_MCP_OUTPUT_DIR` (use `src/output.ts` helpers — they reject absolute paths, traversal, NUL bytes, non-`.pdf`). Never log or echo passwords, keys, certificate material, `PDFNATIVE_MCP_TSA_AUTH` or `PDFNATIVE_MCP_HTTP_TOKEN`. Never cache secret-, time- or network-dependent output (`NON_CACHEABLE_TOOLS`). Never add an egress path outside `src/network.ts`, and never let a tool argument supply a URL — endpoints come only from the operator environment.
 7. **Version lock-step.** `tests/metadata.test.ts` asserts `package.json`, `src/version.ts`, and `server.json` agree. Update all together.
 
 ## Adding a tool (the pattern)

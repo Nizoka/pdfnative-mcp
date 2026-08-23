@@ -17,8 +17,8 @@ export default defineConfig({
                 'src/index.ts',
             ],
             thresholds: {
-                // v1.6.0 measured: 90.6 / 81.4 / 95.8 / 92.7 (statements / branches /
-                // functions / lines). Thresholds sit ~1 point below the measured
+                // v1.6.0 measured (review round 2): 92.6 / 83.5 / 98.5 / 94.7 (statements / branches /
+                // functions / lines). Thresholds sit 2–8 points below the measured
                 // values so a regression fails CI while ordinary churn does not.
                 // Never lower these; raise them when a release lifts coverage.
                 statements: 89,

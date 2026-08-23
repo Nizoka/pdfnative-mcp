@@ -445,7 +445,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: GENERATE_BASIC_PDF_NAME,
         title: 'Generate basic PDF',
         description:
-            "Multi-page A4 PDF from structured blocks (heading, paragraph, list, table, chart, image, page break, spacer). DEFAULT for plain documents — reach for add_table / add_chart / add_barcode / add_attachment / add_international_text only when the document IS that thing or needs non-Latin scripts. `pdfA` + `embedFonts:true` for a valid PDF/A-1b/2b/2u/3b claim; `outline` / `pageLabels` / `viewerPreferences` / `watermark` for navigation and presentation; `print`, `metadata`, `outputIntent`, `creationDate` as on every document tool. The 'chart' block takes the same body as add_chart.",
+            "Multi-page A4 PDF from structured blocks (heading, paragraph, list, chart, pageBreak, spacer — no table or image block: use add_table / embed_image and merge_pdfs). DEFAULT for plain documents — reach for add_table / add_chart / add_barcode / add_attachment / add_international_text only when the document IS that thing or needs non-Latin scripts. `pdfA` + `embedFonts:true` for a valid PDF/A-1b/2b/2u/3b claim; `outline` / `pageLabels` / `viewerPreferences` / `watermark` for navigation and presentation; `print`, `metadata`, `outputIntent`, `creationDate` as on every document tool. The 'chart' block takes the same body as add_chart.",
         inputSchema: GENERATE_BASIC_PDF_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -502,7 +502,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ADD_TABLE_NAME,
         title: 'Add table / report',
         description:
-            "Tabular PDF report from `headers` + `rows` (every row the same length). Smart-table options: wrap, repeatHeader (header on every page), zebra, caption (tagged for PDF/A), minRowHeight, cellPadding, cellBorders, cellVAlign, autoFitColumns, clipCells. Use a 'table' block in generate_basic_pdf when the table sits inside a longer document. PDF/A (pdfA + embedFonts:true), print, metadata, watermark and creationDate options as on every document tool.",
+            "Tabular PDF report from `headers` + `rows` (every row the same length). Smart-table options: wrap, repeatHeader (header on every page), zebra, caption (tagged for PDF/A), minRowHeight, cellPadding, cellBorders, cellVAlign, autoFitColumns, clipCells. (generate_basic_pdf has no table block — use this tool and merge_pdfs to combine.) PDF/A (pdfA + embedFonts:true), print, metadata, watermark and creationDate options as on every document tool.",
         inputSchema: ADD_TABLE_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -529,7 +529,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: EMBED_IMAGE_NAME,
         title: 'Embed image in PDF',
         description:
-            "PDF with one embedded JPEG or PNG (base64; PNG without alpha channel) plus optional caption and render width/height. For an image inside a longer document use an 'image' block in generate_basic_pdf. PDF/A, print, metadata and creationDate options as on every document tool.",
+            "PDF with one embedded JPEG or PNG (base64; PNG without alpha channel) plus optional caption and render width/height. (generate_basic_pdf has no image block — combine with merge_pdfs.) PDF/A, print, metadata and creationDate options as on every document tool.",
         inputSchema: EMBED_IMAGE_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -844,7 +844,7 @@ const TOOL_INDEX: ReadonlyMap<string, ToolDefinition> = new Map(TOOLS.map((t) =>
 const SERVER_INSTRUCTIONS = `pdfnative-mcp: 27 tools over the pdfnative v1.7 PDF engine. Tool API 1.6.0. MCP 2026-07-28 (stateless) with automatic fallback to the 2025-era handshake. Every tool has typed input/output schemas and executable _meta.examples; read-only tools never modify input; document tools are byte-identical by default and every new option is opt-in.
 
 DECISION TREE:
-  • Plain document (headings, paragraphs, lists, tables, charts, images) → generate_basic_pdf
+  • Plain document (headings, paragraphs, lists, charts) → generate_basic_pdf (no table / image block — merge_pdfs with add_table / embed_image output)
   • Standalone chart / table / barcode / image → add_chart / add_table / add_barcode / embed_image
   • Non-Latin script, emoji or math symbols → add_international_text (lang:['latin','math'] for formulas)
   • Files inside the PDF (Factur-X / ZUGFeRD invoice, side-cars) → add_attachment (PDF/A-3), read back with extract_attachments

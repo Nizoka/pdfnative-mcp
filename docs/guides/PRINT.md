@@ -54,6 +54,15 @@ document has already been trapped for high-end colour printing. (To change the
 metadata of an **existing** PDF, use `update_metadata` instead — it is an incremental
 update and does not write `/Trapped`.)
 
+Next to `metadata`, the same nine tools accept an opt-in `creationDate` (ISO-8601,
+e.g. `'2026-01-15T09:00:00Z'`). Pinning it fixes `/CreationDate`, the XMP dates
+under PDF/A and therefore the trailer `/ID`, so a proof re-generated with identical
+inputs is **byte-identical on the same host time zone** (the engine serialises the
+instant in local time; set `TZ=UTC` for portability across hosts). Omitted, the wall
+clock is used and every call differs. Two MCP prompts cover this ground: `print_ready`
+(boxes, bleed, marks, `/UserUnit`, metadata, output intent) and `reproducible_output`
+(which inputs to pin, what stays non-deterministic).
+
 ## `outputIntent` — custom ICC profile
 
 ```jsonc
