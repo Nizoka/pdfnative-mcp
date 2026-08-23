@@ -24,6 +24,7 @@ import { mapDecryptError } from './encryption.js';
  * - Wrong source password       → `PASSWORD_INVALID`
  * - Unsupported handler / CSPRNG → `ENCRYPTION_UNSUPPORTED` / `ENCRYPTION_ERROR`
  * - Output / size-cap exceeded   → `OUTPUT_TOO_LARGE`
+ * - Page index / range errors   → `VALIDATION_ERROR` (pages are 0-based)
  * - Anything else (malformed)    → `PDF_PARSE_FAILED`
  *
  * @param hadPassword whether the caller supplied a source password (informs the
@@ -39,6 +40,9 @@ export function mapPageTreeError(err: unknown, hadPassword = false): never {
     }
     if (/csprng|getRandomValues|web ?crypto/i.test(message)) {
         mapDecryptError(err, hadPassword);
+    }
+    if (/page index .* out of range|range \[.*\] invalid for .*-page document|out of range \(0-/i.test(message)) {
+        throw new ToolError('VALIDATION_ERROR', `${message}. Page indices and ranges are 0-based (first page = 0); check pageCount with inspect_pdf.`);
     }
     throw new ToolError('PDF_PARSE_FAILED', `Failed to process the source PDF(s): ${message}`);
 }

@@ -18,8 +18,8 @@ describe('math symbols (pdfnative v1.5 math font)', () => {
     });
 
     it("advertises 'math' as a supported lang in the input schema", () => {
-        const langSchema = (ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA.properties as unknown as Record<string, { oneOf?: Array<{ enum?: readonly string[] }> }>).lang;
-        const singleEnum = langSchema.oneOf?.[0]?.enum ?? [];
+        const langSchema = (ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA.properties as unknown as Record<string, { anyOf?: Array<{ enum?: readonly string[] }> }>).lang;
+        const singleEnum = langSchema.anyOf?.[0]?.enum ?? [];
         expect(singleEnum).toContain('math');
     });
 

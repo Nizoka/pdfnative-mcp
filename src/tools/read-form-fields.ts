@@ -14,6 +14,7 @@ import { readFormFields, type ParsedFormField } from 'pdfnative';
 import { z } from 'zod';
 
 import { ToolError } from '../errors.js';
+import { decodePdfBase64 } from '../base64.js';
 import { mapDecryptError, PASSWORD_INPUT_SCHEMA, PasswordSchema } from '../encryption.js';
 
 export const READ_FORM_FIELDS_NAME = 'read_form_fields';
@@ -129,12 +130,7 @@ export interface ReadFormFieldsResult {
 }
 
 function decodeBase64(value: string): Uint8Array {
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-        /* v8 ignore next 3 */
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', 'pdfBase64 is not valid base64.');
-    }
+    return decodePdfBase64(value, 'pdfBase64');
 }
 
 export async function readFormFieldsTool(rawInput: unknown): Promise<ReadFormFieldsResult> {

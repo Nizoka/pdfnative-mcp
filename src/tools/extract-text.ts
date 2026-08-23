@@ -25,6 +25,7 @@ import { extractText as pdfnativeExtractText, openPdf, type ExtractTextOptions, 
 import { z } from 'zod';
 
 import { ToolError } from '../errors.js';
+import { decodePdfBase64 } from '../base64.js';
 import { mapDecryptError, PASSWORD_INPUT_SCHEMA, PasswordSchema } from '../encryption.js';
 
 export const EXTRACT_TEXT_NAME = 'extract_text';
@@ -156,12 +157,7 @@ export interface ExtractTextResult {
 }
 
 function decodeBase64(value: string): Uint8Array {
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-        /* v8 ignore next 3 */
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', 'pdfBase64 is not valid base64.');
-    }
+    return decodePdfBase64(value, 'pdfBase64');
 }
 
 /** True when a page's text is non-empty but every non-whitespace char is U+FFFD. */

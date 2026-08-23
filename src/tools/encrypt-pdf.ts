@@ -19,6 +19,7 @@ import { z } from 'zod';
 
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { decodePdfBase64 } from '../base64.js';
 import { mapPageTreeError } from '../pagetree.js';
 import { ENCRYPT_INPUT_SCHEMA, EncryptSchema, PASSWORD_INPUT_SCHEMA, PasswordSchema, toEncryptionOptions } from '../encryption.js';
 
@@ -56,12 +57,7 @@ const InputSchema = EncryptSchema.extend({
 });
 
 function decodeBase64(value: string): Uint8Array {
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-        /* v8 ignore next 3 */
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', 'pdfBase64 is not valid base64.');
-    }
+    return decodePdfBase64(value, 'pdfBase64');
 }
 
 export async function encryptPdf(rawInput: unknown): Promise<OutputResult> {

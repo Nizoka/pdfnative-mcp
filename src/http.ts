@@ -41,7 +41,7 @@ export class RequestTooLargeError extends Error {
  * request is aborted when the client connection closes so long-lived
  * `subscriptions/listen` streams are torn down promptly.
  */
-export async function toWebRequest(req: IncomingMessage, origin: string): Promise<Request> {
+export async function toWebRequest(req: IncomingMessage, origin: string, res?: ServerResponse): Promise<Request> {
     const headers = new Headers();
     for (const [key, value] of Object.entries(req.headers)) {
         if (value === undefined) continue;
@@ -51,14 +51,18 @@ export async function toWebRequest(req: IncomingMessage, origin: string): Promis
     const controller = new AbortController();
     // Abort the in-flight MCP request when the client goes away. For POST the
     // request side is fully consumed before the handler runs, so the reliable
-    // signal is the *response* socket closing before we finished writing.
+    // signal is the *response* closing before it finished — observed on the
+    // per-request response object, never on the (keep-alive, shared) socket,
+    // so listeners cannot accumulate across requests on one connection.
     const onGone = (): void => {
         if (!controller.signal.aborted) controller.abort();
     };
     req.once('close', () => {
         if (!req.readableEnded || !req.complete) onGone();
     });
-    req.socket?.once('close', onGone);
+    res?.once('close', () => {
+        if (!res.writableFinished) onGone();
+    });
     const init: RequestInit = { method, headers, signal: controller.signal };
     if (BODY_METHODS.has(method)) {
         const chunks: Buffer[] = [];

@@ -105,7 +105,8 @@ export const ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA = {
         lang: {
             description:
                 "Language / script identifier. Either a single code (e.g. 'ar'), a comma-separated list ('ar,emoji'), or an array (['ar','emoji']). Multiple codes enable multi-font run splitting (script + emoji + Latin fallback).",
-            oneOf: [
+            // anyOf (not oneOf): a single code also satisfies the comma-separated string branch.
+            anyOf: [
                 { type: 'string', enum: [...SUPPORTED_LANGS] },
                 {
                     type: 'array',

@@ -18,7 +18,7 @@ describe('src/http.ts bridge', () => {
         server = createHttpServer((req, res) => {
             void (async () => {
                 const origin = `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
-                const request = await toWebRequest(req, origin);
+                const request = await toWebRequest(req, origin, res);
                 await sendWebResponse(res, await handler(request));
             })();
         });
@@ -104,7 +104,7 @@ describe('src/http.ts bridge — client disconnect aborts the in-flight request'
             const server = createServer((req, res) => {
                 void (async () => {
                     const port = (server.address() as AddressInfo).port;
-                    const request = await toWebRequest(req, `http://127.0.0.1:${port}`);
+                    const request = await toWebRequest(req, `http://127.0.0.1:${port}`, res);
                     seenSignal = request.signal;
                     resolve();
                     // Never answer: the client will hang up.

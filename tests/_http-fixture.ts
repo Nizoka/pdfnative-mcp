@@ -33,7 +33,7 @@ export async function startHttpFixture(): Promise<HttpFixture> {
                 res.end('Not Found. MCP endpoint is POST /mcp');
                 return;
             }
-            const request = await toWebRequest(req, origin);
+            const request = await toWebRequest(req, origin, res);
             const response = guardLoopback(request) ?? (await handler.fetch(request));
             await sendWebResponse(res, response);
         })();

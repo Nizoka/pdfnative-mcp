@@ -55,6 +55,7 @@ import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { CERT_REMEDY, EC_KEY_REMEDY, RSA_KEY_REMEDY, decodeDerBase64, decodePdfBase64, parseDerOrThrow } from '../base64.js';
 import { parseEcPrivateKeyDer } from '../ec-key.js';
 import { hasSignaturePlaceholder } from '../pdf-introspection.js';
 import { buildNodeCryptoProvider } from '../crypto-provider.js';
@@ -163,7 +164,7 @@ const InputSchema = z
         reason: z.string().max(500).optional(),
         location: z.string().max(200).optional(),
         contactInfo: z.string().max(200).optional(),
-        signingTime: z.string().datetime().optional(),
+        signingTime: z.string().datetime({ offset: true }).optional(),
         outputMode: z.enum(['base64', 'file']).default('base64'),
         outputPath: z.string().optional(),
     })
@@ -196,12 +197,7 @@ const InputSchema = z
     });
 
 function decodeBase64(value: string, field: string): Uint8Array {
-    /* v8 ignore next 3 */
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', `${field} is not valid base64.`);
-    }
+    return decodePdfBase64(value, field);
 }
 
 function hexToBigInt(hex: string): bigint {
@@ -281,10 +277,10 @@ export async function signPdf(rawInput: unknown): Promise<OutputResult> {
     const timestampProvider = input.timestamp ? requireTimestampProvider() : null;
 
     const rawPdfBytes = decodeBase64(input.pdfBase64, 'pdfBase64');
-    const certDer = decodeBase64(input.certDerBase64, 'certDerBase64');
-    const chainDer = (input.certChainDerBase64 ?? []).map((c, i) => decodeBase64(c, `certChainDerBase64[${i}]`));
+    const certDer = decodeDerBase64(input.certDerBase64, 'certDerBase64', CERT_REMEDY);
+    const chainDer = (input.certChainDerBase64 ?? []).map((c, i) => decodeDerBase64(c, `certChainDerBase64[${i}]`, CERT_REMEDY));
 
-    const signerCert = parseCertificate(certDer);
+    const signerCert = parseDerOrThrow('certDerBase64', CERT_REMEDY, () => parseCertificate(certDer));
     let certChain: X509Certificate[] | undefined;
     if (chainDer.length > 0) {
         try {
@@ -329,22 +325,22 @@ export async function signPdf(rawInput: unknown): Promise<OutputResult> {
 
     let options: PdfSignOptions;
     if (algorithm !== 'ecdsa-sha256') {
-        const rsaDer = decodeBase64(input.rsaKeyPkcs1DerBase64 as string, 'rsaKeyPkcs1DerBase64');
+        const rsaDer = decodeDerBase64(input.rsaKeyPkcs1DerBase64 as string, 'rsaKeyPkcs1DerBase64', RSA_KEY_REMEDY);
         // Prefer the native constant-time signer; fall back to pdfnative's pure-JS path.
         const provider = buildNodeCryptoProvider({ algorithm, der: rsaDer, keyType: 'pkcs1' });
         if (provider !== null) {
             options = { ...baseOptions, provider };
         } else {
-            const rsaKey = parseRsaPrivateKey(rsaDer);
+            const rsaKey = parseDerOrThrow('rsaKeyPkcs1DerBase64', RSA_KEY_REMEDY, () => parseRsaPrivateKey(rsaDer));
             options = { ...baseOptions, rsaKey };
         }
     } else if (input.ecPrivateKeyDerBase64 !== undefined) {
-        const ecDer = decodeBase64(input.ecPrivateKeyDerBase64, 'ecPrivateKeyDerBase64');
+        const ecDer = decodeDerBase64(input.ecPrivateKeyDerBase64, 'ecPrivateKeyDerBase64', EC_KEY_REMEDY);
         const provider = buildNodeCryptoProvider({ algorithm: 'ecdsa-sha256', der: ecDer, keyType: 'sec1' });
         if (provider !== null) {
             options = { ...baseOptions, provider };
         } else {
-            const d = parseEcPrivateKeyDer(ecDer);
+            const d = parseDerOrThrow('ecPrivateKeyDerBase64', EC_KEY_REMEDY, () => parseEcPrivateKeyDer(ecDer));
             options = { ...baseOptions, ecKey: { d } };
         }
     } else {

@@ -53,6 +53,7 @@ import {
 import { z } from 'zod';
 
 import { ToolError } from '../errors.js';
+import { CERT_REMEDY, decodeDerBase64, decodePdfBase64 } from '../base64.js';
 import { mapDecryptError, PASSWORD_INPUT_SCHEMA, PasswordSchema } from '../encryption.js';
 import {
     decodeEcdsaSignature,
@@ -280,11 +281,7 @@ const OID_BYTES_SHA384 = Uint8Array.of(0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04,
 const OID_BYTES_SHA512 = Uint8Array.of(0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03);
 
 function decodeBase64(value: string, field: string): Uint8Array {
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', `${field} is not valid base64.`);
-    }
+    return field === 'pdfBase64' ? decodePdfBase64(value, field) : decodeDerBase64(value, field, CERT_REMEDY);
 }
 
 function hashBytes(digest: CmsDigest, bytes: Uint8Array): Uint8Array {

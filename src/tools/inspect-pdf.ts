@@ -31,6 +31,7 @@ import {
 } from 'pdfnative';
 import { z } from 'zod';
 import { ToolError } from '../errors.js';
+import { decodePdfBase64 } from '../base64.js';
 import {
     collectEmbeddedFiles,
     collectSignatureWidgets,
@@ -157,6 +158,7 @@ export const INSPECT_PDF_OUTPUT_SCHEMA = {
             type: 'array',
             items: {
                 type: 'object',
+                additionalProperties: false,
                 required: ['index', 'width', 'height'],
                 properties: {
                     index: { type: 'integer' },
@@ -290,13 +292,7 @@ export interface InspectPdfResult {
 }
 
 function decodeBase64(value: string): Uint8Array {
-    // Buffer.from(..., 'base64') is documented to never throw in Node.js — invalid chars are silently skipped.
-    /* v8 ignore next 3 */
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', 'pdfBase64 is not valid base64.');
-    }
+    return decodePdfBase64(value, 'pdfBase64');
 }
 
 /** Extract the leading "%PDF-x.y" version marker from the file header (ISO 32000-1 §7.5.2). */

@@ -307,6 +307,43 @@ function projectStructured(
     return selectFields(base, fields) as Record<string, unknown>;
 }
 
+/**
+ * MCP 2026-07-28 (server/tools, Output Schema): "Servers MUST provide
+ * structured results that conform to [the output] schema". The read-only
+ * tools can project their result (`verbosity: 'summary'` collapses to
+ * scalars, `fields` keeps a dot-path subset), so their advertised schema
+ * describes the *full* shape with every property optional at every level —
+ * `additionalProperties: false` stays, `required` is removed recursively —
+ * and declares the summary-only scalars. A validating host then accepts the
+ * full result, the summary and any projection alike.
+ */
+function projectableOutputSchema(
+    schema: Readonly<Record<string, unknown>>,
+    summaryProperties: Readonly<Record<string, unknown>>,
+    description: string,
+): Record<string, unknown> {
+    const strip = (node: unknown): unknown => {
+        if (Array.isArray(node)) return node.map(strip);
+        if (node === null || typeof node !== 'object') return node;
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+            // The schema keyword is an array; a *property* named "required" is an object.
+            if (k === 'required' && Array.isArray(v)) continue;
+            out[k] = strip(v);
+        }
+        return out;
+    };
+    const stripped = strip(schema) as Record<string, unknown>;
+    return {
+        ...stripped,
+        description,
+        properties: { ...(stripped['properties'] as Record<string, unknown>), ...summaryProperties },
+    };
+}
+
+const PROJECTION_NOTE =
+    " Every property is optional because the result can be projected: verbosity:'summary' returns only the scalar summary fields, fields:[...] keeps a dot-path subset. Defaults return the full shape.";
+
 
 /** Common output schema for tools that return a generated PDF (base64 inline or sandboxed file path). */
 const PDF_OUTPUT_SCHEMA = {
@@ -427,7 +464,7 @@ const TOOLS: readonly ToolDefinition[] = [
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
-            { title: 'Arabic', input: { text: 'مرحبا', lang: 'ar', title: 'Hello in Arabic' } },
+            { title: 'Arabic', input: { title: 'Hello in Arabic', lang: 'ar', paragraphs: ['مرحبا بالعالم'] } },
             { title: 'Latin + math symbols', input: { title: 'Math', lang: ['latin', 'math'], paragraphs: ['For all x ∈ ℝ, √(x²) = |x| and ∑ i = n(n+1)/2.'] } },
         ],
         handler: addInternationalText,
@@ -456,7 +493,7 @@ const TOOLS: readonly ToolDefinition[] = [
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
-            { title: 'Simple form', input: { title: 'Survey', fields: [{ type: 'text', name: 'name', label: 'Your name' }, { type: 'checkbox', name: 'subscribe', label: 'Subscribe' }] } },
+            { title: 'Simple form', input: { title: 'Survey', fields: [{ fieldType: 'text', name: 'name', label: 'Your name' }, { fieldType: 'checkbox', name: 'subscribe', label: 'Subscribe' }] } },
         ],
         handler: addForm,
     },
@@ -469,7 +506,7 @@ const TOOLS: readonly ToolDefinition[] = [
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
-            { title: 'Embed a PNG logo', input: { imageBase64: '<base64-png>', imageType: 'png', caption: 'Company logo' } },
+            { title: 'Embed a PNG logo', input: { title: 'Company logo', imageBase64: '<base64-png>', mimeType: 'image/png', caption: 'Company logo' } },
         ],
         handler: embedImage,
     },
@@ -492,7 +529,14 @@ const TOOLS: readonly ToolDefinition[] = [
         description:
             "Read-only inspection of an existing PDF: version, page count, encryption state, PDF/A claim, signature count, hasSignaturePlaceholder, embedded attachments[], document info / metadata. Use the `check` array for CI-style assertions — supported values: 'pdfa', 'signed' (true when at least one signature has signed content), 'encrypted', 'placeholder' (unsigned /Sig widget present), 'attachments' (at least one /EmbeddedFile). The checksPassed boolean is true only when ALL requested checks hold. v1.6.0: `signatures: true` lists every signature field (subFilter, isDocTimestamp, isPlaceholder, byteRange, vriKey); `dss`, `docTimestampCount` and `trapped` appear when present; `pages: true` also reports trimBox/bleedBox/artBox/cropBox/userUnit; new `check` values 'dss', 'docTimestamp', 'trapped'.",
         inputSchema: INSPECT_PDF_INPUT_SCHEMA,
-        outputSchema: INSPECT_PDF_OUTPUT_SCHEMA,
+        outputSchema: projectableOutputSchema(
+            INSPECT_PDF_OUTPUT_SCHEMA,
+            {
+                attachmentCount: { type: 'integer', minimum: 0, description: "summary only: number of embedded files." },
+                checksPassed: { type: 'boolean', description: 'Present when check[] was supplied: true when every requested check holds.' },
+            },
+            `Structured inspection result.${PROJECTION_NOTE}`,
+        ),
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
             { title: 'CI: assert PDF/A + signed', input: { pdfBase64: '<base64>', check: ['pdfa', 'signed'] } },
@@ -508,7 +552,11 @@ const TOOLS: readonly ToolDefinition[] = [
         description:
             "Read-only verification of every PAdES Baseline / adbe.pkcs7.detached signature in a PDF. For each /Sig widget, recomputes the ByteRange SHA-256, validates the CMS messageDigest (integrity), and verifies the CMS signatureValue with the embedded signer certificate. Supports RSA-SHA256 and ECDSA-SHA256 (P-256). The response shape: { allValid, signatureCount, summary, signatures: [{ valid, integrity, signerSubject, signingTime, reason, chainTrust: 'self-signed'|'unverified'|'trusted', errors: [] }] }. Read `allValid` for an overall yes/no; iterate `signatures[]` for per-signature detail. Without trustedRootsDerBase64, chainTrust is 'self-signed' (single-cert chain) or 'unverified' (signer rooted in an external CA). v1.6.0: document timestamps (/DocTimeStamp) are verified as RFC 3161 tokens (never flip allValid); RSA-SHA384/512 supported; per-signature `subFilter`. Pass `ltv: true` for the PAdES long-term-validation view — profile, signature timestamp, revocation status read from embedded /DSS material only, and ltvLevel (B-B / B-T / B-LT / B-LTA) with explicit caveats.",
         inputSchema: VERIFY_PDF_INPUT_SCHEMA,
-        outputSchema: VERIFY_PDF_OUTPUT_SCHEMA,
+        outputSchema: projectableOutputSchema(
+            VERIFY_PDF_OUTPUT_SCHEMA,
+            { invalid: { type: 'integer', minimum: 0, description: 'summary only: number of invalid signatures.' } },
+            `Structured signature verification result.${PROJECTION_NOTE}`,
+        ),
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
             { title: 'Verify a signed PDF (no chain trust)', input: { pdfBase64: '<signed-pdf-base64>' } },
@@ -536,7 +584,14 @@ const TOOLS: readonly ToolDefinition[] = [
         description:
             "Best-effort plain-text extraction from a PDF. Walks each page's content stream and pulls the operands of Tj/'/\"/TJ text operators. The result.extractable boolean is FALSE when one or more pages have non-empty content but yielded no text (this is EXPECTED for PDFs using subset fonts without /ToUnicode CMaps — it is not an error). The accompanying `extractableReason` field explains why. Encrypted PDFs are supported since v1.5.0: pass `password` (user or owner; an empty user password opens without one) — a protected document without it returns PASSWORD_REQUIRED / PASSWORD_INVALID. Tagged-mode structure-tree extraction (cleaner output for tagged PDFs) is tracked on the roadmap.",
         inputSchema: EXTRACT_TEXT_INPUT_SCHEMA,
-        outputSchema: EXTRACT_TEXT_OUTPUT_SCHEMA,
+        outputSchema: projectableOutputSchema(
+            EXTRACT_TEXT_OUTPUT_SCHEMA,
+            {
+                charCount: { type: 'integer', minimum: 0, description: 'summary only: length of fullText.' },
+                extractableReason: { type: 'string', description: 'Present when extractable is false: why no text could be decoded.' },
+            },
+            `Structured text-extraction result.${PROJECTION_NOTE}`,
+        ),
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
             { title: 'Extract all pages', input: { pdfBase64: '<base64>' } },
@@ -550,7 +605,14 @@ const TOOLS: readonly ToolDefinition[] = [
         description:
             "Read-only PDF/UA (ISO 14289-1) structural conformance check. Verifies the accessibility prerequisites of a Tagged PDF: catalog /MarkInfo /Marked true, /StructTreeRoot (+ /ParentTree), /Metadata (XMP), /Lang, and per-page MCID uniqueness. Response shape: { standard: 'pdf-ua-1', valid, errors: [], warnings: [], summary }. Read `valid` for an overall yes/no; iterate `errors[]` for blocking violations and `warnings[]` for best-practice recommendations. This is a fast structural gate, NOT a full reference validator (veraPDF) — it does not check fonts, colour or rendering. Generate accessible input with any document tool using pdfA (e.g. pdfA='pdfa2u'), then validate the result here.",
         inputSchema: VALIDATE_PDF_INPUT_SCHEMA,
-        outputSchema: VALIDATE_PDF_OUTPUT_SCHEMA,
+        outputSchema: projectableOutputSchema(
+            VALIDATE_PDF_OUTPUT_SCHEMA,
+            {
+                errorCount: { type: 'integer', minimum: 0, description: 'summary only: number of errors.' },
+                warningCount: { type: 'integer', minimum: 0, description: 'summary only: number of warnings.' },
+            },
+            `Structured PDF/UA validation result.${PROJECTION_NOTE}`,
+        ),
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
             { title: 'Validate a tagged PDF for PDF/UA structure', input: { pdfBase64: '<tagged-pdf-base64>' } },
@@ -563,7 +625,7 @@ const TOOLS: readonly ToolDefinition[] = [
         description:
             "Read-only extraction of embedded files from a PDF (PDF/A-3 / Factur-X / ZUGFeRD). Walks the catalog /Names → /EmbeddedFiles tree and returns each attachment's metadata (name, mimeType, AFRelationship, description, sizeBytes) plus, by default, its decoded payload as dataBase64. Completes the invoice round-trip: add_attachment → inspect_pdf → extract_attachments. Pass `filename` to pull a single named file, or `includeData: false` for a metadata-only probe. Encrypted PDFs are supported since v1.5.0: pass `password` (user or owner) — a protected document without it returns PASSWORD_REQUIRED / PASSWORD_INVALID.",
         inputSchema: EXTRACT_ATTACHMENTS_INPUT_SCHEMA,
-        outputSchema: EXTRACT_ATTACHMENTS_OUTPUT_SCHEMA,
+        outputSchema: projectableOutputSchema(EXTRACT_ATTACHMENTS_OUTPUT_SCHEMA, {}, `Structured attachment-extraction result.${PROJECTION_NOTE}`),
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
             { title: 'Extract every embedded file (with payloads)', input: { pdfBase64: '<base64>' } },
@@ -647,7 +709,7 @@ const TOOLS: readonly ToolDefinition[] = [
         description:
             "Read-only enumeration of an existing PDF's interactive AcroForm fields (pdfnative v1.6.0). Returns each terminal field's fully-qualified name, classified type (text | checkbox | radio | dropdown | listbox | button | signature | unknown), current value, flags (readOnly / required / multiline), choice options, and widget placements. Call this FIRST to discover field names before driving fill_form. Encrypted sources are supported via `password`. Token-frugal: verbosity:'summary' returns just { fieldCount }.",
         inputSchema: READ_FORM_FIELDS_INPUT_SCHEMA,
-        outputSchema: READ_FORM_FIELDS_OUTPUT_SCHEMA,
+        outputSchema: projectableOutputSchema(READ_FORM_FIELDS_OUTPUT_SCHEMA, {}, `Structured AcroForm field listing.${PROJECTION_NOTE}`),
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
             { title: 'List every field', input: { pdfBase64: '<base64>' } },

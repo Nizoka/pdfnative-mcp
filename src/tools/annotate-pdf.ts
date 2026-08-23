@@ -31,6 +31,7 @@ import { z } from 'zod';
 
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { decodePdfBase64 } from '../base64.js';
 
 export const ANNOTATE_PDF_NAME = 'annotate_pdf';
 
@@ -151,11 +152,7 @@ const InputSchema = z.object({
 type AnnotationInput = z.infer<typeof AnnotationSchema>;
 
 function decodeBase64(value: string): Uint8Array {
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', 'pdfBase64 is not valid base64.');
-    }
+    return decodePdfBase64(value, 'pdfBase64');
 }
 
 /** Fields shared by every annotation variant. */

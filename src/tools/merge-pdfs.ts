@@ -22,6 +22,7 @@ import { z } from 'zod';
 
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { decodePdfBase64 } from '../base64.js';
 import { mapPageTreeError } from '../pagetree.js';
 import {
     ENCRYPT_INPUT_SCHEMA,
@@ -80,11 +81,7 @@ const InputSchema = z.object({
 });
 
 function decodeBase64(value: string, field: string): Uint8Array {
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', `${field} is not valid base64.`);
-    }
+    return decodePdfBase64(value, field);
 }
 
 export async function mergePdfsTool(rawInput: unknown): Promise<OutputResult> {

@@ -18,6 +18,7 @@ import { createModifier, openPdf, PdfEncryptionUnsupportedError, PdfPasswordErro
 import { z } from 'zod';
 
 import { ToolError } from '../errors.js';
+import { decodePdfBase64 } from '../base64.js';
 import { emitPdf, type OutputResult } from '../output.js';
 
 export const UPDATE_METADATA_NAME = 'update_metadata';
@@ -60,11 +61,7 @@ const InputSchema = z
     });
 
 function decodeBase64(b64: string): Uint8Array {
-    try {
-        return new Uint8Array(Buffer.from(b64, 'base64'));
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', 'pdfBase64 is not valid base64.');
-    }
+    return decodePdfBase64(b64, 'pdfBase64');
 }
 
 export async function updateMetadata(rawInput: unknown): Promise<OutputResult> {
