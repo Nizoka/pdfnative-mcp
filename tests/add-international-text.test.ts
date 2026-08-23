@@ -214,10 +214,10 @@ describe('add_international_text print + diagnostics inputs (v1.6.0)', () => {
         const keys = Object.keys(ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA.properties);
         expect(keys).not.toContain('embedFonts');
         expect(keys).toEqual(expect.arrayContaining(['print', 'outputIntent', 'metadata', 'strict', 'includeDiagnostics']));
-        // Unknown keys are stripped at the boundary: only the requested script font is loaded.
-        await addInternationalText({ title: 'T', lang: 'ar', paragraphs: ['x'], embedFonts: true });
-        expect(loadFontDataMock).toHaveBeenCalledTimes(1);
-        expect(loadFontDataMock).toHaveBeenCalledWith('ar');
+        // Unknown keys are rejected at the boundary (Zod strict ⇔ additionalProperties:false), so a
+        // typo or a copy-pasted option from another tool never goes silently ignored.
+        await expect(addInternationalText({ title: 'T', lang: 'ar', paragraphs: ['x'], embedFonts: true })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+        expect(loadFontDataMock).not.toHaveBeenCalled();
     });
 
     it('forwards print options and document metadata to the engine', async () => {

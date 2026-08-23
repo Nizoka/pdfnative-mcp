@@ -74,7 +74,7 @@ export const ADD_BARCODE_INPUT_SCHEMA = {
     required: ['format', 'data'],
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     format: z.enum(['qr', 'code128', 'ean13', 'datamatrix', 'pdf417']),
     data: z.string().min(1).max(4296),
     caption: z.string().max(500).optional(),
@@ -94,7 +94,7 @@ export async function addBarcode(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { format, data, caption, title, width, height, ecLevel, pdfA, print, outputIntent, metadata, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
+    const { format, data, caption, title, width, height, ecLevel, pdfA, print, outputIntent, metadata, creationDate, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
     assertPrintPdfACompatible(print, pdfA);
 
     if (format === 'ean13' && !/^\d{12,13}$/.test(data)) {
@@ -129,7 +129,7 @@ export async function addBarcode(rawInput: unknown): Promise<OutputResult> {
             },
             {
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
-                ...toPrintLayout({ print, outputIntent }),
+                ...toPrintLayout({ print, outputIntent, creationDate }),
                 ...collector.layout,
             },
         );

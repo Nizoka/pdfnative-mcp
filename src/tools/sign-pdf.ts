@@ -147,7 +147,7 @@ export const SIGN_PDF_INPUT_SCHEMA = {
 } as const;
 
 const InputSchema = z
-    .object({
+    .strictObject({
         pdfBase64: z.string().min(4),
         algorithm: z.enum(SIGN_ALGORITHM_ENUM),
         certDerBase64: z.string().min(4),

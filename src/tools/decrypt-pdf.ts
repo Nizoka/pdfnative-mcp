@@ -44,7 +44,7 @@ export const DECRYPT_PDF_INPUT_SCHEMA = {
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfBase64: z.string().min(4),
     password: PasswordSchema.optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),

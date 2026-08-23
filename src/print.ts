@@ -96,12 +96,18 @@ export const PRINT_INPUT_PROPERTIES = {
             },
         },
     },
+    creationDate: {
+        type: 'string',
+        format: 'date-time',
+        description:
+            'Pin /Info /CreationDate (and XMP xmp:CreateDate under PDF/A) to this ISO-8601 instant, e.g. "2026-01-15T09:00:00Z". Makes the output byte-identical across repeated calls with the same inputs (content-addressable storage, reproducible builds, cache-friendly). Omitted: the current wall-clock time, so every call differs.',
+    },
 } as const;
 
 const BoxSchema = z.tuple([z.number(), z.number(), z.number(), z.number()]);
 
 const PrintSchema = z
-    .object({
+    .strictObject({
         bleed: z.number().gt(0).max(200).optional(),
         trimBox: BoxSchema.optional(),
         bleedBox: BoxSchema.optional(),
@@ -110,7 +116,7 @@ const PrintSchema = z
         marks: z
             .union([
                 z.boolean(),
-                z.object({
+                z.strictObject({
                     crop: z.boolean().optional(),
                     registration: z.boolean().optional(),
                     length: z.number().min(1).max(100).optional(),
@@ -125,7 +131,7 @@ const PrintSchema = z
         message: 'print.bleed and print.trimBox are mutually exclusive (the bleed shorthand derives the TrimBox).',
     });
 
-const OutputIntentSchema = z.object({
+const OutputIntentSchema = z.strictObject({
     iccProfileBase64: z.string().min(1).max(11_000_000),
     outputConditionIdentifier: z.string().min(1).max(200),
     registryName: z.string().max(200).optional(),
@@ -133,32 +139,39 @@ const OutputIntentSchema = z.object({
     info: z.string().max(500).optional(),
 });
 
-const MetadataSchema = z.object({
+const MetadataSchema = z.strictObject({
     author: z.string().max(500).optional(),
     subject: z.string().max(1000).optional(),
     keywords: z.string().max(1000).optional(),
     trapped: z.enum(['True', 'False', 'Unknown']).optional(),
 });
 
-/** Zod counterpart of {@link PRINT_INPUT_PROPERTIES} — spread into a tool's `z.object({...})`. */
+/** Zod counterpart of {@link PRINT_INPUT_PROPERTIES} — spread into a tool's `z.strictObject({...})`. */
 export const PrintInputShape = {
     print: PrintSchema.optional(),
     outputIntent: OutputIntentSchema.optional(),
     metadata: MetadataSchema.optional(),
+    creationDate: z.string().datetime({ offset: true }).optional(),
 } as const;
 
 export type PrintInput = z.infer<typeof PrintSchema>;
 export type OutputIntentInput = z.infer<typeof OutputIntentSchema>;
 export type MetadataInput = z.infer<typeof MetadataSchema>;
 
-/** Layout fragment (`print` + `outputIntent`) to spread into the pdfnative layout options. */
-export function toPrintLayout(input: { print?: PrintInput; outputIntent?: OutputIntentInput }): {
+/**
+ * Layout fragment (`print` + `outputIntent` + `creationDate`) to spread into
+ * the pdfnative layout options. Nothing is emitted for absent inputs, so the
+ * engine's defaults (and byte-identical default output) are untouched.
+ */
+export function toPrintLayout(input: { print?: PrintInput; outputIntent?: OutputIntentInput; creationDate?: string }): {
     print?: PrintOptions;
     outputIntent?: CustomOutputIntent;
+    creationDate?: Date;
 } {
-    const out: { print?: PrintOptions; outputIntent?: CustomOutputIntent } = {};
+    const out: { print?: PrintOptions; outputIntent?: CustomOutputIntent; creationDate?: Date } = {};
     if (input.print !== undefined) out.print = toPrintOptions(input.print);
     if (input.outputIntent !== undefined) out.outputIntent = toOutputIntent(input.outputIntent);
+    if (input.creationDate !== undefined) out.creationDate = new Date(input.creationDate);
     return out;
 }
 

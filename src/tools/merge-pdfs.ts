@@ -70,7 +70,7 @@ export const MERGE_PDFS_INPUT_SCHEMA = {
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfsBase64: z.array(z.string().min(4)).min(2).max(50),
     password: PasswordSchema.optional(),
     encrypt: EncryptSchema.optional(),

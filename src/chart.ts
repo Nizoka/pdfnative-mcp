@@ -150,11 +150,11 @@ export const CHART_BODY_PROPERTIES = {
 } as const;
 
 /** Zod counterpart of {@link CHART_BODY_PROPERTIES}. */
-export const ChartBodySchema = z.object({
+export const ChartBodySchema = z.strictObject({
     chartType: z.enum(CHART_TYPE_ENUM),
     series: z
         .array(
-            z.object({
+            z.strictObject({
                 label: z.string().min(1).max(200),
                 values: z.array(z.number()).min(1).max(1000),
                 color: z.string().regex(HEX_COLOR_RE).optional(),
@@ -168,7 +168,7 @@ export const ChartBodySchema = z.object({
     title: z.string().max(200).optional(),
     legend: z.enum(['bottom', 'none']).optional(),
     axis: z
-        .object({
+        .strictObject({
             yMin: z.number().optional(),
             yMax: z.number().optional(),
             ticks: z.number().int().min(2).max(20).optional(),
@@ -177,7 +177,7 @@ export const ChartBodySchema = z.object({
         })
         .optional(),
     axis2: z
-        .object({
+        .strictObject({
             yMin: z.number().optional(),
             yMax: z.number().optional(),
             ticks: z.number().int().min(2).max(20).optional(),
@@ -185,7 +185,7 @@ export const ChartBodySchema = z.object({
         })
         .optional(),
     xAxis: z
-        .object({
+        .strictObject({
             type: z.enum(['category', 'linear', 'time']).optional(),
             min: z.union([z.number(), z.string().max(64)]).optional(),
             max: z.union([z.number(), z.string().max(64)]).optional(),
@@ -196,7 +196,7 @@ export const ChartBodySchema = z.object({
     dataLabels: z
         .union([
             z.boolean(),
-            z.object({
+            z.strictObject({
                 decimals: z.number().int().min(0).max(6).optional(),
                 prefix: z.string().max(16).optional(),
                 suffix: z.string().max(16).optional(),

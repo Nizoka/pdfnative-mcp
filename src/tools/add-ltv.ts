@@ -75,7 +75,7 @@ export const ADD_LTV_INPUT_SCHEMA = {
 const derList = (max: number) => z.array(z.string().min(4).max(1_400_000)).max(max).optional();
 
 const InputSchema = z
-    .object({
+    .strictObject({
         pdfBase64: z.string().min(4),
         mode: z.enum(['online', 'offline']).default('online'),
         extraCertificatesDerBase64: derList(32),

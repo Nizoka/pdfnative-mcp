@@ -54,7 +54,7 @@ type ListItemInput = string | { text: string; items?: ListItemInput[] };
 const ListItemSchema: z.ZodType<ListItemInput> = z.lazy(() =>
     z.union([
         z.string().min(1).max(1000),
-        z.object({
+        z.strictObject({
             text: z.string().min(1).max(1000),
             items: z.array(ListItemSchema).min(1).max(1000).optional(),
         }),
@@ -136,7 +136,7 @@ interface OutlineNodeInput {
 }
 
 const OutlineNodeSchema: z.ZodType<OutlineNodeInput> = z.lazy(() =>
-    z.object({
+    z.strictObject({
         title: z.string().min(1).max(500),
         pageIndex: z.number().int().min(0),
         y: z.number().optional(),
@@ -199,7 +199,7 @@ export const PAGE_LABELS_INPUT_SCHEMA = {
 
 export const PageLabelsSchema = z
     .array(
-        z.object({
+        z.strictObject({
             startPage: z.number().int().min(0),
             style: z.enum(PAGE_LABEL_STYLES).optional(),
             prefix: z.string().max(64).optional(),
@@ -265,7 +265,7 @@ export const VIEWER_PREFERENCES_INPUT_SCHEMA = {
     },
 } as const;
 
-export const ViewerPreferencesSchema = z.object({
+export const ViewerPreferencesSchema = z.strictObject({
     pageLayout: z.enum(PAGE_LAYOUTS).optional(),
     pageMode: z.enum(PAGE_MODES).optional(),
     hideToolbar: z.boolean().optional(),

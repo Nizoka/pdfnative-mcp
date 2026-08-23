@@ -103,7 +103,7 @@ export const EXTRACT_ATTACHMENTS_OUTPUT_SCHEMA = {
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfBase64: z.string().min(4),
     password: PasswordSchema.optional(),
     filename: z.string().min(1).max(255).optional(),

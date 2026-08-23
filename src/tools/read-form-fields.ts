@@ -104,7 +104,7 @@ export const READ_FORM_FIELDS_OUTPUT_SCHEMA = {
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfBase64: z.string().min(4),
     password: PasswordSchema.optional(),
     verbosity: z.enum(['summary', 'full']).optional(),

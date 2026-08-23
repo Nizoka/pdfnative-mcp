@@ -67,7 +67,7 @@ export async function addChart(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { intro, pdfA, print, outputIntent, metadata, strict, includeDiagnostics, embedFonts, outputMode, outputPath, ...chartBody } = parsed.data;
+    const { intro, pdfA, print, outputIntent, metadata, creationDate, strict, includeDiagnostics, embedFonts, outputMode, outputPath, ...chartBody } = parsed.data;
     assertPrintPdfACompatible(print, pdfA);
 
     const blocks: DocumentBlock[] = [];
@@ -89,7 +89,7 @@ export async function addChart(rawInput: unknown): Promise<OutputResult> {
             },
             {
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
-                ...toPrintLayout({ print, outputIntent }),
+                ...toPrintLayout({ print, outputIntent, creationDate }),
                 ...collector.layout,
             },
         );

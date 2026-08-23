@@ -119,7 +119,7 @@ const pointSchema = z.tuple([z.number(), z.number()]);
 const colorSchema = z.union([z.string(), z.tuple([z.number(), z.number(), z.number()])]);
 
 const AnnotationSchema = z
-    .object({
+    .strictObject({
         page: z.number().int().min(0),
         type: z.enum(ANNOTATION_TYPES),
         rect: rectSchema,
@@ -142,7 +142,7 @@ const AnnotationSchema = z
         }
     });
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfBase64: z.string().min(4),
     annotations: z.array(AnnotationSchema).min(1).max(200),
     outputMode: z.enum(['base64', 'file']).default('base64'),

@@ -81,14 +81,14 @@ export const SPLIT_PDF_INPUT_SCHEMA = {
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfBase64: z.string().min(4),
     password: PasswordSchema.optional(),
     encrypt: EncryptSchema.optional(),
     ranges: z
         .array(
             z
-                .object({
+                .strictObject({
                     start: z.number().int().min(0),
                     end: z.number().int().min(0).optional(),
                 })

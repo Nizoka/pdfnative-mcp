@@ -124,7 +124,7 @@ export const ADD_FORM_INPUT_SCHEMA = {
     required: ['title', 'fields'],
 } as const;
 
-const FieldSchema = z.object({
+const FieldSchema = z.strictObject({
     fieldType: z.enum(['text', 'textarea', 'checkbox', 'radio', 'dropdown']),
     name: z.string().min(1).max(100),
     label: z.string().max(200).optional(),
@@ -139,7 +139,7 @@ const FieldSchema = z.object({
     fontSize: z.number().min(6).max(48).optional(),
 });
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     title: z.string().min(1).max(200),
     fields: z.array(FieldSchema).min(1).max(200),
     footerText: z.string().max(200).optional(),
@@ -155,7 +155,7 @@ export async function addForm(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, fields, footerText, pdfA, print, outputIntent, metadata, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
+    const { title, fields, footerText, pdfA, print, outputIntent, metadata, creationDate, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
     assertPrintPdfACompatible(print, pdfA);
 
     // Validate that radio/dropdown fields have options
@@ -203,7 +203,7 @@ export async function addForm(rawInput: unknown): Promise<OutputResult> {
             },
             {
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
-                ...toPrintLayout({ print, outputIntent }),
+                ...toPrintLayout({ print, outputIntent, creationDate }),
                 ...collector.layout,
             },
         );

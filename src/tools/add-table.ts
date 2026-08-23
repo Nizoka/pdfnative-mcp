@@ -50,7 +50,7 @@ const CELL_BORDERS_INPUT_SCHEMA = {
     },
 } as const;
 
-const CellBordersSchema = z.object({
+const CellBordersSchema = z.strictObject({
     top: z.boolean().optional(),
     right: z.boolean().optional(),
     bottom: z.boolean().optional(),
@@ -194,13 +194,13 @@ export const ADD_TABLE_INPUT_SCHEMA = {
     required: ['title', 'headers', 'rows'],
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     title: z.string().min(1).max(200),
     headers: z.array(z.string().min(1).max(200)).min(1).max(50),
     rows: z.array(z.array(z.string().max(500)).min(1).max(50)).min(1).max(5000),
     infoItems: z
         .array(
-            z.object({
+            z.strictObject({
                 label: z.string().min(1).max(100),
                 value: z.string().max(500),
             }),
@@ -232,7 +232,7 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, headers, rows, infoItems, footerText, autoFitColumns, clipCells, wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, cellBorders, cellVAlign, pdfA, watermark, viewerPreferences, print, outputIntent, metadata, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
+    const { title, headers, rows, infoItems, footerText, autoFitColumns, clipCells, wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, cellBorders, cellVAlign, pdfA, watermark, viewerPreferences, print, outputIntent, metadata, creationDate, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
     assertWatermarkPdfACompatible(watermark, pdfA);
     assertPrintPdfACompatible(print, pdfA);
 
@@ -252,7 +252,7 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
     const collector = collectDiagnostics(strict);
     const layout = {
         ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
-        ...toPrintLayout({ print, outputIntent }),
+        ...toPrintLayout({ print, outputIntent, creationDate }),
         ...collector.layout,
     };
     const docMetadata = toDocumentMetadata(metadata);

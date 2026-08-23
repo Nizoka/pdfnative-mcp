@@ -151,7 +151,7 @@ const LangInput = z.union([
     z.string().min(2).max(80),
 ]);
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     title: z.string().min(1).max(200),
     lang: LangInput,
     paragraphs: z.array(z.string().min(1).max(50000)).min(1).max(1000),
@@ -193,7 +193,7 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, lang, paragraphs, pdfA, normalize, viewerPreferences, print, outputIntent, metadata, strict, includeDiagnostics, outputMode, outputPath } = parsed.data;
+    const { title, lang, paragraphs, pdfA, normalize, viewerPreferences, print, outputIntent, metadata, creationDate, strict, includeDiagnostics, outputMode, outputPath } = parsed.data;
     assertPrintPdfACompatible(print, pdfA);
 
     const langs = normaliseLangs(lang);
@@ -231,7 +231,7 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
                 normalize: normalize ?? 'NFC',
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
                 ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
-                ...toPrintLayout({ print, outputIntent }),
+                ...toPrintLayout({ print, outputIntent, creationDate }),
                 ...collector.layout,
             },
         );

@@ -92,13 +92,13 @@ export const ADD_ATTACHMENT_INPUT_SCHEMA = {
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     title: z.string().min(1).max(200),
     blocks: z.array(z.unknown()).max(200).optional(),
     footerText: z.string().max(200).optional(),
     attachments: z
         .array(
-            z.object({
+            z.strictObject({
                 filename: z.string().min(1).max(255),
                 mimeType: z.string().min(1).max(200),
                 dataBase64: z.string().min(1),
@@ -139,7 +139,7 @@ export async function addAttachment(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, blocks, footerText, attachments, print, outputIntent, metadata, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
+    const { title, blocks, footerText, attachments, print, outputIntent, metadata, creationDate, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
 
     const docBlocks: DocumentBlock[] =
         blocks !== undefined && blocks.length > 0
@@ -171,7 +171,7 @@ export async function addAttachment(rawInput: unknown): Promise<OutputResult> {
             {
                 tagged: 'pdfa3b',
                 attachments: pdfAttachments,
-                ...toPrintLayout({ print, outputIntent }),
+                ...toPrintLayout({ print, outputIntent, creationDate }),
                 ...collector.layout,
             },
         );

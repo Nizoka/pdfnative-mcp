@@ -123,7 +123,7 @@ export const EXTRACT_TEXT_OUTPUT_SCHEMA = {
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfBase64: z.string().min(4),
     pages: z.array(z.number().int().min(0)).max(1000).optional(),
     includeRuns: z.boolean().default(false),

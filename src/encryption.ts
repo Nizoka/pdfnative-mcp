@@ -78,12 +78,12 @@ export const ENCRYPT_INPUT_SCHEMA = {
 } as const;
 
 /** Zod counterpart of {@link ENCRYPT_INPUT_SCHEMA}. */
-export const EncryptSchema = z.object({
+export const EncryptSchema = z.strictObject({
     ownerPassword: z.string().min(1).max(4096),
     userPassword: z.string().max(4096).optional(),
     algorithm: z.enum(['aes128', 'aes256']).optional(),
     permissions: z
-        .object({
+        .strictObject({
             print: z.boolean().optional(),
             copy: z.boolean().optional(),
             modify: z.boolean().optional(),

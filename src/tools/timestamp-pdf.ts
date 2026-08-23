@@ -43,7 +43,7 @@ export const TIMESTAMP_PDF_INPUT_SCHEMA = {
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfBase64: z.string().min(4),
     fieldName: z.string().regex(/^[A-Za-z0-9_.\- ]{1,127}$/).optional(),
     placeholderBytes: z.number().int().min(4096).max(65536).optional(),

@@ -62,6 +62,11 @@ export const PREPARE_SIGNATURE_PLACEHOLDER_INPUT_SCHEMA = {
             maxLength: 200,
             description: 'Contact information for the signer.',
         },
+        signingTime: {
+            type: 'string',
+            format: 'date-time',
+            description: '/Sig /M — the claimed signing instant (ISO-8601), frozen into the placeholder dictionary. Omitted: the wall clock at placeholder time. Pin it (with creationDate) for byte-identical output across calls.',
+        },
         fieldName: {
             type: 'string',
             maxLength: 100,
@@ -156,18 +161,19 @@ export const PREPARE_SIGNATURE_PLACEHOLDER_INPUT_SCHEMA = {
 } as const;
 
 const BlockSchema = z.discriminatedUnion('type', [
-    z.object({ type: z.literal('heading'), text: z.string().min(1).max(500), level: z.union([z.literal(1), z.literal(2), z.literal(3)]) }),
-    z.object({ type: z.literal('paragraph'), text: z.string().min(1).max(50000) }),
-    z.object({ type: z.literal('pageBreak') }),
-    z.object({ type: z.literal('spacer'), height: z.number().min(1).max(500) }),
+    z.strictObject({ type: z.literal('heading'), text: z.string().min(1).max(500), level: z.union([z.literal(1), z.literal(2), z.literal(3)]) }),
+    z.strictObject({ type: z.literal('paragraph'), text: z.string().min(1).max(50000) }),
+    z.strictObject({ type: z.literal('pageBreak') }),
+    z.strictObject({ type: z.literal('spacer'), height: z.number().min(1).max(500) }),
 ]);
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     title: z.string().min(1).max(200),
     signerName: z.string().max(200).optional(),
     reason: z.string().max(500).optional(),
     location: z.string().max(200).optional(),
     contactInfo: z.string().max(200).optional(),
+    signingTime: z.string().datetime({ offset: true }).optional(),
     fieldName: z.string().max(100).optional(),
     placeholderBytes: z.number().int().min(2048).max(65536).optional(),
     subFilter: z.enum(['adbe.pkcs7.detached', 'ETSI.CAdES.detached']).optional(),
@@ -209,6 +215,7 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
         reason,
         location,
         contactInfo,
+        signingTime,
         fieldName,
         placeholderBytes,
         subFilter,
@@ -219,6 +226,7 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
         print,
         outputIntent,
         metadata,
+        creationDate,
         strict,
         includeDiagnostics,
         embedFonts,
@@ -255,7 +263,7 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
             },
             {
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
-                ...toPrintLayout({ print, outputIntent }),
+                ...toPrintLayout({ print, outputIntent, creationDate }),
                 ...collector.layout,
             },
         );
@@ -270,6 +278,7 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
         ...(reason !== undefined ? { reason } : {}),
         ...(location !== undefined ? { location } : {}),
         ...(contactInfo !== undefined ? { contactInfo } : {}),
+        ...(signingTime !== undefined ? { signingTime: new Date(signingTime) } : {}),
         ...(subFilter !== undefined ? { subFilter } : {}),
     };
     const reserved = placeholderBytes ?? (reserveTimestamp ? estimateContentsSize([], 'rsa-sha256', { timestamp: true }) : undefined);

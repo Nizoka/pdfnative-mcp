@@ -238,18 +238,26 @@ export const SERVER_CACHE_HINTS = {
 const NON_CACHEABLE_TOOLS: ReadonlySet<string> = new Set([
     ENCRYPT_PDF_NAME,
     DECRYPT_PDF_NAME,
+    // Signing is a fresh act: the default signingTime is the wall clock, a
+    // timestamp embeds a TSA token minted at call time, and private-key
+    // material must never feed a persisted key — never served from cache.
+    SIGN_PDF_NAME,
     // Time-dependent (TSA tokens, /ModDate) or network-dependent outputs.
     ADD_LTV_NAME,
     TIMESTAMP_PDF_NAME,
     UPDATE_METADATA_NAME,
 ]);
 
+/**
+ * Cache key namespace: the tool API version *and* the package version (which
+ * moves in lock-step with the pdfnative engine), so an engine upgrade can
+ * never serve bytes rendered by the previous engine.
+ */
+const CACHE_API_VERSION = `${TOOL_API_VERSION}/${PDFNATIVE_MCP_VERSION}`;
+
 /** True when this call's output must bypass the response cache. */
 function isCacheable(name: string, input: unknown): boolean {
-    if (isFileOutput(input) || NON_CACHEABLE_TOOLS.has(name)) return false;
-    // A timestamped signature embeds a TSA token minted at call time.
-    if (name === SIGN_PDF_NAME && input !== null && typeof input === 'object' && (input as { timestamp?: unknown }).timestamp === true) return false;
-    return true;
+    return !isFileOutput(input) && !NON_CACHEABLE_TOOLS.has(name);
 }
 
 /** True when the call's input requests a file-mode output (filesystem side-effect). */
@@ -1201,11 +1209,13 @@ export async function callToolDirect(name: string, args: unknown): Promise<CallT
         // We skip caching for outputMode='file' since the filesystem write is itself an effect,
         // and for the encryption tools so decrypted/protected bytes are never persisted at rest.
         const cacheable = isCacheable(name, input);
-        const cacheKey = cacheable ? { tool: name, apiVersion: TOOL_API_VERSION } : null;
+        const cacheKey = cacheable ? { tool: name, apiVersion: CACHE_API_VERSION } : null;
         if (cacheKey !== null) {
             const hit = getCached<unknown>(cacheKey.tool, cacheKey.apiVersion, input);
             if (hit !== null) {
-                return dispatchOutput(hit, name, input);
+                // Tell the agent the bytes were not freshly rendered (additive; only on hits).
+                const result = dispatchOutput(hit, name, input);
+                return { ...result, _meta: { ...(result._meta ?? {}), cached: true } };
             }
         }
         const output = await tool.handler(input);

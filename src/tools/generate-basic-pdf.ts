@@ -154,27 +154,27 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
     required: ['title', 'blocks'],
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     title: z.string().min(1).max(200),
     blocks: z
         .array(
             z.discriminatedUnion('type', [
-                z.object({
+                z.strictObject({
                     type: z.literal('heading'),
                     text: z.string().min(1).max(500),
                     level: z.union([z.literal(1), z.literal(2), z.literal(3)]),
                 }),
-                z.object({
+                z.strictObject({
                     type: z.literal('paragraph'),
                     text: z.string().min(1).max(50000),
                 }),
-                z.object({
+                z.strictObject({
                     type: z.literal('list'),
                     style: z.enum(['bullet', 'numbered']).default('bullet'),
                     items: ListItemsSchema,
                 }),
-                z.object({ type: z.literal('pageBreak') }),
-                z.object({
+                z.strictObject({ type: z.literal('pageBreak') }),
+                z.strictObject({
                     type: z.literal('spacer'),
                     height: z.number().min(1).max(500),
                 }),
@@ -203,7 +203,7 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
     }
     const {
         title, blocks, footerText, pdfA, watermark, normalize, outline, pageLabels, viewerPreferences,
-        print, outputIntent, metadata, strict, includeDiagnostics, embedFonts, outputMode, outputPath,
+        print, outputIntent, metadata, creationDate, strict, includeDiagnostics, embedFonts, outputMode, outputPath,
     } = parsed.data;
     assertWatermarkPdfACompatible(watermark, pdfA);
     assertPrintPdfACompatible(print, pdfA);
@@ -249,7 +249,7 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
                 ...(watermark !== undefined ? { watermark: toWatermarkOptions(watermark) } : {}),
                 ...(normalize !== undefined ? { normalize } : {}),
                 ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
-                ...toPrintLayout({ print, outputIntent }),
+                ...toPrintLayout({ print, outputIntent, creationDate }),
                 ...collector.layout,
             },
         );

@@ -165,12 +165,12 @@ export const DRAFT_GOVERNANCE_ISSUE_OUTPUT_SCHEMA = {
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     title: z.string().min(8).max(160),
     summary: z.string().min(16),
     issueType: z.enum(ISSUE_TYPES),
     targetRepo: z.string().min(1).max(100).default('pdfnative-mcp'),
-    reproduction: z.object({
+    reproduction: z.strictObject({
         command: z.string().min(1),
         result: z.string().min(1),
     }),

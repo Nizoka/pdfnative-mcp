@@ -208,7 +208,7 @@ export const VERIFY_PDF_OUTPUT_SCHEMA = {
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfBase64: z.string().min(4),
     password: PasswordSchema.optional(),
     trustedRootsDerBase64: z.array(z.string().min(4)).max(16).optional(),

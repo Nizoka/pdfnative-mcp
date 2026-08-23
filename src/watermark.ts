@@ -66,7 +66,7 @@ export const WATERMARK_INPUT_SCHEMA = {
 } as const;
 
 /** Zod validator mirroring {@link WATERMARK_INPUT_SCHEMA}. */
-export const WatermarkSchema = z.object({
+export const WatermarkSchema = z.strictObject({
     text: z.string().min(1).max(100),
     fontSize: z.number().min(6).max(300).optional(),
     opacity: z.number().min(0).max(1).optional(),

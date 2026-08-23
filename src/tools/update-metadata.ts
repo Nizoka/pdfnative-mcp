@@ -46,7 +46,7 @@ export const UPDATE_METADATA_INPUT_SCHEMA = {
 } as const;
 
 const InputSchema = z
-    .object({
+    .strictObject({
         pdfBase64: z.string().min(1),
         title: z.string().max(1000).optional(),
         author: z.string().max(1000).optional(),

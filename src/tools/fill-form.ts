@@ -83,7 +83,7 @@ export const FILL_FORM_INPUT_SCHEMA = {
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfBase64: z.string().min(4),
     values: z.record(z.string(), z.union([z.string(), z.boolean(), z.array(z.string()).max(1000)])).optional(),
     flatten: z.boolean().default(false),
