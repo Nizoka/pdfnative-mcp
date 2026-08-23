@@ -1,4 +1,8 @@
-import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll, beforeEach } from 'vitest';
+import { createServer as createHttpServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { createHash } from 'node:crypto';
+import { buildTimestampRequest } from 'pdfnative';
 
 import {
     ALLOWED_HOSTS_ENV,
@@ -19,6 +23,13 @@ import {
     requireTimestampProvider,
 } from '../src/network.js';
 import { ToolError } from '../src/errors.js';
+import { createMockPki, type MockPki } from './_ltv-fixtures.js';
+import { startMockTsaServer } from './_tsa-server.js';
+
+/** A real RFC 3161 TimeStampReq over an arbitrary imprint (what pdfnative hands the provider). */
+function buildMockTimestampRequest(): Uint8Array {
+    return buildTimestampRequest(new Uint8Array(createHash('sha256').update('imprint').digest()), { nonce: 42n });
+}
 
 const ENV_KEYS = [TSA_URL_ENV, TSA_AUTH_ENV, REVOCATION_ENV, ALLOWED_HOSTS_ENV, TIMEOUT_ENV];
 
@@ -212,6 +223,112 @@ describe('network policy (operator-configured egress, SSRF guard)', () => {
         expect(crlProvider.fetchOcsp).toBeUndefined();
         await crlProvider.fetchCrl!('http://crl.example.org/ca.crl');
         expect(seen[1]).toBe('GET http://crl.example.org/ca.crl');
+    });
+});
+
+/**
+ * F-21: the operator egress path over REAL loopback sockets (global fetch,
+ * no seam) — the TSA `Authorization` header must actually arrive on the wire,
+ * and the CRL GET path must reach an allow-listed host with the right verb and
+ * Accept header while a non-listed literal never opens a connection.
+ */
+describe('network egress over real loopback sockets (F-21)', () => {
+    let pki: MockPki;
+    beforeAll(() => {
+        pki = createMockPki();
+    });
+    beforeEach(() => {
+        for (const k of ENV_KEYS) delete process.env[k];
+    });
+    afterEach(() => {
+        for (const k of ENV_KEYS) delete process.env[k];
+        __setFetchForTests(null);
+    });
+
+    it('sends PDFNATIVE_MCP_TSA_AUTH as the Authorization header to the real TSA socket and reads a TimeStampResp back', async () => {
+        const tsa = await startMockTsaServer(pki);
+        try {
+            process.env[TSA_URL_ENV] = tsa.url;
+            process.env[TSA_AUTH_ENV] = 'Bearer wire-s3cret';
+            const provider = requireTimestampProvider();
+            const tsq = buildMockTimestampRequest();
+            const tsr = await provider.getTimestamp(tsq);
+            expect(tsa.requests).toBe(1);
+            const headers = tsa.requestHeaders[0]!;
+            expect(headers['authorization']).toBe('Bearer wire-s3cret');
+            expect(headers['content-type']).toBe('application/timestamp-query');
+            expect(headers['accept']).toBe('application/timestamp-reply');
+            expect(tsr.byteLength).toBeGreaterThan(0);
+            expect(tsr[0]).toBe(0x30); // DER SEQUENCE (TimeStampResp)
+        } finally {
+            await tsa.close();
+        }
+    });
+
+    it('omits the Authorization header when PDFNATIVE_MCP_TSA_AUTH is unset or blank', async () => {
+        const tsa = await startMockTsaServer(pki);
+        try {
+            process.env[TSA_URL_ENV] = tsa.url;
+            process.env[TSA_AUTH_ENV] = '   ';
+            await requireTimestampProvider().getTimestamp(buildMockTimestampRequest());
+            expect(tsa.requestHeaders[0]!['authorization']).toBeUndefined();
+        } finally {
+            await tsa.close();
+        }
+    });
+
+    it('fetches a CRL with GET / Accept application/pkix-crl from a verbatim allow-listed loopback host', async () => {
+        const crlBytes = Uint8Array.from([0x30, 0x05, 0x02, 0x03, 0x01, 0x02, 0x03]);
+        const seen: Array<{ method: string | undefined; url: string | undefined; accept: string | undefined }> = [];
+        const server = createHttpServer((req, res) => {
+            seen.push({ method: req.method, url: req.url, accept: req.headers['accept'] });
+            if (req.url === '/ca.crl') {
+                res.writeHead(200, { 'content-type': 'application/pkix-crl', 'content-length': crlBytes.byteLength });
+                res.end(Buffer.from(crlBytes));
+                return;
+            }
+            res.writeHead(404).end();
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+        const port = (server.address() as AddressInfo).port;
+        try {
+            process.env[REVOCATION_ENV] = 'crl';
+            process.env[ALLOWED_HOSTS_ENV] = `127.0.0.1:${port}`;
+            const provider = requireRevocationProvider();
+            expect(provider.fetchOcsp).toBeUndefined();
+            const out = await provider.fetchCrl!(`http://127.0.0.1:${port}/ca.crl`);
+            expect(Array.from(out)).toEqual(Array.from(crlBytes));
+            expect(seen).toEqual([{ method: 'GET', url: '/ca.crl', accept: 'application/pkix-crl' }]);
+
+            // A 404 from the listed host is a NETWORK_ERROR carrying the status, not a crash.
+            const missing = await provider.fetchCrl!(`http://127.0.0.1:${port}/nope.crl`).catch((e: unknown) => e);
+            expect((missing as ToolError).code).toBe('NETWORK_ERROR');
+            expect((missing as ToolError).message).toContain('HTTP 404');
+            expect(seen).toHaveLength(2);
+        } finally {
+            server.closeAllConnections();
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+        }
+    });
+
+    it('never opens a connection to a loopback CRL host that is not allow-listed verbatim', async () => {
+        let hits = 0;
+        const server = createHttpServer((_req, res) => {
+            hits++;
+            res.writeHead(200).end();
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+        const port = (server.address() as AddressInfo).port;
+        try {
+            process.env[REVOCATION_ENV] = 'crl';
+            process.env[ALLOWED_HOSTS_ENV] = 'crl.example.com'; // loopback literal is NOT listed
+            const provider = requireRevocationProvider();
+            const blocked = await provider.fetchCrl!(`http://127.0.0.1:${port}/ca.crl`).catch((e: unknown) => e);
+            expect((blocked as ToolError).code).toBe('NETWORK_HOST_NOT_ALLOWED');
+            expect(hits).toBe(0);
+        } finally {
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+        }
     });
 });
 

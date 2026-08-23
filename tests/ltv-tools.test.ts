@@ -144,7 +144,9 @@ describe('LTV tools (add_ltv, timestamp_pdf, sign_pdf timestamp)', () => {
         const signed = await signPades();
         const err = await addLtv({ pdfBase64: signed }).catch((e: unknown) => e);
         expect(err).toBeInstanceOf(ToolError);
-        expect(['NETWORK_HOST_NOT_ALLOWED', 'LTV_ERROR']).toContain((err as ToolError).code);
+        // The allow-list guard fires inside the provider before any socket opens and
+        // propagates untouched through add_ltv's error mapper (never re-wrapped as LTV_ERROR).
+        expect((err as ToolError).code).toBe('NETWORK_HOST_NOT_ALLOWED');
         expect((err as ToolError).message).toMatch(/not in PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS|mock\.invalid/);
 
         process.env[ALLOWED_HOSTS_ENV] = 'mock.invalid';

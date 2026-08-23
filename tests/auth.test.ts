@@ -46,3 +46,21 @@ describe('guardBearer', () => {
         expect(guardBearer(req(`bearer ${TOKEN} `), TOKEN)).toBeUndefined();
     });
 });
+
+describe('HTTP fixture with a bearer token (end-to-end)', () => {
+    it('rejects unauthenticated requests with 401 and serves authenticated ones', async () => {
+        const { startHttpFixture, send, modernRequest } = await import('./_http-fixture.js');
+        const fx = await startHttpFixture({ httpToken: TOKEN });
+        try {
+            const req = modernRequest('tools/list');
+            const denied = await send(fx.port, { headers: req.headers, body: req.body });
+            expect(denied.status).toBe(401);
+            expect(denied.headers['www-authenticate']).toMatch(/^Bearer /);
+            const ok = await send(fx.port, { headers: { ...req.headers, authorization: `Bearer ${TOKEN}` }, body: req.body });
+            expect(ok.status).toBe(200);
+            expect(((ok.json?.['result'] as { tools?: unknown[] })?.tools ?? []).length).toBe(27);
+        } finally {
+            await fx.close();
+        }
+    });
+});

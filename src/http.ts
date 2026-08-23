@@ -41,7 +41,13 @@ export class RequestTooLargeError extends Error {
  * request is aborted when the client connection closes so long-lived
  * `subscriptions/listen` streams are torn down promptly.
  */
-export async function toWebRequest(req: IncomingMessage, origin: string, res?: ServerResponse): Promise<Request> {
+export interface ToWebRequestOptions {
+    /** Body cap in bytes (default {@link MAX_REQUEST_BODY_BYTES}); exposed so tests can exercise the 413 path cheaply. */
+    readonly maxBodyBytes?: number;
+}
+
+export async function toWebRequest(req: IncomingMessage, origin: string, res?: ServerResponse, opts?: ToWebRequestOptions): Promise<Request> {
+    const maxBodyBytes = opts?.maxBodyBytes ?? MAX_REQUEST_BODY_BYTES;
     const headers = new Headers();
     for (const [key, value] of Object.entries(req.headers)) {
         if (value === undefined) continue;
@@ -70,7 +76,7 @@ export async function toWebRequest(req: IncomingMessage, origin: string, res?: S
         for await (const chunk of req) {
             const buf = typeof chunk === 'string' ? Buffer.from(chunk) : (chunk as Buffer);
             total += buf.byteLength;
-            if (total > MAX_REQUEST_BODY_BYTES) throw new RequestTooLargeError(MAX_REQUEST_BODY_BYTES);
+            if (total > maxBodyBytes) throw new RequestTooLargeError(maxBodyBytes);
             chunks.push(buf);
         }
         init.body = new Uint8Array(Buffer.concat(chunks));

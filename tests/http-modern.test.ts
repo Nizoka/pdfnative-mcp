@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 import { ensureCompressionReady, SERVER_CACHE_HINTS } from '../src/server.js';
 import { generateBasicPdf } from '../src/tools/generate-basic-pdf.js';
-import { startHttpFixture, send, modernRequest, JSON_HEADERS, type HttpFixture } from './_http-fixture.js';
+import { startHttpFixture, send, modernRequest, legacyInitBody, JSON_HEADERS, type HttpFixture } from './_http-fixture.js';
 import { connectLegacy } from './_mcp-harness.js';
 
 const SERVER_INFO_KEY = 'io.modelcontextprotocol/serverInfo';
@@ -89,9 +89,11 @@ describe('HTTP transport — MCP 2026-07-28 clients', () => {
         expect(result['content']).toEqual(legacy.content);
     });
 
-    it('keeps the isError contract for unknown tools and validation failures', async () => {
-        const unknown = (await modern('tools/call', { name: 'nope', arguments: {} }))['result'] as Record<string, unknown>;
-        expect(unknown['isError']).toBe(true);
+    it('reports an unknown tool as -32602 (protocol error) and a validation failure as an isError result', async () => {
+        // MCP 2026-07-28 server/tools §Error Handling: unknown tool → JSON-RPC -32602, not isError.
+        const unknown = (await modern('tools/call', { name: 'nope', arguments: {} }))['error'] as Record<string, unknown>;
+        expect(unknown['code']).toBe(-32602);
+        expect(String(unknown['message'])).toContain('[UNKNOWN_TOOL] Unknown tool: nope');
         const invalid = (await modern('tools/call', { name: 'generate_basic_pdf', arguments: { title: '', blocks: [] } }))['result'] as Record<string, unknown>;
         expect(invalid['isError']).toBe(true);
         expect(String((invalid['content'] as Array<{ text: string }>)[0]?.text)).toContain('VALIDATION_ERROR');
@@ -116,5 +118,129 @@ describe('HTTP transport — MCP 2026-07-28 clients', () => {
         const body = JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/list', params: { _meta: { 'io.modelcontextprotocol/clientCapabilities': {} } } });
         const r = await send(fx.port, { headers: { ...JSON_HEADERS, 'mcp-protocol-version': '2026-07-28', 'mcp-method': 'tools/list' }, body });
         expect(r.status).toBeGreaterThanOrEqual(400);
+    });
+});
+
+/**
+ * Header/body agreement and framing errors, asserted against the exact
+ * JSON-RPC codes the SDK v2 handler returns (SEP-2243 / 2026-07-28):
+ *   −32020 header/body mismatch · −32022 unsupported protocol version ·
+ *   −32700 parse error · −32600 invalid request · −32602 invalid params.
+ */
+describe('HTTP transport — MCP 2026-07-28 hardening (header/body agreement, framing)', () => {
+    let fx: HttpFixture;
+
+    beforeAll(async () => {
+        await ensureCompressionReady();
+        fx = await startHttpFixture();
+    });
+    afterAll(async () => {
+        await fx.close();
+    });
+
+    function errorOf(r: { json: Record<string, unknown> | undefined }): { code: number; message: string } {
+        const err = r.json?.['error'] as { code: number; message: string } | undefined;
+        expect(err, 'expected a JSON-RPC error body').toBeDefined();
+        return err!;
+    }
+
+    it('Mcp-Name header disagreeing with params.name → 400 / −32020', async () => {
+        const { headers, body } = modernRequest('tools/call', { name: 'inspect_pdf', arguments: {} });
+        const r = await send(fx.port, { headers: { ...headers, 'mcp-name': 'other_tool' }, body });
+        expect(r.status).toBe(400);
+        const err = errorOf(r);
+        expect(err.code).toBe(-32020);
+        expect(err.message).toContain('Mcp-Name');
+        expect(r.json?.['id']).toBe(1);
+    });
+
+    it('Mcp-Method header disagreeing with the body method → 400 / −32020', async () => {
+        const { headers, body } = modernRequest('tools/list');
+        const r = await send(fx.port, { headers: { ...headers, 'mcp-method': 'prompts/list' }, body });
+        expect(r.status).toBe(400);
+        const err = errorOf(r);
+        expect(err.code).toBe(-32020);
+        expect(err.message).toContain('Mcp-Method');
+    });
+
+    it('missing MCP-Protocol-Version header with a modern _meta envelope is accepted (SDK behaviour, M-9)', async () => {
+        // The SDK v2 handler is lenient here: the `_meta` envelope alone is enough
+        // to classify the request as 2026-07-28, and the absent header is not a
+        // mismatch. Documented as observed behaviour, not a contract of this server.
+        const { headers, body } = modernRequest('tools/list');
+        const { 'mcp-protocol-version': _dropped, ...rest } = headers;
+        void _dropped;
+        const r = await send(fx.port, { headers: rest, body });
+        expect(r.status).toBe(200);
+        expect((r.json?.['result'] as Record<string, unknown>)['resultType']).toBe('complete');
+    });
+
+    it('MCP-Protocol-Version header disagreeing with the _meta envelope → 400 / −32020', async () => {
+        const { headers, body } = modernRequest('tools/list');
+        const r = await send(fx.port, { headers: { ...headers, 'mcp-protocol-version': '1999-01-01' }, body });
+        expect(r.status).toBe(400);
+        expect(errorOf(r).code).toBe(-32020);
+    });
+
+    it('unsupported protocol version (header and envelope agree) → 400 / −32022 listing the supported versions', async () => {
+        const { headers, body } = modernRequest('tools/list');
+        const parsed = JSON.parse(body) as { params: { _meta: Record<string, string> } };
+        parsed.params._meta['io.modelcontextprotocol/protocolVersion'] = '1999-01-01';
+        const r = await send(fx.port, { headers: { ...headers, 'mcp-protocol-version': '1999-01-01' }, body: JSON.stringify(parsed) });
+        expect(r.status).toBe(400);
+        const err = errorOf(r);
+        expect(err.code).toBe(-32022);
+        expect((r.json?.['error'] as { data: { supported: string[] } }).data.supported).toContain('2026-07-28');
+    });
+
+    it('modern request with a non-loopback Origin → 403 before reaching MCP', async () => {
+        const { headers, body } = modernRequest('tools/list');
+        const r = await send(fx.port, { headers: { ...headers, origin: 'http://evil.example.com' }, body });
+        expect(r.status).toBe(403);
+        expect(errorOf(r).code).toBe(-32000);
+        expect(errorOf(r).message).toContain('Origin');
+    });
+
+    it('JSON-RPC notification → 202 with an empty body', async () => {
+        const { headers } = modernRequest('notifications/initialized');
+        const body = JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized', params: { _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' } } });
+        const r = await send(fx.port, { headers, body });
+        expect(r.status).toBe(202);
+        expect(r.text).toBe('');
+    });
+
+    it('malformed JSON → 400 / −32700 on both eras', async () => {
+        const modern = await send(fx.port, { headers: { ...JSON_HEADERS, 'mcp-protocol-version': '2026-07-28', 'mcp-method': 'tools/list' }, body: '{not json' });
+        expect(modern.status).toBe(400);
+        expect(errorOf(modern).code).toBe(-32700);
+        expect(modern.json?.['id']).toBeNull();
+        const legacy = await send(fx.port, { headers: JSON_HEADERS, body: '{not json' });
+        expect(legacy.status).toBe(400);
+        expect(errorOf(legacy).code).toBe(-32700);
+    });
+
+    it('body without a jsonrpc member → 400 / −32600 on both eras', async () => {
+        const body = JSON.stringify({ id: 1, method: 'tools/list', params: {} });
+        const modern = await send(fx.port, { headers: { ...JSON_HEADERS, 'mcp-protocol-version': '2026-07-28', 'mcp-method': 'tools/list' }, body });
+        expect(modern.status).toBe(400);
+        expect(errorOf(modern).code).toBe(-32600);
+        const legacy = await send(fx.port, { headers: JSON_HEADERS, body });
+        expect(legacy.status).toBe(400);
+        expect(errorOf(legacy).code).toBe(-32600);
+    });
+
+    it.each(['2025-03-26', '2025-06-18', '2025-11-25'])('legacy initialize with %s negotiates that version and tools/list works', async (version) => {
+        const init = await send(fx.port, { headers: JSON_HEADERS, body: legacyInitBody(version) });
+        expect(init.status).toBe(200);
+        const result = init.json?.['result'] as Record<string, unknown>;
+        expect(result['protocolVersion']).toBe(version);
+        expect(Object.keys(result['capabilities'] as Record<string, unknown>)).toEqual(expect.arrayContaining(['tools', 'prompts', 'resources']));
+        const list = await send(fx.port, {
+            headers: { ...JSON_HEADERS, 'mcp-protocol-version': version },
+            body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+        });
+        expect(list.status).toBe(200);
+        const tools = (list.json?.['result'] as { tools: Array<{ name: string }> }).tools;
+        expect(tools.map((t) => t.name)).toContain('generate_basic_pdf');
     });
 });

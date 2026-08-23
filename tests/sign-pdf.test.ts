@@ -181,7 +181,7 @@ describe('sign_pdf tool', () => {
                 rsaKeyPkcs1DerBase64: b64([0x30, 0x01, 0x09]),
                 autoInjectPlaceholder: false,
             }),
-        ).rejects.toThrow(/MISSING_PLACEHOLDER|no \/Sig placeholder/);
+        ).rejects.toMatchObject({ code: 'MISSING_PLACEHOLDER', message: expect.stringContaining('no /Sig placeholder') as string });
         expect(addSignaturePlaceholderMock).not.toHaveBeenCalled();
     });
 

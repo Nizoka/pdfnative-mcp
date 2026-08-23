@@ -3,39 +3,70 @@
  * mode (node:http → `src/http.ts` bridge → `createMcpHandler` with the
  * stateless legacy fallback) on an ephemeral loopback port.
  */
-import { createServer as createHttpServer, request as httpRequest, type Server as HttpServer } from 'node:http';
+import { createServer as createHttpServer, request as httpRequest, type Agent, type Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 import { createMcpHandler, type McpHttpHandler } from '@modelcontextprotocol/server';
 
-import { guardLoopback, sendWebResponse, toWebRequest } from '../src/http.js';
+import { guardBearer } from '../src/auth.js';
+import { guardLoopback, RequestTooLargeError, sendWebResponse, toWebRequest } from '../src/http.js';
 import { createServer } from '../src/server.js';
 
 export interface HttpFixture {
     port: number;
     origin: string;
     handler: McpHttpHandler;
+    /** Underlying node:http server (for socket-level assertions). */
+    httpServer: HttpServer;
+    /** Errors routed to the `onerror` sink (mirrors `src/cli.ts`'s stderr log). */
+    errors: Error[];
     close(): Promise<void>;
 }
 
-export async function startHttpFixture(): Promise<HttpFixture> {
-    const handler = createMcpHandler(() => createServer(), { legacy: 'stateless' });
+export interface HttpFixtureOptions {
+    /** Override the request-body cap (default: `MAX_REQUEST_BODY_BYTES`). */
+    readonly maxBodyBytes?: number;
+    /** Opt-in bearer token (mirrors PDFNATIVE_MCP_HTTP_TOKEN in src/cli.ts). */
+    readonly httpToken?: string;
+}
+
+export async function startHttpFixture(opts?: HttpFixtureOptions): Promise<HttpFixture> {
+    const errors: Error[] = [];
+    const onerror = (err: Error): void => {
+        errors.push(err);
+    };
+    const handler = createMcpHandler(() => createServer(), { legacy: 'stateless', onerror });
     const httpServer: HttpServer = createHttpServer();
     await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', () => resolve()));
     const port = (httpServer.address() as AddressInfo).port;
     const origin = `http://127.0.0.1:${port}`;
 
+    // Keep this request handler byte-for-byte in step with the one in src/cli.ts
+    // (404 for non-/mcp, 413 for RequestTooLargeError, 500 otherwise).
     httpServer.on('request', (req, res) => {
         void (async () => {
-            const path = new URL(req.url ?? '/', origin).pathname;
-            if (path !== '/mcp') {
-                res.writeHead(404, { 'Content-Type': 'text/plain' });
-                res.end('Not Found. MCP endpoint is POST /mcp');
-                return;
+            try {
+                const path = new URL(req.url ?? '/', origin).pathname;
+                if (path !== '/mcp') {
+                    res.writeHead(404, { 'Content-Type': 'text/plain' });
+                    res.end('Not Found. MCP endpoint is POST /mcp');
+                    return;
+                }
+                const request = await toWebRequest(req, origin, res, opts?.maxBodyBytes !== undefined ? { maxBodyBytes: opts.maxBodyBytes } : undefined);
+                const response = guardLoopback(request) ?? guardBearer(request, opts?.httpToken ?? null) ?? (await handler.fetch(request));
+                await sendWebResponse(res, response);
+            } catch (err) {
+                if (err instanceof RequestTooLargeError) {
+                    if (!res.headersSent) res.writeHead(413, { 'Content-Type': 'text/plain' });
+                    res.end('Payload Too Large');
+                    return;
+                }
+                onerror(err instanceof Error ? err : new Error(String(err)));
+                if (!res.headersSent) {
+                    res.writeHead(500, { 'Content-Type': 'text/plain' });
+                }
+                res.end();
             }
-            const request = await toWebRequest(req, origin, res);
-            const response = guardLoopback(request) ?? (await handler.fetch(request));
-            await sendWebResponse(res, response);
         })();
     });
 
@@ -43,6 +74,8 @@ export async function startHttpFixture(): Promise<HttpFixture> {
         port,
         origin,
         handler,
+        httpServer,
+        errors,
         close: async () => {
             await handler.close();
             await new Promise<void>((resolve) => httpServer.close(() => resolve()));
@@ -61,7 +94,7 @@ export interface HttpReply {
 /** Send a raw request to the fixture and collect the whole response body. */
 export function send(
     port: number,
-    opts: { method?: string; path?: string; headers?: Record<string, string>; body?: string },
+    opts: { method?: string; path?: string; headers?: Record<string, string>; body?: string; agent?: Agent },
 ): Promise<HttpReply> {
     const body = opts.body;
     return new Promise<HttpReply>((resolve, reject) => {
@@ -71,6 +104,7 @@ export function send(
                 port,
                 path: opts.path ?? '/mcp',
                 method: opts.method ?? 'POST',
+                ...(opts.agent !== undefined ? { agent: opts.agent } : {}),
                 headers: {
                     ...(body !== undefined ? { 'content-length': Buffer.byteLength(body) } : {}),
                     ...(opts.headers ?? {}),

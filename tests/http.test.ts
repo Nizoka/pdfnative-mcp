@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { createServer as createHttpServer, request as httpRequest, type Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-import { guardLoopback, sendWebResponse, toWebRequest } from '../src/http.js';
+import { guardLoopback, RequestTooLargeError, sendWebResponse, toWebRequest } from '../src/http.js';
 
 /** Unit tests for the dependency-free node:http ↔ web Request/Response bridge. */
 describe('src/http.ts bridge', () => {
@@ -83,6 +83,28 @@ describe('src/http.ts bridge', () => {
         expect(r.text).toContain('data: 2');
     });
 
+    it('throws RequestTooLargeError when the body exceeds the injected cap and reads a body at the cap', async () => {
+        const outcomes: Array<string | number> = [];
+        server = createHttpServer((req, res) => {
+            void (async () => {
+                const origin = `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
+                try {
+                    const request = await toWebRequest(req, origin, res, { maxBodyBytes: 8 });
+                    outcomes.push((await request.text()).length);
+                    res.writeHead(200).end('ok');
+                } catch (err) {
+                    outcomes.push(err instanceof RequestTooLargeError ? `${err.name}:${err.message}` : 'other');
+                    res.writeHead(413).end();
+                }
+            })();
+        });
+        await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', () => resolve()));
+        const port = (server.address() as AddressInfo).port;
+        expect((await raw(port, { method: 'POST', body: '12345678' })).status).toBe(200);
+        expect((await raw(port, { method: 'POST', body: '123456789' })).status).toBe(413);
+        expect(outcomes).toEqual([8, 'RequestTooLargeError:request body exceeds 8 bytes']);
+    });
+
     it('guardLoopback rejects foreign Host/Origin and accepts loopback', () => {
         const ok = new Request('http://127.0.0.1:1234/mcp', { method: 'POST', headers: { host: '127.0.0.1:1234', origin: 'http://localhost:1234' } });
         expect(guardLoopback(ok)).toBeUndefined();
@@ -96,34 +118,70 @@ describe('src/http.ts bridge', () => {
 });
 
 describe('src/http.ts bridge — client disconnect aborts the in-flight request', () => {
+    // Synchronised on events only: the client hangs up once the server has built
+    // the web Request, and the test waits for the signal's own 'abort' event.
     it('aborts the web Request signal when the POST client goes away before the response', async () => {
-        const { createServer } = await import('node:http');
-        const { toWebRequest } = await import('../src/http.js');
-        let seenSignal: AbortSignal | undefined;
-        const gotRequest = new Promise<void>((resolve) => {
-            const server = createServer((req, res) => {
+        const server = createHttpServer();
+        let requestReady!: (request: Request) => void;
+        const gotRequest = new Promise<Request>((resolve) => {
+            requestReady = resolve;
+        });
+        let release!: () => void;
+        const released = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        server.on('request', (req, res) => {
+            void (async () => {
+                const port = (server.address() as AddressInfo).port;
+                const request = await toWebRequest(req, `http://127.0.0.1:${port}`, res);
+                requestReady(request);
+                await released; // hold the response until the test has observed the abort
+                res.end();
+            })();
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+        const port = (server.address() as AddressInfo).port;
+
+        const client = httpRequest({ host: '127.0.0.1', port, path: '/mcp', method: 'POST', headers: { 'content-type': 'application/json' } });
+        client.on('error', () => undefined);
+        client.end('{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}');
+
+        const request = await gotRequest;
+        expect(request.signal.aborted).toBe(false);
+        const aborted = new Promise<void>((resolve) => request.signal.addEventListener('abort', () => resolve(), { once: true }));
+        client.destroy();
+        await aborted;
+        expect(request.signal.aborted).toBe(true);
+
+        release();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+    });
+
+    it('does not abort the signal when the response completes normally', async () => {
+        const server = createHttpServer();
+        const gotRequest = new Promise<Request>((resolve) => {
+            server.on('request', (req, res) => {
                 void (async () => {
                     const port = (server.address() as AddressInfo).port;
                     const request = await toWebRequest(req, `http://127.0.0.1:${port}`, res);
-                    seenSignal = request.signal;
-                    resolve();
-                    // Never answer: the client will hang up.
-                    setTimeout(() => {
-                        res.end();
-                        server.close();
-                    }, 500);
+                    await sendWebResponse(res, new Response('ok', { status: 200 }));
+                    resolve(request);
                 })();
             });
-            server.listen(0, '127.0.0.1', () => {
-                const port = (server.address() as AddressInfo).port;
-                const req = httpRequest({ host: '127.0.0.1', port, path: '/mcp', method: 'POST', headers: { 'content-type': 'application/json' } });
-                req.on('error', () => undefined);
-                req.end('{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}');
-                setTimeout(() => req.destroy(), 100);
-            });
         });
-        await gotRequest;
-        await new Promise((r) => setTimeout(r, 300));
-        expect(seenSignal?.aborted).toBe(true);
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+        const port = (server.address() as AddressInfo).port;
+        const done = new Promise<void>((resolve, reject) => {
+            const client = httpRequest({ host: '127.0.0.1', port, path: '/mcp', method: 'POST' }, (res) => {
+                res.resume();
+                res.once('end', () => resolve());
+            });
+            client.on('error', reject);
+            client.end('{}');
+        });
+        const request = await gotRequest;
+        await done;
+        expect(request.signal.aborted).toBe(false);
+        await new Promise<void>((resolve) => server.close(() => resolve()));
     });
 });

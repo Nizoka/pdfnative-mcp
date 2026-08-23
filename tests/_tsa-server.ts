@@ -6,7 +6,7 @@
  *
  * Failure modes let the MCP tools' error handling be tested deterministically.
  */
-import { createServer, type Server } from 'node:http';
+import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 import { buildMockTimestampResponse, type MockPki } from './_ltv-fixtures.js';
@@ -25,6 +25,8 @@ export interface MockTsaServer {
     readonly url: string;
     /** Number of POST /tsr requests received so far. */
     readonly requests: number;
+    /** Request headers of every POST /tsr received, in order (lets tests assert what actually hit the wire). */
+    readonly requestHeaders: ReadonlyArray<IncomingHttpHeaders>;
     close(): Promise<void>;
 }
 
@@ -35,6 +37,7 @@ export async function startMockTsaServer(pki: MockPki, opts?: MockTsaServerOptio
     const mode = opts?.mode ?? 'ok';
     const delayMs = opts?.delayMs ?? 2000;
     let requests = 0;
+    const requestHeaders: IncomingHttpHeaders[] = [];
     const pending = new Set<NodeJS.Timeout>();
 
     const server: Server = createServer((req, res) => {
@@ -45,6 +48,7 @@ export async function startMockTsaServer(pki: MockPki, opts?: MockTsaServerOptio
             return;
         }
         requests++;
+        requestHeaders.push({ ...req.headers });
         if (req.headers['content-type'] !== TSQ_TYPE) {
             res.writeHead(415, { 'Content-Type': 'text/plain' });
             res.end(`Expected Content-Type ${TSQ_TYPE}`);
@@ -110,6 +114,9 @@ export async function startMockTsaServer(pki: MockPki, opts?: MockTsaServerOptio
         url: `http://127.0.0.1:${port}/tsr`,
         get requests(): number {
             return requests;
+        },
+        get requestHeaders(): ReadonlyArray<IncomingHttpHeaders> {
+            return requestHeaders;
         },
         close(): Promise<void> {
             for (const t of pending) clearTimeout(t);

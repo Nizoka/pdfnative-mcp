@@ -139,8 +139,11 @@ describe('verify_pdf', () => {
         mutated[hexStart + 4] = mutated[hexStart + 4] === 0x41 ? 0x42 : 0x41;
         const result = await verifyPdf({ pdfBase64: toB64(mutated) });
         expect(result.allValid).toBe(false);
-        // Either CMS parse fails or signature-value verification fails — both are acceptable.
-        expect(result.signatures[0]!.errors.length).toBeGreaterThan(0);
+        // The flipped nibble lands in the outer SEQUENCE length of the CMS ContentInfo,
+        // so the failure is always a CMS parse error (never a signature-value mismatch).
+        expect(result.signatures[0]!.errors).toHaveLength(1);
+        expect(result.signatures[0]!.errors[0]).toMatch(/^ContentInfo: ASN\.1: value extends beyond buffer/);
+        expect(result.signatures[0]!.integrity).toBe(false);
     });
 
     it('reports unverified chainTrust when supplied roots do not validate the signer', async () => {
