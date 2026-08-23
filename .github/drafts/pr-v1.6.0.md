@@ -88,7 +88,7 @@ No unexpected byte change. The table was produced with a scratchpad baseline scr
 - **veraPDF advisory** — `npm run validate:pdfa`, `scripts/generate-pdfa-corpus.mjs`, `.github/workflows/verapdf.yml` (non-blocking in 1.6.0, to become blocking in 1.7.0).
 - **Tests / fixtures** — mock PKI, loopback TSA, MCP harness, HTTP fixture; coverage thresholds raised to 89 / 80 / 90 / 91; round 2: `tests/schema-conformance.test.ts` (structuredContent vs outputSchema, `_meta.examples` vs inputSchema), `tests/catalogue-parity.test.ts`, `tests/auth.test.ts`, `tests/base64.test.ts`.
 - **Round 2 (review)** — `creationDate` on the nine document tools, `signingTime` on `prepare_signature_placeholder`, strict Zod, base64 / DER boundary diagnostics (`src/base64.ts`), opt-in HTTP bearer token (`src/auth.ts`, `PDFNATIVE_MCP_HTTP_TOKEN`), projectable output schemas, `[UNKNOWN_TOOL]` protocol error, `_meta.cached` / `_meta.unmatchedFields`, four recipe prompts, catalogue compaction with the `scripts/tool-shape.mjs` parity gate, fail-closed veraPDF validator with a 24-file corpus — see `release-notes/v1.6.0.md` → *Review round 2*.
-- **Docs** — guides `LTV.md`, `PRINT.md`; nine new examples; cross-repo follow-up draft `.github/drafts/issue-v1.6.0-ecosystem.md`.
+- **Docs** — guides `LTV.md`, `PRINT.md`; nine new examples.
 
 ### Changed
 - `pdfnative` `^1.6.0` → `^1.7.0`; MCP SDK 1.x → `@modelcontextprotocol/server` ^2.0.0 (+ core); `zod ^4.2.0`. Three runtime deps, no hono / express / jose in the tree.
@@ -257,4 +257,4 @@ Three further independent, read-only reviewers ran on the post-round-1 branch wi
 2. GitHub Release: title from `release-notes/v1.6.0.md`, body = the notes.
 3. Watch `publish.yml` (OIDC Trusted Publishing) → `npm view pdfnative-mcp@1.6.0`.
 4. Publish the MCP registry entry from `server.json` (manual step, see `.github/instructions/release.instructions.md`).
-5. Open the cross-repo ecosystem issue from `.github/drafts/issue-v1.6.0-ecosystem.md` in `Nizoka/pdfnative` (human-submitted per the governance charter).
+5. Update the pdfnative docs site (`docs/assets/ecosystem.json` + `docs/guides/mcp.md`: 1.6.0, pin `^1.7.0`, 27 tools) as part of the normal release cadence.
