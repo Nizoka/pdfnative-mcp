@@ -7,8 +7,8 @@
  * space, so the output is fully self-contained.
  *
  * Faithful-wrapper notes (pdfnative semantics, surfaced verbatim):
- *   - Encrypted sources are rejected (decrypt outside the server first) →
- *     `ENCRYPTED_SOURCE`.
+ *   - Encrypted sources open with `password` (pdfnative ≥ 1.6); a missing or
+ *     wrong password → `PASSWORD_REQUIRED` / `PASSWORD_INVALID`.
  *   - Any existing signatures and the `/AcroForm` are dropped — a page-tree
  *     edit necessarily invalidates `/ByteRange`. Self-contained URI `/Link`
  *     annotations are preserved unless `dropAnnotations` is set.

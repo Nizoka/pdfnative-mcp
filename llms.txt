@@ -173,7 +173,7 @@ Defaults are unchanged (`verbosity: 'full'`, no `fields`). Generated PDFs are re
 // check: verify_pdf    { pdfBase64, ltv: true }  → ltvLevel, per-signature profile / timestamp / revocation
 ```
 
-Caveats of `verify_pdf ltv:true`: revocation status is read from embedded /DSS material only (responder signatures are not verified); timestamp tokens are checked for imprint consistency, TSA trust only when its root is in `trustedRootsDerBase64`. Document timestamps never flip `allValid`.
+Caveats of `verify_pdf ltv:true`: revocation status is read from embedded /DSS material only (responder signatures are not verified); timestamp tokens are checked for imprint consistency, TSA trust only when its root is in `trustedRootsDerBase64`. Document timestamps count in `allValid` like any signature (sound ⇒ pass, tampered ⇒ fail).
 
 ## License
 

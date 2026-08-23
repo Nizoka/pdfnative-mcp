@@ -82,7 +82,7 @@ export const INSPECT_PDF_INPUT_SCHEMA = {
         check: {
             type: 'array',
             description:
-                "Optional CI assertions. The result.checksPassed flag is true only when every requested check holds (e.g. ['pdfa','signed']). 'dss' asserts a /DSS Document Security Store, 'docTimestamp' at least one /DocTimeStamp, 'trapped' an /Info /Trapped entry.",
+                "Optional CI assertions. The result.checksPassed flag is true only when every requested check holds (e.g. ['pdfa','signed']); result.checks lists only the requested keys. 'signed' = at least one signature field with signed content (an extra unsigned placeholder does not negate it), 'placeholder' = at least one unsigned placeholder, 'dss' a /DSS Document Security Store, 'docTimestamp' at least one /DocTimeStamp, 'trapped' an /Info /Trapped entry.",
             maxItems: 8,
             items: { type: 'string', enum: [...CHECK_VALUES] },
         },
@@ -91,7 +91,7 @@ export const INSPECT_PDF_INPUT_SCHEMA = {
             enum: ['summary', 'full'],
             default: 'full',
             description:
-                "Response verbosity. 'full' (default) returns every field; 'summary' returns a token-frugal scalar subset (version, pageCount, encryption, pdfA, signatureCount, hasSignaturePlaceholder, attachmentCount) — drops the attachments[], info, perPage and signatures[] arrays and the dss / trapped / docTimestampCount extras.",
+                "Response verbosity. 'full' (default) returns every field; 'summary' returns a token-frugal scalar subset (version, pageCount, encryption, pdfA, signatureCount, hasSignaturePlaceholder, attachmentCount, plus docTimestampCount / trapped / checksPassed when present) — drops the attachments[], info, perPage and signatures[] arrays and the dss object.",
         },
         fields: {
             type: 'array',
@@ -222,6 +222,7 @@ export const INSPECT_PDF_OUTPUT_SCHEMA = {
         },
         checks: {
             type: 'object',
+            description: 'One boolean per REQUESTED check (keys = the check[] you passed, nothing else).',
             additionalProperties: { type: 'boolean' },
         },
         checksPassed: { type: 'boolean' },
@@ -287,7 +288,7 @@ export interface InspectPdfResult {
         readonly prefix?: string;
         readonly start?: number;
     }>;
-    readonly checks?: Readonly<Record<CheckValue, boolean>>;
+    readonly checks?: Readonly<Partial<Record<CheckValue, boolean>>>;
     readonly checksPassed?: boolean;
 }
 
@@ -559,7 +560,9 @@ export async function inspectPdf(rawInput: unknown): Promise<InspectPdfResult> {
     if (check !== undefined && check.length > 0) {
         const checks: Record<CheckValue, boolean> = {
             pdfa: pdfA !== null,
-            signed: signatureCount > 0 && !hasPlaceholder,
+            // At least one signature field carries signed content — an unsigned placeholder
+            // sitting next to a signed field (multi-signature flow) does not negate it.
+            signed: widgets.some((w) => !w.isPlaceholder),
             encrypted: encryption !== 'none',
             placeholder: hasPlaceholder,
             attachments: attachments.length > 0,
@@ -567,16 +570,9 @@ export async function inspectPdf(rawInput: unknown): Promise<InspectPdfResult> {
             docTimestamp: docTimestampCount > 0,
             trapped: trapped !== null,
         };
-        const requested: Record<CheckValue, boolean> = {
-            pdfa: false,
-            signed: false,
-            encrypted: false,
-            placeholder: false,
-            attachments: false,
-            dss: false,
-            docTimestamp: false,
-            trapped: false,
-        };
+        // Only the requested checks are reported: an unrequested key reading `false`
+        // would be indistinguishable from a failed assertion.
+        const requested: Partial<Record<CheckValue, boolean>> = {};
         for (const c of check) requested[c] = checks[c];
         result.checks = requested;
         result.checksPassed = check.every((c) => checks[c]);

@@ -58,7 +58,7 @@ function mapTimestampError(err: unknown): ToolError {
         return new ToolError('TSA_REJECTED', `The timestamp authority's response was rejected: ${message}`);
     }
     if (/encrypt/i.test(message)) {
-        return new ToolError('ENCRYPTED_SOURCE', 'timestamp_pdf does not support encrypted PDFs. Run decrypt_pdf first.');
+        return new ToolError('ENCRYPTED_SOURCE', 'timestamp_pdf does not support encrypted PDFs, and decrypt_pdf would drop existing signatures — timestamp the unencrypted document and apply encryption (if at all) last.');
     }
     if (/xref|startxref|trailer|%PDF|parse/i.test(message)) {
         return new ToolError('PDF_PARSE_FAILED', `Failed to parse PDF: ${message}`);

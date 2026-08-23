@@ -174,7 +174,9 @@ existence at that time.
 Default `verify_pdf` output is unchanged except that every signature now carries
 `subFilter`, and `/DocTimeStamp` entries appear with `isDocTimestamp: true` — they
 are verified as RFC 3161 tokens (imprint vs. ByteRange digest, token SignerInfo vs.
-the embedded TSA certificate) and **never flip `allValid`**. (Before v1.6.0 a
+the embedded TSA certificate) and **count in `allValid` like any signature**: a
+sound timestamp never fails the verdict, a tampered one (imprint mismatch, broken
+token signature, untrusted TSA when roots are supplied) does. (Before v1.6.0 a
 document timestamp was parsed as a CMS signature and produced `allValid: false` on
 every B-LTA file.)
 

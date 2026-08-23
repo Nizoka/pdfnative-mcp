@@ -102,7 +102,7 @@ export const VERIFY_PDF_INPUT_SCHEMA = {
             enum: ['summary', 'full'],
             default: 'full',
             description:
-                "Response verbosity. 'full' (default) returns the per-signature signatures[] array; 'summary' returns a token-frugal verdict { signatureCount, allValid, invalid, summary } and drops signatures[] (and the ltv extras).",
+                "Response verbosity. 'full' (default) returns the per-signature signatures[] array; 'summary' returns a token-frugal verdict { signatureCount, allValid, invalid, summary } (+ ltvLevel when ltv:true) and drops signatures[], dss and caveats.",
         },
         fields: {
             type: 'array',
@@ -123,7 +123,7 @@ export const VERIFY_PDF_OUTPUT_SCHEMA = {
         signatureCount: { type: 'integer', minimum: 0 },
         allValid: {
             type: 'boolean',
-            description: 'Every non-timestamp signature is valid and every document timestamp has integrity (imprint matches the ByteRange digest).',
+            description: 'true when the document carries at least one signature and every entry of signatures[] — CMS signatures and /DocTimeStamp tokens alike — is valid (integrity + signature check + chain trust when trustedRootsDerBase64 is given). A tampered document timestamp fails the verdict; a sound one never does.',
         },
         summary: { type: 'string' },
         signatures: {

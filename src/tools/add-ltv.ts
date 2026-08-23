@@ -170,7 +170,7 @@ function mapLtvError(err: unknown): ToolError {
         return new ToolError('LTV_EMPTY', `No validation material could be collected (self-signed chains and certificates without AIA / CRL-DP yield nothing): ${message}`);
     }
     if (/encrypt/i.test(message)) {
-        return new ToolError('ENCRYPTED_SOURCE', 'add_ltv does not support encrypted PDFs. Run decrypt_pdf first.');
+        return new ToolError('ENCRYPTED_SOURCE', 'add_ltv does not support encrypted PDFs, and decrypt_pdf would drop the signatures it needs — sign an unencrypted document (sign_pdf) and apply the LTV ladder before any encryption.');
     }
     if (/xref|startxref|trailer|%PDF|parse/i.test(message)) {
         return new ToolError('PDF_PARSE_FAILED', `Failed to parse PDF: ${message}`);

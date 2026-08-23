@@ -10,7 +10,8 @@
  * sibling of `outputPath` (`out.pdf` → `out-1.pdf`, `out-2.pdf`, …).
  *
  * Faithful-wrapper notes (pdfnative semantics):
- *   - Encrypted sources are rejected → `ENCRYPTED_SOURCE`.
+ *   - Encrypted sources open with `password`; missing / wrong password →
+ *     `PASSWORD_REQUIRED` / `PASSWORD_INVALID`.
  *   - Signatures and the `/AcroForm` are dropped; self-contained URI links are
  *     kept unless `dropAnnotations` is set.
  *   - Ranges are 0-based and inclusive; `end` defaults to `start`.

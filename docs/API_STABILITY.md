@@ -163,7 +163,9 @@ All 27 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 >    pre-built placeholder (`prepare_signature_placeholder`) keeps its own `/M`.
 > 3. `verify_pdf` reported `allValid: false` on PAdES B-LTA documents because a
 >    `/DocTimeStamp` was parsed as a CMS signature. Document timestamps are now verified as
->    RFC 3161 tokens and never flip `allValid`. Inputs that were correctly verified before are
+>    RFC 3161 tokens (imprint vs. ByteRange digest, token signature vs. the embedded TSA
+>    certificate) and count in `allValid` like any signature: a sound timestamp no longer fails
+>    the verdict, a tampered one still does. Inputs that were correctly verified before are
 >    unaffected.
 >
 > **Placeholder sizing note:** the default `sign_pdf` placeholder size is now

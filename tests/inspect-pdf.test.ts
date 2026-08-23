@@ -4,6 +4,7 @@ import { generateBasicPdf } from '../src/tools/generate-basic-pdf.js';
 import { prepareSignaturePlaceholder } from '../src/tools/prepare-signature-placeholder.js';
 import { ensureCompressionReady } from '../src/server.js';
 import { ToolError } from '../src/errors.js';
+import { addSignaturePlaceholder } from 'pdfnative';
 import { fullLadder, signedBB } from './_ltv-fixtures.js';
 
 beforeAll(async () => {
@@ -84,6 +85,25 @@ describe('inspect_pdf', () => {
         expect(out.checksPassed).toBe(false);
         expect(out.checks?.encrypted).toBe(false);
         expect(out.checks?.signed).toBe(false);
+    });
+
+    it('reports only the requested checks (an unrequested key must not read as a failed assertion)', async () => {
+        const pdfBase64 = await buildSamplePdf();
+        const out = await inspectPdf({ pdfBase64, check: ['pdfa'] });
+        expect(Object.keys(out.checks!)).toEqual(['pdfa']);
+        const none = await inspectPdf({ pdfBase64 });
+        expect(none.checks).toBeUndefined();
+        expect(none.checksPassed).toBeUndefined();
+    });
+
+    it("'signed' holds when a signed field coexists with an unsigned placeholder (multi-signature flow)", async () => {
+        const signed = signedBB(Buffer.from(await buildSamplePdf(), 'base64'));
+        const withExtra = addSignaturePlaceholder(signed, { fieldName: 'Second', allowMultiple: true });
+        const out = await inspectPdf({ pdfBase64: Buffer.from(withExtra).toString('base64'), check: ['signed', 'placeholder'], verbosity: 'full' });
+        expect(out.signatureCount).toBe(2);
+        expect(out.hasSignaturePlaceholder).toBe(true);
+        expect(out.checks).toEqual({ signed: true, placeholder: true });
+        expect(out.checksPassed).toBe(true);
     });
 
     it('rejects invalid base64', async () => {

@@ -558,7 +558,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: VERIFY_PDF_NAME,
         title: 'Verify PDF signatures',
         description:
-            "Read-only verification of every PAdES Baseline / adbe.pkcs7.detached signature in a PDF. For each /Sig widget, recomputes the ByteRange SHA-256, validates the CMS messageDigest (integrity), and verifies the CMS signatureValue with the embedded signer certificate. Supports RSA-SHA256 and ECDSA-SHA256 (P-256). The response shape: { allValid, signatureCount, summary, signatures: [{ valid, integrity, signerSubject, signingTime, reason, chainTrust: 'self-signed'|'unverified'|'trusted', errors: [] }] }. Read `allValid` for an overall yes/no; iterate `signatures[]` for per-signature detail. Without trustedRootsDerBase64, chainTrust is 'self-signed' (single-cert chain) or 'unverified' (signer rooted in an external CA). v1.6.0: document timestamps (/DocTimeStamp) are verified as RFC 3161 tokens (never flip allValid); RSA-SHA384/512 supported; per-signature `subFilter`. Pass `ltv: true` for the PAdES long-term-validation view — profile, signature timestamp, revocation status read from embedded /DSS material only, and ltvLevel (B-B / B-T / B-LT / B-LTA) with explicit caveats.",
+            "Read-only verification of every PAdES Baseline / adbe.pkcs7.detached signature in a PDF. For each /Sig widget, recomputes the ByteRange SHA-256, validates the CMS messageDigest (integrity), and verifies the CMS signatureValue with the embedded signer certificate. Supports RSA-SHA256 and ECDSA-SHA256 (P-256). The response shape: { allValid, signatureCount, summary, signatures: [{ valid, integrity, signerSubject, signingTime, reason, chainTrust: 'self-signed'|'unverified'|'trusted', errors: [] }] }. Read `allValid` for an overall yes/no; iterate `signatures[]` for per-signature detail. Without trustedRootsDerBase64, chainTrust is 'self-signed' (single-cert chain) or 'unverified' (signer rooted in an external CA). v1.6.0: document timestamps (/DocTimeStamp) are verified as RFC 3161 tokens and count in allValid like any signature — a sound timestamp no longer fails the verdict (pre-1.6 bug), a tampered one (imprint mismatch, bad token signature) does; RSA-SHA384/512 supported; per-signature `subFilter`. Pass `ltv: true` for the PAdES long-term-validation view — profile, signature timestamp, revocation status read from embedded /DSS material only, and ltvLevel (B-B / B-T / B-LT / B-LTA) with explicit caveats.",
         inputSchema: VERIFY_PDF_INPUT_SCHEMA,
         outputSchema: projectableOutputSchema(
             VERIFY_PDF_OUTPUT_SCHEMA,
@@ -646,7 +646,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: MERGE_PDFS_NAME,
         title: 'Merge PDFs',
         description:
-            "Concatenate 2–50 source PDFs into a single document (pdfnative v1.4 page-tree API). Each kept page's object graph is deep-copied into a fresh, self-contained PDF. Signatures and AcroForms are dropped (a page-tree edit invalidates /ByteRange); self-contained URI link annotations are preserved unless dropAnnotations=true. Encrypted sources are rejected (ENCRYPTED_SOURCE) — decrypt first. A secure-by-default 256 MiB in-memory assembly guard (maxOutputSizeBytes) guards against memory exhaustion; the emitted PDF is separately capped at 50 MiB (OUTPUT_TOO_LARGE). Returns one PDF (base64 or sandboxed file). NOTE (verified with veraPDF in v1.6.0): the rebuilt document carries no XMP packet, so a source PDF/A claim does NOT survive — re-declare PDF/A on the generating tools instead. Page boxes (TrimBox/BleedBox/ArtBox) and /UserUnit DO survive (pdfnative 1.7).",
+            "Concatenate 2–50 source PDFs into a single document (pdfnative v1.4 page-tree API). Each kept page's object graph is deep-copied into a fresh, self-contained PDF. Signatures and AcroForms are dropped (a page-tree edit invalidates /ByteRange); self-contained URI link annotations are preserved unless dropAnnotations=true. Encrypted sources open with `password` (PASSWORD_REQUIRED / PASSWORD_INVALID otherwise); the output is unencrypted unless `encrypt` is set. A secure-by-default 256 MiB in-memory assembly guard (maxOutputSizeBytes) guards against memory exhaustion; the emitted PDF is separately capped at 50 MiB (OUTPUT_TOO_LARGE). Returns one PDF (base64 or sandboxed file). NOTE (verified with veraPDF in v1.6.0): the rebuilt document carries no XMP packet, so a source PDF/A claim does NOT survive — re-declare PDF/A on the generating tools instead. Page boxes (TrimBox/BleedBox/ArtBox) and /UserUnit DO survive (pdfnative 1.7).",
         inputSchema: MERGE_PDFS_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -659,7 +659,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: SPLIT_PDF_NAME,
         title: 'Split PDF into ranges',
         description:
-            "Split one PDF into several documents — one per requested page range (pdfnative v1.4 page-tree API). Ranges are 0-based and inclusive; `end` defaults to `start` (a single page). Each output is a fresh, self-contained PDF (signatures/AcroForm dropped; URI links kept unless dropAnnotations=true). Encrypted sources are rejected (ENCRYPTED_SOURCE). In base64 mode every produced PDF is returned as its own embedded resource block; in file mode each is written to a 1-based indexed sibling of outputPath ('out.pdf' → 'out-1.pdf', 'out-2.pdf', …). Use extract_pages instead when you want a single PDF from an arbitrary page subset. NOTE (verified with veraPDF in v1.6.0): the rebuilt document carries no XMP packet, so a source PDF/A claim does NOT survive — re-declare PDF/A on the generating tools instead. Page boxes (TrimBox/BleedBox/ArtBox) and /UserUnit DO survive (pdfnative 1.7).",
+            "Split one PDF into several documents — one per requested page range (pdfnative v1.4 page-tree API). Ranges are 0-based and inclusive; `end` defaults to `start` (a single page). Each output is a fresh, self-contained PDF (signatures/AcroForm dropped; URI links kept unless dropAnnotations=true). Encrypted sources open with `password` (PASSWORD_REQUIRED / PASSWORD_INVALID otherwise); the output is unencrypted unless `encrypt` is set. In base64 mode every produced PDF is returned as its own embedded resource block; in file mode each is written to a 1-based indexed sibling of outputPath ('out.pdf' → 'out-1.pdf', 'out-2.pdf', …). Use extract_pages instead when you want a single PDF from an arbitrary page subset. NOTE (verified with veraPDF in v1.6.0): the rebuilt document carries no XMP packet, so a source PDF/A claim does NOT survive — re-declare PDF/A on the generating tools instead. Page boxes (TrimBox/BleedBox/ArtBox) and /UserUnit DO survive (pdfnative 1.7).",
         inputSchema: SPLIT_PDF_INPUT_SCHEMA,
         outputSchema: MULTI_PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -672,7 +672,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: EXTRACT_PAGES_NAME,
         title: 'Extract pages into one PDF',
         description:
-            "Extract an arbitrary subset of pages (0-based, in the order given) from a PDF into a SINGLE new document (pdfnative v1.4 page-tree API). The output is a fresh, self-contained PDF (signatures/AcroForm dropped; URI links kept unless dropAnnotations=true). Encrypted sources are rejected (ENCRYPTED_SOURCE). Use split_pdf instead when you need several output PDFs (one per range). NOTE (verified with veraPDF in v1.6.0): the rebuilt document carries no XMP packet, so a source PDF/A claim does NOT survive — re-declare PDF/A on the generating tools instead. Page boxes (TrimBox/BleedBox/ArtBox) and /UserUnit DO survive (pdfnative 1.7).",
+            "Extract an arbitrary subset of pages (0-based, in the order given) from a PDF into a SINGLE new document (pdfnative v1.4 page-tree API). The output is a fresh, self-contained PDF (signatures/AcroForm dropped; URI links kept unless dropAnnotations=true). Encrypted sources open with `password` (PASSWORD_REQUIRED / PASSWORD_INVALID otherwise); the output is unencrypted unless `encrypt` is set. Use split_pdf instead when you need several output PDFs (one per range). NOTE (verified with veraPDF in v1.6.0): the rebuilt document carries no XMP packet, so a source PDF/A claim does NOT survive — re-declare PDF/A on the generating tools instead. Page boxes (TrimBox/BleedBox/ArtBox) and /UserUnit DO survive (pdfnative 1.7).",
         inputSchema: EXTRACT_PAGES_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -933,6 +933,9 @@ function buildInspectResult(output: InspectPdfResult, toolName: string, input: u
         signatureCount: output.signatureCount,
         hasSignaturePlaceholder: output.hasSignaturePlaceholder,
         attachmentCount: output.attachments.length,
+        // Presence-gated scalars survive the summary: they are the signal an agent asked for.
+        ...(output.docTimestampCount !== undefined ? { docTimestampCount: output.docTimestampCount } : {}),
+        ...(output.trapped !== undefined ? { trapped: output.trapped } : {}),
         ...(output.checksPassed !== undefined ? { checksPassed: output.checksPassed } : {}),
     };
     return {
@@ -953,6 +956,7 @@ function buildVerifyResult(output: VerifyPdfResult, toolName: string, input: unk
         allValid: output.allValid,
         invalid: output.signatures.filter((s) => !s.valid).length,
         summary: output.summary,
+        ...(output.ltvLevel !== undefined ? { ltvLevel: output.ltvLevel } : {}),
     };
     return {
         content: [{ type: 'text', text: `${toolName}: ${output.summary}` }],

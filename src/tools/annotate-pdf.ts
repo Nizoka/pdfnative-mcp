@@ -241,7 +241,7 @@ export async function annotatePdf(rawInput: unknown): Promise<OutputResult> {
     if (isEncrypted(reader)) {
         throw new ToolError(
             'ENCRYPTED_SOURCE',
-            'annotate_pdf does not support encrypted PDFs. Decrypt the source outside the server first.',
+            'annotate_pdf does not support encrypted PDFs. Run decrypt_pdf first (this drops signatures and AcroForm), annotate, then encrypt_pdf again.',
         );
     }
 

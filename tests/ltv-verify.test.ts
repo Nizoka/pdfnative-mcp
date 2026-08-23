@@ -230,7 +230,7 @@ describe('verify_pdf ltv', () => {
         expect(result.signatures[0]!.profile).toBeUndefined();
     });
 
-    it("verbosity='summary' through the MCP handler stays the same scalar verdict with or without ltv", async () => {
+    it("verbosity='summary' through the MCP handler keeps the scalar verdict and adds only ltvLevel with ltv:true", async () => {
         const { blta } = await fullLadder(basePdf());
         const client = await connectLegacy();
         try {
@@ -244,7 +244,7 @@ describe('verify_pdf ltv', () => {
             const plain = await call({ pdfBase64: toB64(blta), verbosity: 'summary' });
             const withLtv = await call({ pdfBase64: toB64(blta), verbosity: 'summary', ltv: true });
             expect(Object.keys(plain)).toEqual(['signatureCount', 'allValid', 'invalid', 'summary']);
-            expect(withLtv).toEqual(plain);
+            expect(withLtv).toEqual({ ...plain, ltvLevel: 'B-LTA' });
             expect(plain['allValid']).toBe(true);
             expect(plain['invalid']).toBe(0);
         } finally {

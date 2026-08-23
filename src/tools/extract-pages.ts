@@ -10,7 +10,8 @@
  * `extract_pages` always produces exactly one PDF.
  *
  * Faithful-wrapper notes (pdfnative semantics):
- *   - Encrypted sources are rejected → `ENCRYPTED_SOURCE`.
+ *   - Encrypted sources open with `password`; missing / wrong password →
+ *     `PASSWORD_REQUIRED` / `PASSWORD_INVALID`.
  *   - Signatures and the `/AcroForm` are dropped; self-contained URI links are
  *     kept unless `dropAnnotations` is set.
  *   - Page indices are 0-based; order is preserved.

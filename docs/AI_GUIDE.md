@@ -58,7 +58,7 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 - B-B `sign_pdf` → B-T `sign_pdf timestamp: true` → B-LT `add_ltv` → B-LTA `timestamp_pdf`. `verify_pdf ltv: true` reports `ltvLevel` and per-signature `profile` / `timestamp` / `revocation`.
 - `add_ltv mode: 'online'` (default) needs `PDFNATIVE_MCP_REVOCATION` + `PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS` on the server (`REVOCATION_NOT_CONFIGURED` otherwise). `mode: 'offline'` embeds DER certificates / OCSP responses / CRLs you supply — zero network, for air-gapped pipelines. Self-signed chains yield nothing online (`LTV_EMPTY`).
 - `timestamp_pdf` re-runs extend the chain (`DocTimeStamp1`, `DocTimeStamp2`, …); raise `placeholderBytes` for TSAs that return large chains (`TSA_REJECTED` / `LTV_ERROR`).
-- Document timestamps never flip `allValid`; `verify_pdf` reads revocation status from embedded `/DSS` material only. See [`guides/LTV.md`](guides/LTV.md).
+- Document timestamps are verified as RFC 3161 tokens and count in `allValid` like any signature (a sound one never fails the verdict, a tampered one does); `verify_pdf` reads revocation status from embedded `/DSS` material only. See [`guides/LTV.md`](guides/LTV.md).
 
 ### Print production
 - Every document tool accepts `print: { bleed }` (TrimBox = MediaBox inset, BleedBox = MediaBox) or explicit `trimBox` / `bleedBox` / `artBox` / `cropBox` (points, inside the MediaBox), `marks: true | { crop, registration, length, offset, weight }` (needs a TrimBox), and `userUnit` (not under `pdfa1b`). `bleed` and `trimBox` are mutually exclusive.
@@ -72,7 +72,7 @@ The server also returns the same decision tree in `serverInfo.instructions`. The
 ### Combining / carving PDFs (page-tree)
 - `merge_pdfs` joins 2–50 PDFs (`pdfsBase64[]`) into one. `split_pdf` cuts one PDF into one document per `ranges[]` entry (`{ start, end? }`, 0-based inclusive). `extract_pages` keeps an arbitrary `pages[]` subset (0-based) in a single PDF.
 - `split_pdf` returns a **multi-output** result (`{ mode, count, totalSizeBytes, parts[] }`); in `file` mode each part is written to an indexed path (`report.pdf` → `report-1.pdf`, …).
-- **Encrypted sources are rejected** with `ENCRYPTED_SOURCE` — decrypt outside the server first. Oversize output throws `OUTPUT_TOO_LARGE`.
+- **Encrypted sources** open with `password` (one password applied to every source of `merge_pdfs`); a missing or wrong password throws `PASSWORD_REQUIRED` / `PASSWORD_INVALID`. The output is unencrypted unless `encrypt` is set. Oversize output throws `OUTPUT_TOO_LARGE`.
 
 ### Bookmarks, page labels & nested lists
 - `generate_basic_pdf` accepts `outline: 'auto'` (derive bookmarks from headings) or an explicit `[{ title, pageIndex, children?, open? }]` tree, plus `pageLabels: [{ startPage, style?, prefix?, start? }]` for viewer page numbering.
