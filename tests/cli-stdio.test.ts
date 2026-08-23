@@ -113,6 +113,21 @@ function expectCleanExit(session: StdioSession): void {
 }
 
 describe.skipIf(!hasDist)('dist/cli.js over stdio', () => {
+    it.each(['2025-03-26', '2025-06-18'])('negotiates the older 2025 revision %s on stdio and serves tools/list', async (version) => {
+        const session = await runStdioSession(
+            [
+                { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: version, capabilities: {}, clientInfo: { name: 'legacy', version: '0' } } },
+                { jsonrpc: '2.0', method: 'notifications/initialized' },
+                { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
+            ],
+            [1, 2],
+        );
+        const init = session.frames.find((f) => f.id === 1)?.result as { protocolVersion?: string } | undefined;
+        expect(init?.protocolVersion).toBe(version);
+        const tools = (session.frames.find((f) => f.id === 2)?.result as { tools?: Array<{ name: string }> } | undefined)?.tools ?? [];
+        expect(tools.length).toBe(28);
+    });
+
     it('serves a legacy initialize → tools/list → tools/call session with JSON-only stdout', async () => {
         const session = await runStdioSession(
             [

@@ -243,4 +243,22 @@ describe('HTTP transport — MCP 2026-07-28 hardening (header/body agreement, fr
         const tools = (list.json?.['result'] as { tools: Array<{ name: string }> }).tools;
         expect(tools.map((t) => t.name)).toContain('generate_basic_pdf');
     });
+
+    it('accepts a 2025-03-26 JSON-RPC batch array over HTTP and answers every request', async () => {
+        const batch = await send(fx.port, {
+            headers: { ...JSON_HEADERS, 'mcp-protocol-version': '2025-03-26' },
+            body: JSON.stringify([
+                { jsonrpc: '2.0', id: 10, method: 'ping', params: {} },
+                { jsonrpc: '2.0', id: 11, method: 'tools/list', params: {} },
+            ]),
+        });
+        expect(batch.status).toBe(200);
+        const frames = batch.text
+            .split('\n')
+            .filter((l) => l.startsWith('data:'))
+            .map((l) => JSON.parse(l.slice(5).trim()) as { id?: number; result?: unknown });
+        const ids = frames.map((f) => f.id).sort();
+        expect(ids).toEqual([10, 11]);
+        expect((frames.find((f) => f.id === 11)?.result as { tools: unknown[] }).tools.length).toBe(28);
+    });
 });
