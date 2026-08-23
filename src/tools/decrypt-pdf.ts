@@ -39,7 +39,7 @@ export const DECRYPT_PDF_INPUT_SCHEMA = {
             ...PASSWORD_INPUT_SCHEMA,
             description: 'Password to open the encrypted source (user or owner). Omit only for documents with an empty user password.',
         },
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
         outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf." },
     },
 } as const;

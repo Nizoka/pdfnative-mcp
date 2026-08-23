@@ -105,6 +105,15 @@ export async function validatePdf(rawInput: unknown): Promise<ValidatePdfResult>
 
     const result = validatePdfUA(bytes);
 
+    // The engine reports an unparsable document as a conformance failure
+    // ('Unparseable PDF: …'). Every other read tool raises PDF_PARSE_FAILED for
+    // that condition, so surface it with the same code: a base64 slip must not
+    // read as 'document not accessible' in a CI loop.
+    const unparseable = result.errors.find((e) => e.startsWith('Unparseable PDF:'));
+    if (unparseable !== undefined) {
+        throw new ToolError('PDF_PARSE_FAILED', `${unparseable}. Pass the raw PDF bytes as base64 (inspect_pdf reports the same condition).`);
+    }
+
     const summary = result.valid
         ? `PDF/UA structural prerequisites hold${result.warnings.length > 0 ? ` (${result.warnings.length} warning(s))` : ''}.`
         : `PDF/UA validation failed with ${result.errors.length} error(s)${result.warnings.length > 0 ? ` and ${result.warnings.length} warning(s)` : ''}.`;

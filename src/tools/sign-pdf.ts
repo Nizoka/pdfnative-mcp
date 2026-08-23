@@ -93,7 +93,7 @@ export const SIGN_PDF_INPUT_SCHEMA = {
         },
         rsaKeyPkcs1DerBase64: {
             type: 'string',
-            description: 'Base64 of the RSA private key in PKCS#1 RSAPrivateKey DER (NOT PKCS#8, NOT PEM). Required for the rsa-* algorithms. Convert from PEM with: openssl rsa -in key.pem -outform DER -traditional | base64 -w0  (the -traditional flag forces PKCS#1).',
+            description: 'Base64 of the RSA private key in DER form — PKCS#1 RSAPrivateKey (openssl rsa -in key.pem -outform DER -traditional | base64 -w0) or PKCS#8 PrivateKeyInfo (openssl pkey -in key.pem -outform DER | base64 -w0). NOT PEM. Required for the rsa-* algorithms.',
         },
         ecPrivateScalarHex: {
             type: 'string',
@@ -140,8 +140,8 @@ export const SIGN_PDF_INPUT_SCHEMA = {
             format: 'date-time',
             description: 'ISO-8601 signing instant. Written to /Sig /M only when THIS call injects the placeholder (a placeholder prepared earlier keeps its own /M) and to the CMS signing-time attribute under the pkcs7 profile. Defaults to now. Not a trusted time — use timestamp=true for that.',
         },
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
-        outputPath: { type: 'string' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
+        outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf (no absolute paths, no '..')." },
     },
     required: ['pdfBase64', 'algorithm', 'certDerBase64'],
 } as const;

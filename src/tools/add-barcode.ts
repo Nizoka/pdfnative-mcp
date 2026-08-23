@@ -68,8 +68,8 @@ export const ADD_BARCODE_INPUT_SCHEMA = {
         },
         ...PRINT_INPUT_PROPERTIES,
         ...DIAGNOSTIC_INPUT_PROPERTIES,
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
-        outputPath: { type: 'string' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
+        outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf (no absolute paths, no '..')." },
     },
     required: ['format', 'data'],
 } as const;

@@ -181,7 +181,9 @@ export function listResourceTemplates(): ResourceTemplate[] {
     if (getOutputSandbox() === null) return [];
     return [
         {
-            uriTemplate: `${RESOURCE_URI_PREFIX}{path}`,
+            // RFC 6570 reserved expansion: `/` in nested paths is not percent-encoded,
+            // matching the concrete URIs returned by resources/list.
+            uriTemplate: `${RESOURCE_URI_PREFIX}{+path}`,
             name: 'sandbox-pdf',
             title: 'Generated PDF (output sandbox)',
             description:

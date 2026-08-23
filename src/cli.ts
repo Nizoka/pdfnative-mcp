@@ -61,6 +61,9 @@ async function main(): Promise<void> {
         const { createMcpHandler } = await import('@modelcontextprotocol/server');
         const { guardLoopback, sendWebResponse, toWebRequest, RequestTooLargeError } = await import('./http.js');
         const { createServer: createHttpServer } = await import('node:http');
+        const { guardBearer, readHttpToken } = await import('./auth.js');
+        // Opt-in bearer token (PDFNATIVE_MCP_HTTP_TOKEN); a weak value throws before we listen.
+        const httpToken = readHttpToken();
 
         // Both eras: 2026-07-28 requests are served by a fresh per-request instance;
         // 2025-era requests fall back to the stateless streamable-HTTP idiom.
@@ -77,7 +80,7 @@ async function main(): Promise<void> {
                         return;
                     }
                     const request = await toWebRequest(req, origin, res);
-                    const response = guardLoopback(request) ?? (await handler.fetch(request));
+                    const response = guardLoopback(request) ?? guardBearer(request, httpToken) ?? (await handler.fetch(request));
                     await sendWebResponse(res, response);
                 } catch (err) {
                     if (err instanceof RequestTooLargeError) {
@@ -108,7 +111,7 @@ async function main(): Promise<void> {
 
         await new Promise<void>((resolve, reject) => {
             httpServer.listen(port, '127.0.0.1', () => {
-                log(`ready (HTTP transport, MCP 2026-07-28 + legacy) on ${origin}/mcp`);
+                log(`ready (HTTP transport, MCP 2026-07-28 + legacy) on ${origin}/mcp${httpToken !== null ? ' — bearer token required' : ' — no authentication (loopback only)'}`);
                 resolve();
             });
             httpServer.once('error', reject);

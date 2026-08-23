@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { createServer, ensureCompressionReady, __serverMetadata, __serverInstructions, SERVER_CACHE_HINTS } from '../src/server.js';
+import { callToolDirect, createServer, ensureCompressionReady, __serverMetadata, __serverInstructions, SERVER_CACHE_HINTS } from '../src/server.js';
 import { connectLegacy, McpRpcError } from './_mcp-harness.js';
 
 /** One-shot JSON-RPC request through the in-memory transport (legacy era). */
@@ -151,12 +151,10 @@ describe('server', () => {
         }
     });
 
-    it('returns an MCP tool error for unknown tools', async () => {
-
-        const response = (await rpc('tools/call', { name: 'nope', arguments: {} })) as { isError?: boolean; content: Array<{ text: string }> };
-
-        expect(response.isError).toBe(true);
-        expect(response.content[0]?.text).toContain('Unknown tool: nope');
+    it('rejects unknown tools with JSON-RPC -32602 on the wire (callToolDirect keeps the isError form for in-process callers)', async () => {
+        await expect(rpc('tools/call', { name: 'nope', arguments: {} })).rejects.toMatchObject({ code: -32602, message: expect.stringContaining('Unknown tool: nope') });
+        const direct = await callToolDirect('nope', {});
+        expect(direct.isError).toBe(true);
     });
 
     it('returns success payload for a valid base64 tool call', async () => {

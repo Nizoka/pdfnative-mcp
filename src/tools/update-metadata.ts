@@ -40,7 +40,7 @@ export const UPDATE_METADATA_INPUT_SCHEMA = {
             format: 'date-time',
             description: 'ISO-8601 modification instant for /ModDate and xmp:ModifyDate. Defaults to now; pin it for reproducible output.',
         },
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
         outputPath: { type: 'string', description: "Relative path inside PDFNATIVE_MCP_OUTPUT_DIR (required when outputMode='file')." },
     },
 } as const;

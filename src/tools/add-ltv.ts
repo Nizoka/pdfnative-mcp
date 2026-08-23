@@ -67,7 +67,7 @@ export const ADD_LTV_INPUT_SCHEMA = {
         certificatesDerBase64: DER_LIST(64, 'offline: DER X.509 certificates to embed in /DSS /Certs.'),
         ocspResponsesDerBase64: DER_LIST(64, 'offline: DER OCSPResponse (RFC 6960) blobs to embed in /DSS /OCSPs.'),
         crlsDerBase64: DER_LIST(16, 'offline: DER CertificateList (RFC 5280) blobs to embed in /DSS /CRLs.'),
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
         outputPath: { type: 'string', description: "Relative path inside PDFNATIVE_MCP_OUTPUT_DIR (required when outputMode='file')." },
     },
 } as const;

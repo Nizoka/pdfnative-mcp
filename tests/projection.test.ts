@@ -81,3 +81,19 @@ describe('readVerbosity / readFields', () => {
         expect(readFields({ fields: 'a,b' })).toEqual(['a', 'b']);
     });
 });
+
+describe('fields projection — unmatched paths are surfaced (A-18)', () => {
+    it('adds _meta.unmatchedFields + availableFields when a requested path matches nothing, and nothing otherwise', async () => {
+        const { callToolDirect, ensureCompressionReady } = await import('../src/server.js');
+        const { generateBasicPdf } = await import('../src/tools/generate-basic-pdf.js');
+        await ensureCompressionReady();
+        const pdfBase64 = (await generateBasicPdf({ title: 'P', blocks: [{ type: 'paragraph', text: 'x' }] })).base64!;
+        const typo = await callToolDirect('inspect_pdf', { pdfBase64, fields: ['pagecount', 'version'] });
+        expect(typo.structuredContent).toEqual({ version: expect.any(String) });
+        expect(typo._meta).toEqual({ unmatchedFields: ['pagecount'], availableFields: expect.arrayContaining(['pageCount', 'version']) });
+        const exact = await callToolDirect('inspect_pdf', { pdfBase64, fields: ['pageCount'] });
+        expect(exact._meta).toBeUndefined();
+        const none = await callToolDirect('inspect_pdf', { pdfBase64 });
+        expect(none._meta).toBeUndefined();
+    });
+});

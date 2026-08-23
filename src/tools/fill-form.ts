@@ -78,7 +78,7 @@ export const FILL_FORM_INPUT_SCHEMA = {
                 "Behaviour when a value contains non-WinAnsi characters (appearance font is Helvetica/WinAnsi). 'throw' (default) rejects it; 'needAppearances' writes the value and sets /NeedAppearances so the viewer regenerates the appearance.",
         },
         password: PASSWORD_INPUT_SCHEMA,
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
         outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf." },
     },
 } as const;
@@ -101,7 +101,7 @@ function decodeBase64(value: string): Uint8Array {
 /** Translate a pdfnative form error into a stable {@link ToolError}. Always throws. */
 function mapFormError(err: unknown, hadPassword: boolean): never {
     if (err instanceof FormFieldNotFoundError) {
-        throw new ToolError('FORM_FIELD_NOT_FOUND', err.message);
+        throw new ToolError('FORM_FIELD_NOT_FOUND', `${err.message}. List the real field names with read_form_fields, or pass onUnknownField:'ignore' to skip unknown keys.`);
     }
     if (err instanceof FormValueTypeError) {
         throw new ToolError('FORM_VALUE_TYPE_ERROR', err.message);

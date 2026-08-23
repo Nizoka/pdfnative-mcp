@@ -44,7 +44,7 @@ export const ENCRYPT_PDF_INPUT_SCHEMA = {
         userPassword: ENCRYPT_INPUT_SCHEMA.properties.userPassword,
         algorithm: ENCRYPT_INPUT_SCHEMA.properties.algorithm,
         permissions: ENCRYPT_INPUT_SCHEMA.properties.permissions,
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
         outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf." },
     },
 } as const;

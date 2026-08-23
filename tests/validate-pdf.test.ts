@@ -49,10 +49,8 @@ describe('validate_pdf', () => {
         await expect(validatePdf({ pdfBase64: '====' })).rejects.toThrow(ToolError);
     });
 
-    it('returns blocking errors for non-PDF input rather than throwing', async () => {
+    it('raises PDF_PARSE_FAILED for unparsable input (consistent with every other read tool)', async () => {
         const notAPdf = Buffer.from('this is not a pdf at all').toString('base64');
-        const out = (await validatePdf({ pdfBase64: notAPdf })) as ValidatePdfResult;
-        expect(out.valid).toBe(false);
-        expect(out.errors.length).toBeGreaterThan(0);
+        await expect(validatePdf({ pdfBase64: notAPdf })).rejects.toMatchObject({ code: 'PDF_PARSE_FAILED', message: expect.stringContaining('Unparseable PDF') });
     });
 });

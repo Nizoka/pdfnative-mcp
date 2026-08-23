@@ -65,8 +65,8 @@ export const MERGE_PDFS_INPUT_SCHEMA = {
             description:
                 'In-memory assembly guard (pdfnative maxOutputSize): the merge throws before materialising an object graph larger than this. Defaults to 268435456 (256 MiB). Note the emitted PDF is separately capped at 50 MiB by the output layer.',
         },
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
-        outputPath: { type: 'string' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
+        outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf (no absolute paths, no '..')." },
     },
 } as const;
 

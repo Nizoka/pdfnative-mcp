@@ -196,13 +196,15 @@ const SERVER_NAME = 'pdfnative-mcp';
  * MCP registry present consistent metadata during initialization.
  */
 const SERVER_TITLE = 'pdfnative MCP — PDF generation, signing & introspection';
+/** Mirrors server.json `websiteUrl` (asserted by tests/metadata.test.ts). */
+export const SERVER_WEBSITE_URL = 'https://github.com/Nizoka/pdfnative-mcp#readme';
 const SERVER_DESCRIPTION =
     'Production-grade MCP server for PDF generation, PDF/A archival, PDF/UA structural validation, native vector charts, ' +
-    'digital signatures (PAdES sign + verify, constant-time node:crypto), encryption round-trip (decrypt + AES-128/256 re-encrypt), ' +
+    'digital signatures (PAdES B-B → B-LTA; DER keys signed through constant-time node:crypto, pure-JS fallback for raw P-256 scalars; verification in pure JS), encryption round-trip (decrypt + AES-128/256 re-encrypt), ' +
     'AcroForm fill & flatten, page-tree ops (merge / split / extract), markup annotations, Factur-X invoices, ' +
     'Unicode text extraction with positioned runs, PDF introspection, MCP resources for generated PDFs, ' +
     'and human-in-the-loop AI-governance issue drafting. ' +
-    '27 tools, 24 scripts, zero runtime dependencies beyond pdfnative and the MCP SDK.';
+    '27 tools, 24 scripts, three runtime dependencies (pdfnative, the MCP SDK, zod).';
 
 /**
  * Per-tool API version used by the opt-in cache key and by `_meta.apiVersion`.
@@ -313,6 +315,27 @@ function projectStructured(
     const fields = readFields(input);
     if (fields.length === 0) return base;
     return selectFields(base, fields) as Record<string, unknown>;
+}
+
+/**
+ * Surface `fields` paths that matched nothing (a typo such as `allvalid`, or a
+ * field that is only present with another option, e.g. `ltvLevel` without
+ * `ltv: true`). Additive: `_meta.unmatchedFields` appears only in that case, so
+ * a structured consumer is never left with an empty object and no explanation.
+ */
+function projectionMeta(
+    full: Record<string, unknown>,
+    summary: Record<string, unknown>,
+    input: unknown,
+): { _meta?: { unmatchedFields: string[]; availableFields: string[] } } {
+    const fields = readFields(input);
+    if (fields.length === 0) return {};
+    const base = readVerbosity(input) === 'summary' ? summary : full;
+    const unmatched = fields.filter((f) => {
+        const head = f.split('.')[0]?.trim() ?? '';
+        return head.length > 0 && !(head in base);
+    });
+    return unmatched.length === 0 ? {} : { _meta: { unmatchedFields: unmatched, availableFields: Object.keys(base) } };
 }
 
 /**
@@ -590,7 +613,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: EXTRACT_TEXT_NAME,
         title: 'Extract plain text from PDF',
         description:
-            "Best-effort plain-text extraction from a PDF. Walks each page's content stream and pulls the operands of Tj/'/\"/TJ text operators. The result.extractable boolean is FALSE when one or more pages have non-empty content but yielded no text (this is EXPECTED for PDFs using subset fonts without /ToUnicode CMaps — it is not an error). The accompanying `extractableReason` field explains why. Encrypted PDFs are supported since v1.5.0: pass `password` (user or owner; an empty user password opens without one) — a protected document without it returns PASSWORD_REQUIRED / PASSWORD_INVALID. Tagged-mode structure-tree extraction (cleaner output for tagged PDFs) is tracked on the roadmap.",
+            "Plain-text extraction from a PDF: walks each page's content stream, decodes the Tj/'/\"/TJ operands through each font's /ToUnicode CMap, /Encoding /Differences or base encoding (pdfnative 1.6), and returns pages[] + fullText (+ positioned runs with includeRuns). result.extractable is FALSE only when a page decoded ENTIRELY to U+FFFD — a font with no usable /ToUnicode CMap or base encoding (expected for some subset fonts; not an error) — and `extractableReason` says so; blank pages stay extractable. Encrypted PDFs are supported since v1.5.0: pass `password` (user or owner; an empty user password opens without one) — a protected document without it returns PASSWORD_REQUIRED / PASSWORD_INVALID. Tagged-mode structure-tree extraction (cleaner output for tagged PDFs) is tracked on the roadmap.",
         inputSchema: EXTRACT_TEXT_INPUT_SCHEMA,
         outputSchema: projectableOutputSchema(
             EXTRACT_TEXT_OUTPUT_SCHEMA,
@@ -946,6 +969,7 @@ function buildInspectResult(output: InspectPdfResult, toolName: string, input: u
             },
         ],
         structuredContent: projectStructured(full, summary, input),
+        ...projectionMeta(full, summary, input),
     };
 }
 
@@ -961,6 +985,7 @@ function buildVerifyResult(output: VerifyPdfResult, toolName: string, input: unk
     return {
         content: [{ type: 'text', text: `${toolName}: ${output.summary}` }],
         structuredContent: projectStructured(full, summary, input),
+        ...projectionMeta(full, summary, input),
     };
 }
 
@@ -976,6 +1001,7 @@ function buildValidateResult(output: ValidatePdfResult, toolName: string, input:
     return {
         content: [{ type: 'text', text: `${toolName}: ${output.summary}` }],
         structuredContent: projectStructured(full, summary, input),
+        ...projectionMeta(full, summary, input),
     };
 }
 
@@ -996,6 +1022,7 @@ function buildExtractTextResult(output: ExtractTextResult, toolName: string, inp
             },
         ],
         structuredContent: projectStructured(full, summary, input),
+        ...projectionMeta(full, summary, input),
     };
 }
 
@@ -1016,6 +1043,7 @@ function buildExtractAttachmentsResult(
             },
         ],
         structuredContent: projectStructured(full, summary, input),
+        ...projectionMeta(full, summary, input),
     };
 }
 
@@ -1032,6 +1060,7 @@ function buildReadFormFieldsResult(output: ReadFormFieldsResult, toolName: strin
             },
         ],
         structuredContent: projectStructured(full, summary, input),
+        ...projectionMeta(full, summary, input),
     };
 }
 
@@ -1240,7 +1269,7 @@ export async function callToolDirect(name: string, args: unknown): Promise<CallT
  */
 export function createServer(): Server {
     const server = new Server(
-        { name: SERVER_NAME, version: SERVER_VERSION, title: SERVER_TITLE, description: SERVER_DESCRIPTION },
+        { name: SERVER_NAME, version: SERVER_VERSION, title: SERVER_TITLE, description: SERVER_DESCRIPTION, websiteUrl: SERVER_WEBSITE_URL },
         {
             capabilities: { tools: {}, prompts: {}, resources: {} },
             instructions: SERVER_INSTRUCTIONS,
@@ -1303,8 +1332,13 @@ export function createServer(): Server {
 
     server.setRequestHandler('tools/call', async (request): Promise<CallToolResult> => {
         const { name, arguments: args } = request.params;
-        const result = await callToolDirect(name, args);
         const tool = TOOL_INDEX.get(name);
+        if (tool === undefined) {
+            // MCP 2026-07-28 server/tools §Error Handling: "Unknown tool" is a protocol
+            // error (-32602), not an `isError` execution result.
+            throw new ProtocolError(ProtocolErrorCode.InvalidParams, `[UNKNOWN_TOOL] Unknown tool: ${name}`);
+        }
+        const result = await callToolDirect(name, args);
         // Identity for object-shaped structuredContent; keeps the wire projection the
         // SDK expects for the negotiated protocol revision.
         return server.projectCallToolResult(result, tool?.outputSchema as Record<string, unknown> | undefined);
@@ -1330,5 +1364,5 @@ export function ensureCompressionReady(): Promise<void> {
     return _compressionInitPromise;
 }
 
-export const __serverMetadata = { name: SERVER_NAME, version: SERVER_VERSION, title: SERVER_TITLE, description: SERVER_DESCRIPTION } as const;
+export const __serverMetadata = { name: SERVER_NAME, version: SERVER_VERSION, title: SERVER_TITLE, description: SERVER_DESCRIPTION, websiteUrl: SERVER_WEBSITE_URL } as const;
 export const __serverInstructions = SERVER_INSTRUCTIONS;

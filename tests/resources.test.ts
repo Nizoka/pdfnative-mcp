@@ -98,7 +98,7 @@ describe('MCP resources', () => {
         process.env[ENV_KEY] = dir;
         const templates = listResourceTemplates();
         expect(templates).toHaveLength(1);
-        expect(templates[0]!.uriTemplate).toBe(`${RESOURCE_URI_PREFIX}{path}`);
+        expect(templates[0]!.uriTemplate).toBe(`${RESOURCE_URI_PREFIX}{+path}`);
         expect(templates[0]!.mimeType).toBe('application/pdf');
     });
 

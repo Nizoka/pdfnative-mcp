@@ -110,7 +110,7 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
                         type: 'object',
                         additionalProperties: false,
                         required: ['type', 'chartType', 'series'],
-                        description: 'Native vector chart (pdfnative v1.6.0) — bar / horizontal-bar / line / pie / donut, rendered as pure PDF path operators.',
+                        description: 'Native vector chart rendered as pure PDF path operators — bar / horizontal-bar / stacked-bar / line / area / scatter / pie / donut (pdfnative 1.7 charts v2: time and log axes, data labels, secondary axis, legends). Same body as add_chart.',
                         properties: {
                             type: { const: 'chart' },
                             ...CHART_BODY_PROPERTIES,

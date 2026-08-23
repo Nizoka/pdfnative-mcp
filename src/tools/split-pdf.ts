@@ -74,7 +74,7 @@ export const SPLIT_PDF_INPUT_SCHEMA = {
             minimum: 1,
             description: 'Maximum size, in bytes, of each produced PDF. Defaults to 268435456 (256 MiB).',
         },
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
         outputPath: {
             type: 'string',
             description: "Base output path (file mode). Each PDF is written to an indexed sibling: 'out.pdf' → 'out-1.pdf', 'out-2.pdf', …",

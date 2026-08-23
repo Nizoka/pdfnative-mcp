@@ -38,7 +38,7 @@ export const TIMESTAMP_PDF_INPUT_SCHEMA = {
             maximum: 65536,
             description: 'Room reserved for the TimeStampToken (default 12288). Raise it for TSAs that return large certificate chains.',
         },
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
         outputPath: { type: 'string', description: "Relative path inside PDFNATIVE_MCP_OUTPUT_DIR (required when outputMode='file')." },
     },
 } as const;
