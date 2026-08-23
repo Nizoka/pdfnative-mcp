@@ -46,28 +46,41 @@ For the full local-verification workflow — quality gate, examples-as-tests, ch
 The server's PDF/A claims are checked against the official reference validator,
 [veraPDF](https://verapdf.org). `npm run validate:pdfa` builds `dist/`, drives the
 tool handlers to write a corpus of PDF/A-claiming documents to `test-output/pdfa/`
-(`scripts/generate-pdfa-corpus.mjs` — one file per PDF/A-relevant feature:
-outline / page labels / nested lists, watermark, chart blocks, print boxes and
-metadata, tables, scatter chart, international text, QR code, embedded JPEG,
-PDF/A-3b attachment, plus `merge_pdfs` / `extract_pages` outputs), then validates
-each file against the profile it claims in XMP (1b / 2b / 2u / 3b) with
-`scripts/validate-pdfa.mjs`.
+(`scripts/generate-pdfa-corpus.mjs` — a representative sample, not an
+exhaustive feature matrix: outline / page labels / nested lists, watermark under
+1b and 2b, chart blocks, print boxes and metadata, a caller-supplied ICC
+`outputIntent`, tables, scatter chart, international text incl. emoji + math, QR
+code, embedded JPEG, PDF/A-3b XML and PDF attachments, an AcroForm, a PAdES
+signature, `update_metadata`, plus `merge_pdfs` / `extract_pages` outputs), then
+validates each file against the profile it claims in XMP (1b / 2b / 2u / 3b) with
+`scripts/validate-pdfa.mjs` and compares the verdict with the manifest's
+`expectCompliant` flag. The full entry list with expectations is in
+[docs/guides/LOCAL_TESTING.md](docs/guides/LOCAL_TESTING.md#5-external-pdfa-conformance-optional-recommended-for-archival-work).
 
-A coverage canary in the validator fails the run if a file listed in
+Two guards keep the run honest. A coverage canary fails it if a file listed in
 `manifest.json` is missing or its XMP claim disagrees with the manifest, so a
-silent regression in claim emission cannot shrink the validated corpus. Note that
-the page-tree tools (`merge_pdfs`, `extract_pages`) rebuild the page tree without
-the source XMP, so their outputs do not claim PDF/A — the manifest records that
-and the validator asserts it.
+silent regression in claim emission cannot shrink the validated corpus (the
+page-tree tools rebuild the page tree without the source XMP, so their outputs do
+not claim PDF/A — the manifest records that and the validator asserts it). And
+the corpus includes **negative canaries** (`expectCompliant: false` — an unsigned
+signature placeholder, a file without embedded fonts) that veraPDF must reject;
+an unexpected pass (`XPASS`) fails the run because it means the validator is
+accepting everything. The `add_form` entry is also flagged `false` as a known
+engine gap (non-embedded AcroForm `/DR` default-appearance font, 6.2.11.4.1);
+flip it deliberately when that is fixed upstream.
 
-Without veraPDF installed the validator prints install hints and exits 0, so local
-development never blocks. In CI (`.github/workflows/verapdf.yml`) the same scripts
-run with a pinned veraPDF 1.30.2 on every push / PR touching `src/`, `scripts/`,
-`examples/` or the package manifest. The job is **advisory in 1.6.0** (the validate
-step has `continue-on-error`; the outcome and full report land in the job summary
-and the `verapdf-report` artifact) and is planned to become **blocking in 1.7.0**.
-veraPDF is an external CI tool, not a dependency — the zero-runtime-dependency
-policy is unchanged.
+Without veraPDF installed (or with a broken Java) the validator prints install
+hints and exits 0 — labelled `SKIPPED`, not a pass — so local development never
+blocks; set `VERAPDF_REQUIRED=1` to fail closed instead (exit 3, `INFRA`). In CI
+(`.github/workflows/verapdf.yml`) the same scripts run with `VERAPDF_REQUIRED=1`
+and a pinned veraPDF 1.30.2 whose installer SHA-256 is verified before `java -jar`
+executes it, on every push / PR touching `src/`, `scripts/`, `examples/` or the
+package manifest. The job is **advisory in 1.6.0** (the validate step has
+`continue-on-error`; the exit code, the report and the raw per-file veraPDF XML
+land in the job summary and the `verapdf-report` artifact) and is planned to
+become **blocking in 1.7.0** — note the `paths:` filter caveat in the workflow
+header before making it a required check. veraPDF is an external CI tool, not a
+dependency — the zero-runtime-dependency policy is unchanged.
 
 Installing veraPDF locally (Java 8+ required):
 

@@ -128,14 +128,55 @@ npm run validate:pdfa
 #   && node scripts/validate-pdfa.mjs # veraPDF, one run per file, profile from the XMP claim
 ```
 
-The corpus covers every PDF/A-relevant feature (outline / page labels / lists,
-watermark, charts, print boxes + metadata, tables, international text, QR code,
-embedded JPEG, PDF/A-3b attachment, page-tree outputs). The validator prints one
-`PASS` / `FAIL` line per file with the failing veraPDF rule ids, exits 1 on any
-failure or when a manifest file is missing / no longer claims PDF/A, and exits 0
-with install hints when veraPDF is not installed (see
+The corpus is a **representative sample**, not an exhaustive feature matrix.
+Every entry in `test-output/pdfa/manifest.json` carries an `expectCompliant`
+flag and the validator compares veraPDF's verdict against it:
+
+| File | Tool / feature | Claim | Expectation |
+| --- | --- | --- | --- |
+| `basic-pdfa1b.pdf` | `generate_basic_pdf`, plain text | 1b | compliant |
+| `basic-pdfa2b-outline-labels-list.pdf` | outline, page labels, nested list | 2b | compliant |
+| `basic-pdfa2u-text.pdf` | headings + paragraphs | 2u | compliant |
+| `basic-pdfa2b-watermark.pdf` | text watermark | 2b | compliant |
+| `basic-pdfa1b-watermark.pdf` | text watermark (no transparency) | 1b | compliant |
+| `basic-pdfa2b-chart-bar.pdf` / `…-stackedbar.pdf` | chart blocks | 2b | compliant |
+| `basic-pdfa2b-print-metadata.pdf` | bleed, printer marks, `/Trapped` | 2b | compliant |
+| `basic-pdfa2b-custom-outputintent.pdf` | caller-supplied RGB ICC `outputIntent` | 2b | compliant |
+| `table-pdfa2b.pdf` | `add_table` | 2b | compliant |
+| `chart-pdfa2b-scatter.pdf` | `add_chart` scatter | 2b | compliant |
+| `international-pdfa2u.pdf` | `add_international_text` Arabic + Latin | 2u | compliant |
+| `international-pdfa2u-emoji-math.pdf` | Latin + colour emoji + math | 2u | compliant |
+| `barcode-pdfa2b-qr.pdf` | `add_barcode` QR | 2b | compliant |
+| `image-pdfa2b-jpeg.pdf` | `embed_image` JPEG | 2b | compliant |
+| `attachment-pdfa3b-xml.pdf` / `attachment-pdfa3b-pdf.pdf` | `add_attachment` XML / PDF payload | 3b | compliant |
+| `signed-pdfa2b-pades.pdf` | `sign_pdf` PAdES-B over the placeholder below (throwaway self-signed RSA cert) | 2b | compliant |
+| `metadata-updated-pdfa2u.pdf` | `update_metadata` on a claiming file | 2u | compliant |
+| `placeholder-pdfa2b-unsigned.pdf` | `prepare_signature_placeholder`, unsigned | 2b | **must fail** (6.4.3 — empty `/Contents`) |
+| `basic-pdfa2b-no-embedfonts.pdf` | `generate_basic_pdf` without `embedFonts` | 2b | **must fail** (6.2.11.4.1) |
+| `form-pdfa2b.pdf` | `add_form` + `embedFonts` | 2b | **known failure** (6.2.11.4.1: the engine's AcroForm `/DR` `/Helv` default-appearance font is not embedded) |
+| `merge-pdfa2b.pdf` / `extract-pages-pdfa2b.pdf` | page-tree tools | none | skipped (no claim, asserted) |
+
+The `must fail` rows are **negative canaries**: if veraPDF ever accepts one, the
+validator exits 1 with `XPASS` ("the validator accepts everything") — a green run
+therefore proves the validator is actually validating. The `known failure` row
+works the same way: the day the engine embeds `/DR` fonts the run goes `XPASS`
+and the expectation in `scripts/generate-pdfa-corpus.mjs` has to be flipped on
+purpose.
+
+Per file the validator prints `PASS`, `FAIL` (with failing rule ids), `XFAIL`
+(expected failure), `XPASS` (unexpected pass — fatal), `INFRA` (veraPDF produced
+no usable report) or `SKIP`, and writes the raw veraPDF XML report for every
+file to `test-output/pdfa/reports/`. Exit codes: **0** all expectations met,
+**1** conformance mismatch / coverage canary (a manifest file is missing or its
+XMP claim changed) / no negative canary in the corpus, **2** no corpus,
+**3** INFRA.
+
+Without veraPDF (or with a broken Java) the default is to print install hints
+and exit 0 — explicitly labelled **SKIPPED, not a pass** — so local work never
+blocks. Set `VERAPDF_REQUIRED=1` to fail closed instead (exit 3, `INFRA`
+outcome); CI always does. See
 [CONTRIBUTING.md](../../CONTRIBUTING.md#pdfa-validation-verapdf) for the
-three-OS setup and `VERAPDF_HOME`). Only `test-output/pdfa/` is scanned.
+three-OS setup and `VERAPDF_HOME`. Only `test-output/pdfa/` is scanned.
 
 To check a single file you wrote in step 4 instead:
 
@@ -150,10 +191,11 @@ tool, or the claim will fail on ISO 19005 §6.2.11.4.1. Treat any veraPDF failur
 on generated PDF/A as a bug.
 
 **CI status:** `.github/workflows/verapdf.yml` runs the same flow with a pinned
-veraPDF 1.30.2 on every push / PR touching the sources. It is **advisory in
-1.6.0** — the validate step uses `continue-on-error`, and its outcome plus the
-full report are written to the job summary and the `verapdf-report` artifact —
-and is planned to become **blocking in 1.7.0**.
+veraPDF 1.30.2 (installer SHA-256 verified before it is executed) and
+`VERAPDF_REQUIRED=1` on every push / PR touching the sources. It is **advisory
+in 1.6.0** — the validate step uses `continue-on-error`, and its exit code,
+the report and the raw per-file veraPDF XML (`verapdf-report` artifact) are
+surfaced in the job summary — and is planned to become **blocking in 1.7.0**.
 
 ## 6. Smoke-testing the MCP server over stdio
 

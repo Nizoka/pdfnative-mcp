@@ -2,9 +2,11 @@
  * pdfnative-mcp — PDF/A validation corpus generator
  * ==================================================
  * Drives the built MCP tool handlers (`dist/server.js`) to produce a small,
- * deterministic corpus of PDF/A-claiming documents under `test-output/pdfa/`,
- * one per PDF/A-relevant feature the server exposes. `scripts/validate-pdfa.mjs`
- * then runs every file through the veraPDF reference validator.
+ * deterministic corpus of PDF/A-claiming documents under `test-output/pdfa/`
+ * covering the PDF/A-relevant features listed in the CORPUS table below (it is
+ * a representative sample, not an exhaustive feature matrix).
+ * `scripts/validate-pdfa.mjs` then runs every file through the veraPDF
+ * reference validator.
  *
  * Usage:  npm run build && npm run corpus:pdfa
  *         node scripts/generate-pdfa-corpus.mjs
@@ -15,9 +17,15 @@
  * Text-rendering tools pass `embedFonts: true` (pdfnative-mcp 1.6.0) so base-14
  * Helvetica text does not void the PDF/A claim; `add_international_text`
  * always embeds its Noto fonts and has no such flag.
+ *
+ * Every entry carries `expectCompliant` in manifest.json. Most are `true`; the
+ * negative canaries (`false`) are files that claim PDF/A but are KNOWN to be
+ * non-conformant — the validator must see veraPDF reject them, otherwise the
+ * validator itself is broken ("accepts everything") and the run fails.
  */
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createSign, generateKeyPairSync } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -44,6 +52,125 @@ const ATTACHMENT_XML_BASE64 = Buffer.from(
 ).toString('base64');
 
 const EMBED = { embedFonts: true };
+
+// ── Self-signed RSA test certificate (node:crypto + a tiny DER encoder) ──
+// Mirrors tests/_cert-fixtures.ts without importing test code: a throwaway
+// RSA-2048 key signs a v1 certificate with CN=Corpus Signer. Generated per run,
+// never written to disk or printed.
+
+function derLength(n) {
+    if (n < 0x80) return [n];
+    const bytes = [];
+    for (let v = n; v > 0; v >>>= 8) bytes.unshift(v & 0xff);
+    return [0x80 | bytes.length, ...bytes];
+}
+function der(tag, ...parts) {
+    const body = Buffer.concat(parts.map((p) => Buffer.from(p)));
+    return Buffer.concat([Buffer.from([tag, ...derLength(body.length)]), body]);
+}
+const derSeq = (...parts) => der(0x30, ...parts);
+const derSet = (...parts) => der(0x31, ...parts);
+function derInt(buf) {
+    const b = Buffer.from(buf);
+    return der(0x02, b[0] & 0x80 ? Buffer.concat([Buffer.from([0]), b]) : b);
+}
+function derOid(dotted) {
+    const p = dotted.split('.').map(Number);
+    const out = [p[0] * 40 + p[1]];
+    for (const v0 of p.slice(2)) {
+        let v = v0;
+        const stack = [v & 0x7f];
+        for (v >>>= 7; v > 0; v >>>= 7) stack.push((v & 0x7f) | 0x80);
+        out.push(...stack.reverse());
+    }
+    return der(0x06, Buffer.from(out));
+}
+const derNull = Buffer.from([0x05, 0x00]);
+const derBitString = (bytes) => der(0x03, Buffer.from([0]), bytes);
+function derUtcTime(date) {
+    const s = date.toISOString().replace(/[-:T]/g, '').slice(2, 14) + 'Z';
+    return der(0x17, Buffer.from(s, 'ascii'));
+}
+
+function buildRsaSelfSignedCert(cn = 'Corpus Signer') {
+    const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const jwk = privateKey.export({ format: 'jwk' });
+    const rsaPub = derSeq(derInt(Buffer.from(jwk.n, 'base64url')), derInt(Buffer.from(jwk.e, 'base64url')));
+    const spki = derSeq(derSeq(derOid('1.2.840.113549.1.1.1'), derNull), derBitString(rsaPub));
+    const sigAlg = derSeq(derOid('1.2.840.113549.1.1.11'), derNull);
+    const name = derSeq(derSet(derSeq(derOid('2.5.4.3'), der(0x0c, Buffer.from(cn, 'utf8')))));
+    const validity = derSeq(derUtcTime(new Date(Date.now() - 60_000)), derUtcTime(new Date(Date.now() + 365 * 86_400_000)));
+    const tbs = derSeq(derInt(Buffer.from([1])), sigAlg, name, validity, name, spki);
+    const sig = createSign('sha256').update(tbs).sign(privateKey);
+    const certDer = derSeq(tbs, sigAlg, derBitString(sig));
+    return {
+        certDerBase64: certDer.toString('base64'),
+        rsaKeyPkcs1DerBase64: privateKey.export({ format: 'der', type: 'pkcs1' }).toString('base64'),
+    };
+}
+
+// ── Minimal valid RGB ICC v2 profile (custom OutputIntent entry) ──────
+// Structurally the same display-class matrix/TRC profile pdfnative emits for
+// its built-in sRGB intent (9 tags: desc, wtpt, cprt, rXYZ/gXYZ/bXYZ, rTRC/
+// gTRC/bTRC), with a distinct description so the corpus file is recognisably
+// a caller-supplied intent. veraPDF parses the ICC header and tag table
+// (ISO 19005 6.2.2 / 6.2.3), so a bare 128-byte header would not do.
+
+function buildMinimalRgbIccProfile(description = 'Corpus RGB') {
+    const tags = [];
+    const typeTag = (sig, body) => Buffer.concat([Buffer.from(sig, 'ascii'), Buffer.alloc(4), body]);
+    const s15 = (v) => {
+        const b = Buffer.alloc(4);
+        b.writeInt32BE(Math.round(v * 65536));
+        return b;
+    };
+    const xyz = (x, y, z) => typeTag('XYZ ', Buffer.concat([s15(x), s15(y), s15(z)]));
+    // desc: ascii count + ascii (NUL-terminated) + unicode code/count (8) +
+    // scriptcode code/count (3) + 67-byte scriptcode field.
+    const descBody = Buffer.alloc(4 + description.length + 1 + 8 + 3 + 67);
+    descBody.writeUInt32BE(description.length + 1, 0);
+    descBody.write(description, 4, 'ascii');
+    tags.push(['desc', typeTag('desc', descBody)]);
+    tags.push(['wtpt', xyz(0.9642, 1.0, 0.8249)]);
+    tags.push(['cprt', typeTag('text', Buffer.from('No Copyright\0', 'ascii'))]);
+    tags.push(['rXYZ', xyz(0.4361, 0.2225, 0.0139)]);
+    tags.push(['gXYZ', xyz(0.3851, 0.7169, 0.0971)]);
+    tags.push(['bXYZ', xyz(0.1431, 0.0606, 0.7141)]);
+    const curv = Buffer.alloc(4 + 2); // count = 1 → single u8Fixed8 gamma value
+    curv.writeUInt32BE(1, 0);
+    curv.writeUInt16BE(563, 4); // gamma 2.2 as u8Fixed8
+    const trc = typeTag('curv', curv);
+    for (const sig of ['rTRC', 'gTRC', 'bTRC']) tags.push([sig, trc]);
+
+    const table = Buffer.alloc(4 + tags.length * 12);
+    table.writeUInt32BE(tags.length, 0);
+    let offset = 128 + table.length;
+    const bodies = [];
+    tags.forEach(([sig, body], i) => {
+        const padded = Buffer.concat([body, Buffer.alloc((4 - (body.length % 4)) % 4)]);
+        table.write(sig, 4 + i * 12, 'ascii');
+        table.writeUInt32BE(offset, 8 + i * 12);
+        table.writeUInt32BE(body.length, 12 + i * 12);
+        bodies.push(padded);
+        offset += padded.length;
+    });
+    const header = Buffer.alloc(128);
+    header.writeUInt32BE(offset, 0); // profile size
+    header.writeUInt8(2, 8); // version 2.1.0
+    header.writeUInt8(0x10, 9);
+    header.write('mntr', 12, 'ascii'); // display device class
+    header.write('RGB ', 16, 'ascii'); // data colour space
+    header.write('XYZ ', 20, 'ascii'); // PCS
+    header.writeUInt16BE(2025, 24); // creation year
+    header.writeUInt16BE(1, 26);
+    header.writeUInt16BE(1, 28);
+    header.write('acsp', 36, 'ascii');
+    header.write('MSFT', 40, 'ascii');
+    header.writeUInt32BE(63190, 68); // illuminant D50
+    header.writeUInt32BE(65536, 72);
+    header.writeUInt32BE(54061, 76);
+    return Buffer.concat([header, table, ...bodies]).toString('base64');
+}
 
 /**
  * Call a tool and return the PDF bytes (base64) from the embedded resource
@@ -312,6 +439,164 @@ const CORPUS = [
             }),
     },
     {
+        file: 'form-pdfa2b.pdf',
+        tool: 'add_form',
+        // KNOWN FAILURE (pdfnative 1.7.0): the AcroForm /DR default-appearance
+        // font (/Helv → non-embedded Type1 Helvetica, used by the widget /DA
+        // strings) is emitted by the engine regardless of `embedFonts`, so
+        // veraPDF reports ISO 19005-2 6.2.11.4.1. Page text IS embedded. Kept
+        // as a tracked expectation rather than dropped: the run turns XPASS
+        // (fatal) the day the engine embeds /DR fonts, forcing this flag to
+        // be flipped to `true` deliberately.
+        expectCompliant: false,
+        produce: () =>
+            producePdf('add_form', {
+                title: 'Corpus — PDF/A-2b AcroForm',
+                pdfA: 'pdfa2b',
+                fields: [
+                    { fieldType: 'text', name: 'fullName', label: 'Full name', value: 'Ada Lovelace' },
+                    { fieldType: 'checkbox', name: 'agree', label: 'I agree', checked: true },
+                    { fieldType: 'dropdown', name: 'country', label: 'Country', options: ['FR', 'DE', 'UK'], value: 'FR' },
+                    { fieldType: 'radio', name: 'size', label: 'Size', options: ['S', 'M', 'L'] },
+                ],
+                footerText: 'Form fields under PDF/A-2b (appearance streams, no JavaScript).',
+                ...EMBED,
+            }),
+    },
+    {
+        file: 'placeholder-pdfa2b-unsigned.pdf',
+        tool: 'prepare_signature_placeholder',
+        // Negative canary: an unsigned placeholder carries an all-zero /Contents
+        // and a dangling /ByteRange. veraPDF rejects it (ISO 19005-2 6.4.3 —
+        // signature dictionary rules). This file MUST fail validation; if it
+        // ever passes, the validator is not validating.
+        expectCompliant: false,
+        produce: () =>
+            producePdf('prepare_signature_placeholder', {
+                title: 'Corpus — PDF/A-2b unsigned placeholder',
+                pdfA: 'pdfa2b',
+                signerName: 'Corpus Signer',
+                reason: 'Corpus',
+                subFilter: 'ETSI.CAdES.detached',
+                signingTime: '2026-01-01T00:00:00Z',
+                blocks: [{ type: 'paragraph', text: 'Reserved signature field, not yet signed.' }],
+                ...EMBED,
+            }),
+    },
+    {
+        file: 'signed-pdfa2b-pades.pdf',
+        tool: 'sign_pdf',
+        // Signed sibling of the placeholder above: PAdES baseline-B over the
+        // same bytes with a throwaway self-signed RSA certificate. The
+        // incremental update must keep the PDF/A-2b claim and conform.
+        produce: (ctx) =>
+            producePdf('sign_pdf', {
+                pdfBase64: ctx.get('placeholder-pdfa2b-unsigned.pdf'),
+                algorithm: 'rsa-sha256',
+                profile: 'pades',
+                ...buildRsaSelfSignedCert(),
+            }),
+    },
+    {
+        file: 'basic-pdfa1b-watermark.pdf',
+        tool: 'generate_basic_pdf',
+        produce: () =>
+            producePdf('generate_basic_pdf', {
+                title: 'Corpus — PDF/A-1b watermark',
+                pdfA: 'pdfa1b',
+                watermark: { text: 'ARCHIVE', opacity: 1 },
+                blocks: [
+                    { type: 'heading', text: 'Watermark under PDF/A-1b', level: 1 },
+                    { type: 'paragraph', text: 'No transparency is allowed in PDF/A-1; the watermark is drawn opaque.' },
+                ],
+                ...EMBED,
+            }),
+    },
+    {
+        file: 'international-pdfa2u-emoji-math.pdf',
+        tool: 'add_international_text',
+        produce: () =>
+            producePdf('add_international_text', {
+                title: 'Corpus — PDF/A-2u Latin, emoji and math',
+                pdfA: 'pdfa2u',
+                lang: ['latin', 'emoji', 'math'],
+                paragraphs: ['Colour emoji: 😀 🚀 ✅ under PDF/A-2u.', 'Math: ∀x ∈ ℝ, ∑ √2 ± ∞ ÷ ×.'],
+            }),
+    },
+    {
+        file: 'basic-pdfa2b-custom-outputintent.pdf',
+        tool: 'generate_basic_pdf',
+        produce: () =>
+            producePdf('generate_basic_pdf', {
+                title: 'Corpus — PDF/A-2b caller-supplied OutputIntent',
+                pdfA: 'pdfa2b',
+                outputIntent: {
+                    iccProfileBase64: buildMinimalRgbIccProfile(),
+                    outputConditionIdentifier: 'Corpus RGB',
+                    registryName: 'http://www.color.org',
+                    outputCondition: 'Corpus display RGB',
+                    info: 'Minimal matrix/TRC RGB profile built by scripts/generate-pdfa-corpus.mjs',
+                },
+                blocks: [
+                    { type: 'heading', text: 'Custom OutputIntent', level: 1 },
+                    { type: 'paragraph', text: PARAGRAPHS[1] },
+                ],
+                ...EMBED,
+            }),
+    },
+    {
+        file: 'attachment-pdfa3b-pdf.pdf',
+        tool: 'add_attachment',
+        // PDF/A-3b with a PDF (not XML) payload: /AFRelationship + MIME subtype.
+        produce: (ctx) =>
+            producePdf('add_attachment', {
+                title: 'Corpus — PDF/A-3b PDF attachment',
+                blocks: [
+                    { type: 'heading', text: 'Bundle', level: 1 },
+                    { type: 'paragraph', text: 'The PDF/A-1b corpus file travels as an embedded PDF.' },
+                ],
+                attachments: [
+                    {
+                        filename: 'basic-pdfa1b.pdf',
+                        mimeType: 'application/pdf',
+                        dataBase64: ctx.get('basic-pdfa1b.pdf'),
+                        relationship: 'Supplement',
+                        description: 'Embedded PDF payload',
+                    },
+                ],
+                ...EMBED,
+            }),
+    },
+    {
+        file: 'metadata-updated-pdfa2u.pdf',
+        tool: 'update_metadata',
+        // Rewrites /Info and the XMP packet of a claiming file; the claim must
+        // survive and the synchronised metadata must still conform (6.6.2).
+        produce: (ctx) =>
+            producePdf('update_metadata', {
+                pdfBase64: ctx.get('basic-pdfa2u-text.pdf'),
+                title: 'Corpus — metadata rewritten',
+                author: 'Corpus Author',
+                subject: 'update_metadata on a PDF/A-2u document',
+                keywords: 'pdfa, xmp, update_metadata',
+                modDate: '2026-01-02T00:00:00Z',
+            }),
+    },
+    {
+        file: 'basic-pdfa2b-no-embedfonts.pdf',
+        tool: 'generate_basic_pdf',
+        // Negative canary: base-14 Helvetica without embedFonts claims PDF/A-2b
+        // but violates ISO 19005-2 6.2.11.4.1 (fonts must be embedded).
+        // veraPDF MUST reject it.
+        expectCompliant: false,
+        produce: () =>
+            producePdf('generate_basic_pdf', {
+                title: 'Corpus — PDF/A-2b without embedded fonts (negative canary)',
+                pdfA: 'pdfa2b',
+                blocks: [{ type: 'paragraph', text: 'Helvetica is referenced, not embedded.' }],
+            }),
+    },
+    {
         file: 'merge-pdfa2b.pdf',
         tool: 'merge_pdfs',
         expectPdfAClaim: false,
@@ -337,6 +622,13 @@ const CORPUS = [
 async function main() {
     await ensureCompressionReady();
     mkdirSync(OUT_DIR, { recursive: true });
+    // Prune PDFs left over from an older corpus layout so the validator's
+    // "unlisted file" note only ever points at something unexpected.
+    const current = new Set(CORPUS.map((e) => e.file));
+    for (const stale of readdirSync(OUT_DIR).filter((f) => f.endsWith('.pdf') && !current.has(f))) {
+        rmSync(join(OUT_DIR, stale));
+        process.stdout.write(`  pruned ${stale}\n`);
+    }
 
     const ctx = new Map();
     const manifest = [];
@@ -355,14 +647,18 @@ async function main() {
         writeFileSync(join(OUT_DIR, entry.file), bytes);
         totalBytes += bytes.byteLength;
         const expectPdfAClaim = entry.expectPdfAClaim !== false;
-        manifest.push({ file: entry.file, tool: entry.tool, bytes: bytes.byteLength, expectPdfAClaim });
-        process.stdout.write(
-            `  wrote  ${entry.file.padEnd(44)} ${String(bytes.byteLength).padStart(8)} B  (${entry.tool}${expectPdfAClaim ? '' : ', no PDF/A claim expected'})\n`,
-        );
+        // A file that makes no claim is never validated, so it has no compliance expectation.
+        const expectCompliant = expectPdfAClaim && entry.expectCompliant !== false;
+        manifest.push({ file: entry.file, tool: entry.tool, bytes: bytes.byteLength, expectPdfAClaim, expectCompliant });
+        const note = !expectPdfAClaim ? ', no PDF/A claim expected' : !expectCompliant ? ', NEGATIVE canary — must fail veraPDF' : '';
+        process.stdout.write(`  wrote  ${entry.file.padEnd(44)} ${String(bytes.byteLength).padStart(8)} B  (${entry.tool}${note})\n`);
     }
 
+    const negatives = manifest.filter((m) => m.expectPdfAClaim && !m.expectCompliant).length;
     writeFileSync(join(OUT_DIR, 'manifest.json'), `${JSON.stringify({ generatedBy: 'scripts/generate-pdfa-corpus.mjs', files: manifest }, null, 2)}\n`);
-    process.stdout.write(`\nPDF/A corpus: ${manifest.length} file(s), ${totalBytes} bytes → test-output/pdfa/ (manifest.json written)\n`);
+    process.stdout.write(
+        `\nPDF/A corpus: ${manifest.length} file(s), ${totalBytes} bytes, ${negatives} negative canar${negatives === 1 ? 'y' : 'ies'} → test-output/pdfa/ (manifest.json written)\n`,
+    );
     return 0;
 }
 

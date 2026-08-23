@@ -39,11 +39,15 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Test with coverage
-        run: npm run test:coverage
-
+      # Build BEFORE the tests (same order as ci.yml): tests/cli-stdio.test.ts
+      # spawns dist/cli.js and fails under CI when dist/ is absent, so the
+      # release gate must exercise the exact artefact that is about to be
+      # published.
       - name: Build
         run: npm run build
+
+      - name: Test with coverage
+        run: npm run test:coverage
 
       - name: Verify dist output
         run: |

@@ -2,15 +2,26 @@ name: PDF/A Validation (veraPDF, advisory)
 
 # Runs the veraPDF reference validator against a corpus of PDF/A-claiming
 # documents produced by the MCP tool handlers themselves
-# (scripts/generate-pdfa-corpus.mjs → test-output/pdfa/), one per PDF/A-relevant
-# feature the server exposes. Each file is validated against the profile it
-# claims in XMP (1b / 2b / 2u / 3b).
+# (scripts/generate-pdfa-corpus.mjs → test-output/pdfa/), covering a
+# representative sample of the PDF/A-relevant features the server exposes.
+# Each file is validated against the profile it claims in XMP (1b / 2b / 2u /
+# 3b) and compared with the manifest's `expectCompliant` flag; the corpus
+# includes negative canaries that veraPDF MUST reject, so a validator that
+# accepts everything fails the run instead of turning it green.
 #
 # Status: ADVISORY in pdfnative-mcp 1.6.0. The validate step runs with
 # `continue-on-error: true`, so a non-compliant file turns the step red and is
 # reported in the job summary + the uploaded report, but does not fail the
 # workflow. The plan is to make it BLOCKING in 1.7.0 once the corpus has
 # proven stable across a release cycle — drop `continue-on-error` then.
+#
+# NOTE on `paths:` filters vs. required checks: this workflow only triggers
+# when the listed paths change. GitHub reports a path-filtered workflow that
+# did not run as "Expected — Waiting for status" on a PR, which BLOCKS merging
+# forever if the check is marked "required" in branch protection. Before
+# making this job a required check, either drop the `paths:` filters (run it
+# on every PR) or add a companion workflow with `paths-ignore` mirroring this
+# list that reports a passing status of the same name.
 #
 # veraPDF is an external CI tool (a Java CLI installed on the runner). It is
 # not a dependency of pdfnative-mcp: the package keeps its zero-runtime-
@@ -56,6 +67,16 @@ jobs:
       # the same commit. Bump deliberately, with the release index:
       # https://software.verapdf.org/rel/
       VERAPDF_INSTALL_URL: 'https://software.verapdf.org/rel/1.30/verapdf-greenfield-1.30.2-installer.zip'
+      # SHA-256 of the installer zip above (32,923,960 bytes). The job fails on
+      # mismatch: the archive is executed with `java -jar`, so a swapped
+      # artefact on the download host would otherwise run arbitrary code on
+      # the runner. Recompute when bumping the URL:
+      #   curl -fsSL <url> | sha256sum
+      VERAPDF_INSTALL_SHA256: '6cc6341cb1af644044054b81f00a6590a7918abb18f762243de115258bcad838'
+      # Fail-closed: a missing / broken veraPDF or Java is an INFRA failure
+      # (exit 3), never a silent skip that would leave the step green.
+      VERAPDF_REQUIRED: '1'
+      VERAPDF_REPORT_DIR: test-output/pdfa/reports
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -77,6 +98,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$HOME/verapdf-installer"
           curl -fsSL -o "$HOME/verapdf-installer/installer.zip" "${VERAPDF_INSTALL_URL}"
+          echo "${VERAPDF_INSTALL_SHA256}  $HOME/verapdf-installer/installer.zip" | sha256sum --check --strict
           unzip -q "$HOME/verapdf-installer/installer.zip" -d "$HOME/verapdf-installer"
           INSTALLER_JAR=$(find "$HOME/verapdf-installer" -name 'verapdf-izpack-installer-*.jar' | head -n1)
           if [ -z "${INSTALLER_JAR}" ]; then
@@ -112,14 +134,22 @@ jobs:
         run: npm run corpus:pdfa
 
       # Advisory in 1.6.0 (see header). The exit code still drives the step
-      # outcome, which the summary step below surfaces.
+      # outcome, which the summary step below surfaces:
+      #   0 all expectations met · 1 conformance FAIL / XPASS · 2 no corpus ·
+      #   3 INFRA (veraPDF unusable or produced no report — not a verdict).
       - name: Validate PDF/A corpus (advisory)
         id: validate
         continue-on-error: true
         run: |
-          set -o pipefail
-          node scripts/validate-pdfa.mjs 2>&1 | tee verapdf-report.txt
+          set +e
+          node scripts/validate-pdfa.mjs 2> >(tee verapdf-stderr.txt >&2) | tee verapdf-report.txt
+          code=${PIPESTATUS[0]}
+          echo "exit_code=${code}" >> "$GITHUB_OUTPUT"
+          exit "${code}"
 
+      # Raw per-file veraPDF XML (+ stderr when non-empty) lives under
+      # test-output/pdfa/reports/ — upload it so a FAIL / INFRA line can be
+      # diagnosed without re-running the job.
       - name: Upload veraPDF report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -127,19 +157,38 @@ jobs:
           name: verapdf-report
           path: |
             verapdf-report.txt
+            verapdf-stderr.txt
             test-output/pdfa/manifest.json
+            test-output/pdfa/reports/
           if-no-files-found: warn
           retention-days: 14
 
       - name: Job summary
         if: always()
         run: |
+          code='${{ steps.validate.outputs.exit_code }}'
+          case "${code}" in
+            0) verdict='all expectations met' ;;
+            1) verdict='CONFORMANCE failure (FAIL or XPASS — see report)' ;;
+            2) verdict='no corpus generated' ;;
+            3) verdict='INFRA failure — veraPDF unusable or produced no report (NOT a conformance verdict)' ;;
+            *) verdict="unknown (exit ${code:-n/a})" ;;
+          esac
           {
             echo "## PDF/A validation (veraPDF, advisory)"
             echo
-            echo "veraPDF outcome: ${{ steps.validate.outcome }}"
+            echo "Step outcome: ${{ steps.validate.outcome }} · exit ${code:-n/a} · ${verdict}"
             echo
             echo '```'
             cat verapdf-report.txt 2>/dev/null || echo "(no report produced)"
             echo '```'
+            if [ -s verapdf-stderr.txt ]; then
+              echo
+              echo '<details><summary>validator stderr</summary>'
+              echo
+              echo '```'
+              cat verapdf-stderr.txt
+              echo '```'
+              echo '</details>'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
