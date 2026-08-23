@@ -33,6 +33,7 @@ import {
     toViewerPreferences,
 } from '../doc-features.js';
 import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
+import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, toLayoutOptions } from '../layout.js';
 import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 // This tool always embeds the Noto fonts it renders with, so `embedFonts` is not exposed.
@@ -137,6 +138,7 @@ export const ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA = {
         },
         viewerPreferences: VIEWER_PREFERENCES_INPUT_SCHEMA,
         ...PRINT_INPUT_PROPERTIES,
+        ...LAYOUT_INPUT_PROPERTIES,
         strict: STRICT_PROPERTY,
         includeDiagnostics: INCLUDE_DIAGNOSTICS_PROPERTY,
         outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
@@ -159,6 +161,7 @@ const InputSchema = z.strictObject({
     normalize: NormalizeSchema.optional(),
     viewerPreferences: ViewerPreferencesSchema.optional(),
     ...PrintInputShape,
+    ...LayoutInputShape,
     strict: StrictShape,
     includeDiagnostics: IncludeDiagnosticsShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
@@ -193,7 +196,7 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, lang, paragraphs, pdfA, normalize, viewerPreferences, print, outputIntent, metadata, creationDate, strict, includeDiagnostics, outputMode, outputPath } = parsed.data;
+    const { title, lang, paragraphs, pdfA, normalize, viewerPreferences, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, strict, includeDiagnostics, outputMode, outputPath } = parsed.data;
     assertPrintPdfACompatible(print, pdfA);
 
     const langs = normaliseLangs(lang);
@@ -232,6 +235,7 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
                 ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug }),
                 ...collector.layout,
             },
         );

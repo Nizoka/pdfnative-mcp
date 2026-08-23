@@ -345,3 +345,91 @@ describe('inspect_pdf classifyEncryption', () => {
         expect(classifyEncryption('not-a-number', 0)).toBe('unknown');
     });
 });
+
+describe('inspect_pdf annotations (opt-in, pdfnative v1.5 getAnnotations)', () => {
+    async function annotatedPdf(): Promise<string> {
+        const { annotatePdf } = await import('../src/tools/annotate-pdf.js');
+        const { makePdfBase64 } = await import('./_pagetree-fixtures.js');
+        const src = await makePdfBase64(2, 'Annots');
+        const r = await annotatePdf({
+            pdfBase64: src,
+            annotations: [
+                { page: 0, type: 'highlight', rect: [72, 700, 300, 720], color: '#ffe600', contents: 'x'.repeat(250), quadPoints: [72, 720, 300, 720, 72, 700, 300, 700] },
+                { page: 1, type: 'text', rect: [520, 700, 540, 720], contents: 'note', title: 'Alice' },
+                { page: 1, type: 'square', rect: [72, 500, 300, 560], color: '#cc0000' },
+            ],
+        });
+        return r.base64 as string;
+    }
+
+    it('default output carries no annotations / annotationCount keys', async () => {
+        const pdfBase64 = await annotatedPdf();
+        const out = await inspectPdf({ pdfBase64 });
+        expect('annotations' in out).toBe(false);
+        expect('annotationCount' in out).toBe(false);
+        expect(JSON.stringify(out)).not.toContain('annotation');
+    });
+
+    it('annotations:true lists every annotation with page, subtype, rect and optional fields', async () => {
+        const pdfBase64 = await annotatedPdf();
+        const out = await inspectPdf({ pdfBase64, annotations: true });
+        expect(out.annotationCount).toBe(3);
+        expect(out.annotations).toHaveLength(3);
+        const [hl, note, sq] = out.annotations!;
+        expect(hl).toMatchObject({ page: 0, subtype: 'Highlight', rect: [72, 700, 300, 720] });
+        expect(hl.contents).toHaveLength(200); // truncated from 250
+        expect(hl.quadPoints).toHaveLength(8);
+        expect(hl.color).toHaveLength(3);
+        expect(note).toMatchObject({ page: 1, subtype: 'Text', contents: 'note', title: 'Alice' });
+        expect(sq).toMatchObject({ page: 1, subtype: 'Square' });
+        expect(sq.color).toHaveLength(3);
+        expect(sq.color![0]).toBeCloseTo(0.8, 2);
+        expect('url' in sq).toBe(false);
+        expect('quadPoints' in sq).toBe(false);
+        // Every emitted key is declared in the output schema (projectable, no required list).
+        const { INSPECT_PDF_OUTPUT_SCHEMA } = await import('../src/tools/inspect-pdf.js');
+        const declared = Object.keys(INSPECT_PDF_OUTPUT_SCHEMA.properties.annotations.items.properties);
+        for (const a of out.annotations!) for (const k of Object.keys(a)) expect(declared).toContain(k);
+        expect('required' in INSPECT_PDF_OUTPUT_SCHEMA.properties.annotations.items).toBe(false);
+    });
+
+    it('annotations:true on a document without /Annots returns an empty array and count 0', async () => {
+        const pdfBase64 = await buildSamplePdf();
+        const out = await inspectPdf({ pdfBase64, annotations: true });
+        expect(out.annotations).toEqual([]);
+        expect(out.annotationCount).toBe(0);
+    });
+
+    it("check:['annotations'] asserts presence without emitting the array", async () => {
+        const annotated = await annotatedPdf();
+        const plain = await buildSamplePdf();
+        const yes = await inspectPdf({ pdfBase64: annotated, check: ['annotations'] });
+        expect(yes.checks).toEqual({ annotations: true });
+        expect(yes.checksPassed).toBe(true);
+        expect(yes.annotations).toBeUndefined();
+        const no = await inspectPdf({ pdfBase64: plain, check: ['annotations'] });
+        expect(no.checksPassed).toBe(false);
+    });
+
+    it('works on an encrypted source opened with its password (Widget annotations)', async () => {
+        // annotate_pdf refuses encrypted sources and encrypt_pdf rebuilds the page tree
+        // (dropping /Annots), so build an encrypted AcroForm directly: widgets are annotations.
+        const { buildDocumentPDFBytes } = await import('pdfnative');
+        const bytes = buildDocumentPDFBytes(
+            { title: 'Enc form', blocks: [{ type: 'formField', fieldType: 'text', name: 'who', label: 'Who' }] },
+            { encryption: { ownerPassword: 'owner-pw', userPassword: 'user-pw' } },
+        );
+        const pdfBase64 = Buffer.from(bytes).toString('base64');
+        await expect(inspectPdf({ pdfBase64, annotations: true })).rejects.toMatchObject({ code: 'PASSWORD_REQUIRED' });
+        const out = await inspectPdf({ pdfBase64, password: 'user-pw', annotations: true });
+        expect(out.encryption).not.toBe('none');
+        expect(out.annotationCount).toBe(1);
+        expect(out.annotations![0]).toMatchObject({ page: 0, subtype: 'Widget' });
+        expect(out.annotations![0].rect).toHaveLength(4);
+    });
+
+    it('rejects a non-boolean annotations flag', async () => {
+        const pdfBase64 = await buildSamplePdf();
+        await expect(inspectPdf({ pdfBase64, annotations: 'yes' })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    });
+});

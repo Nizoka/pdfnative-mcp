@@ -1,0 +1,30 @@
+{
+  "description": "Layout dry run (v1.6.0 via inspect_layout): preview how generate_basic_pdf will paginate a document — total pages and the page / x / top / width / height of every block — without producing any PDF bytes. Same `blocks` schema as generate_basic_pdf; the long table is reported once per page slice. Use it to check a fit-on-one-page constraint or to decide where to insert pageBreak blocks before a large generate. Self-contained and deterministic.",
+  "tool": "inspect_layout",
+  "arguments": {
+    "title": "Quarterly Operations Review",
+    "blocks": [
+      { "type": "heading", "text": "Executive summary", "level": 1 },
+      { "type": "paragraph", "text": "Revenue grew 12 % year over year while operating costs stayed flat. The regional breakdown below lists every site with its headcount and utilisation." },
+      { "type": "list", "style": "bullet", "items": ["EMEA ahead of plan", "AMER on plan", "APAC ramping a new site"] },
+      {
+        "type": "table",
+        "headers": ["Site", "Headcount", "Utilisation"],
+        "rows": [
+          ["Paris", "120", "91 %"], ["Berlin", "85", "88 %"], ["Madrid", "64", "84 %"], ["Milan", "58", "86 %"],
+          ["Austin", "140", "93 %"], ["Toronto", "72", "87 %"], ["Denver", "48", "81 %"], ["Seattle", "96", "90 %"],
+          ["Singapore", "110", "94 %"], ["Sydney", "54", "83 %"], ["Tokyo", "77", "89 %"], ["Bangalore", "160", "95 %"],
+          ["Lisbon", "40", "80 %"], ["Dublin", "66", "85 %"], ["Warsaw", "52", "82 %"], ["Prague", "45", "84 %"],
+          ["Chicago", "88", "89 %"], ["Boston", "61", "86 %"], ["Atlanta", "57", "83 %"], ["Phoenix", "39", "79 %"],
+          ["Seoul", "70", "90 %"], ["Manila", "95", "92 %"], ["Jakarta", "63", "85 %"], ["Auckland", "28", "78 %"],
+          ["Zurich", "44", "88 %"], ["Vienna", "36", "84 %"], ["Oslo", "31", "82 %"], ["Helsinki", "29", "81 %"],
+          ["Mexico City", "83", "87 %"], ["Sao Paulo", "102", "91 %"], ["Buenos Aires", "47", "80 %"], ["Santiago", "38", "79 %"],
+          ["Cape Town", "42", "83 %"], ["Nairobi", "35", "81 %"], ["Cairo", "49", "82 %"], ["Tel Aviv", "56", "88 %"]
+        ]
+      },
+      { "type": "pageBreak" },
+      { "type": "heading", "text": "Outlook", "level": 2 },
+      { "type": "paragraph", "text": "Hiring continues in APAC; utilisation targets remain at 90 % across all regions." }
+    ]
+  }
+}

@@ -155,7 +155,7 @@ All 27 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 > present when the opt-in `check` input was used, and the third is free-text carried verbatim
 > from the governance charter and has never been promised stable.
 >
-> **Review round 2 (still 1.6.0, `_meta.apiVersion` unchanged).** Additive inputs:
+> **Hardening and behaviour changes (still 1.6.0, `_meta.apiVersion` unchanged).** Additive inputs:
 > `creationDate` (ISO-8601) on the nine document tools — pins `/CreationDate`, the XMP dates
 > and therefore the trailer `/ID`; `signingTime` on `prepare_signature_placeholder`
 > (`/Sig /M` is frozen at placeholder time); `sign_pdf.signingTime` accepts time-zone

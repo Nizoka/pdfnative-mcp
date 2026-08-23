@@ -184,6 +184,13 @@ import {
     UPDATE_METADATA_INPUT_SCHEMA,
     updateMetadata,
 } from './tools/update-metadata.js';
+import {
+    INSPECT_LAYOUT_NAME,
+    INSPECT_LAYOUT_INPUT_SCHEMA,
+    INSPECT_LAYOUT_OUTPUT_SCHEMA,
+    inspectLayout,
+    type InspectLayoutResult,
+} from './tools/inspect-layout.js';
 
 // JSON import attribute (Node 22+, TS 5.3+) keeps version in lock-step with package.json.
 // Hardcoded here to keep the build rootDir limited to ./src; tests assert it stays in sync.
@@ -204,7 +211,7 @@ const SERVER_DESCRIPTION =
     'AcroForm fill & flatten, page-tree ops (merge / split / extract), markup annotations, Factur-X invoices, ' +
     'Unicode text extraction with positioned runs, PDF introspection, MCP resources for generated PDFs, ' +
     'and human-in-the-loop AI-governance issue drafting. ' +
-    '27 tools, 24 scripts, three runtime dependencies (pdfnative, the MCP SDK, zod).';
+    '28 tools, 24 scripts, three runtime dependencies (pdfnative, the MCP SDK, zod).';
 
 /**
  * Per-tool API version used by the opt-in cache key and by `_meta.apiVersion`.
@@ -294,6 +301,9 @@ function dispatchOutput(output: unknown, name: string, input: unknown): CallTool
         }
         if ('fieldCount' in output && 'fields' in output) {
             return buildReadFormFieldsResult(output as ReadFormFieldsResult, name, input);
+        }
+        if ('totalPages' in output && 'pages' in output && 'margins' in output) {
+            return buildInspectLayoutResult(output as InspectLayoutResult, name, input);
         }
     }
     return buildInspectResult(output as InspectPdfResult, name, input);
@@ -437,7 +447,7 @@ interface ToolDefinition {
     };
     /** Minimal MCP `_meta.examples` payload — each entry is a self-contained input. */
     examples?: ReadonlyArray<{ readonly title: string; readonly input: Record<string, unknown> }>;
-    handler: (args: unknown) => Promise<OutputResult | MultiOutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult | ValidatePdfResult | ExtractAttachmentsResult | DraftGovernanceIssueResult | ReadFormFieldsResult>;
+    handler: (args: unknown) => Promise<OutputResult | MultiOutputResult | InspectPdfResult | VerifyPdfResult | ExtractTextResult | ValidatePdfResult | ExtractAttachmentsResult | DraftGovernanceIssueResult | ReadFormFieldsResult | InspectLayoutResult>;
 }
 
 const TOOLS: readonly ToolDefinition[] = [
@@ -445,13 +455,13 @@ const TOOLS: readonly ToolDefinition[] = [
         name: GENERATE_BASIC_PDF_NAME,
         title: 'Generate basic PDF',
         description:
-            "Multi-page A4 PDF from structured blocks (heading, paragraph, list, chart, pageBreak, spacer — no table or image block: use add_table / embed_image and merge_pdfs). DEFAULT for plain documents — reach for add_table / add_chart / add_barcode / add_attachment / add_international_text only when the document IS that thing or needs non-Latin scripts. `pdfA` + `embedFonts:true` for a valid PDF/A-1b/2b/2u/3b claim; `outline` / `pageLabels` / `viewerPreferences` / `watermark` for navigation and presentation; `print`, `metadata`, `outputIntent`, `creationDate` as on every document tool. The 'chart' block takes the same body as add_chart.",
+            "Multi-page PDF composed from ordered blocks: heading, paragraph, list, table, image (JPEG/PNG), link, toc (printed table of contents), barcode, svg, formField, chart, pageBreak, spacer — every block kind the engine offers, each sharing its body with the dedicated tool (add_table, embed_image, add_barcode, add_form, add_chart). DEFAULT for any document; use the dedicated tools only for a standalone artefact, add_attachment for embedded files and add_international_text for non-Latin scripts. `pdfA` + `embedFonts:true` for a valid PDF/A-1b/2b/2u/3b claim; `outline` / `pageLabels` / `viewerPreferences` / `watermark` for navigation and presentation; `print`, `metadata`, `outputIntent`, `creationDate` as on every document tool. The 'chart' block takes the same body as add_chart.",
         inputSchema: GENERATE_BASIC_PDF_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
             { title: 'Plain document', input: { title: 'Hello', blocks: [{ type: 'paragraph', text: 'Hi world' }] } },
-            { title: 'PDF/A-2b archival', input: { title: 'Archival', blocks: [{ type: 'paragraph', text: 'Conformant' }], pdfA: 'pdfa2b' } },
+            { title: 'Report mixing prose, a table, a link and a printed contents', input: { title: 'Quarterly report', blocks: [{ type: 'toc' }, { type: 'heading', text: 'Sales', level: 1 }, { type: 'table', headers: ['Region', 'Revenue'], rows: [['EMEA', '1.2 M'], ['APAC', '0.9 M']], zebra: true }, { type: 'link', text: 'Full dataset', url: 'https://example.com/data' }], pdfA: 'pdfa2b', embedFonts: true } },
         ],
         handler: generateBasicPdf,
     },
@@ -502,7 +512,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ADD_TABLE_NAME,
         title: 'Add table / report',
         description:
-            "Tabular PDF report from `headers` + `rows` (every row the same length). Smart-table options: wrap, repeatHeader (header on every page), zebra, caption (tagged for PDF/A), minRowHeight, cellPadding, cellBorders, cellVAlign, autoFitColumns, clipCells. (generate_basic_pdf has no table block — use this tool and merge_pdfs to combine.) PDF/A (pdfA + embedFonts:true), print, metadata, watermark and creationDate options as on every document tool.",
+            "Tabular PDF report from `headers` + `rows` (every row the same length). Smart-table options: wrap, repeatHeader (header on every page), zebra, caption (tagged for PDF/A), minRowHeight, cellPadding, cellBorders, cellVAlign, autoFitColumns, clipCells. Inside a longer document use a 'table' block of generate_basic_pdf instead. PDF/A (pdfA + embedFonts:true), print, metadata, watermark and creationDate options as on every document tool.",
         inputSchema: ADD_TABLE_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -529,7 +539,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: EMBED_IMAGE_NAME,
         title: 'Embed image in PDF',
         description:
-            "PDF with one embedded JPEG or PNG (base64; PNG without alpha channel) plus optional caption and render width/height. (generate_basic_pdf has no image block — combine with merge_pdfs.) PDF/A, print, metadata and creationDate options as on every document tool.",
+            "PDF with one embedded JPEG or PNG (base64; PNG without alpha channel) plus optional caption and render width/height. Inside a longer document use an 'image' block of generate_basic_pdf instead. PDF/A, print, metadata and creationDate options as on every document tool.",
         inputSchema: EMBED_IMAGE_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -837,14 +847,32 @@ const TOOLS: readonly ToolDefinition[] = [
         ],
         handler: timestampPdf,
     },
+    {
+        name: INSPECT_LAYOUT_NAME,
+        title: 'Inspect document layout (dry run)',
+        description:
+            "Pagination preview WITHOUT generating a PDF: how many pages a document will take and where every block lands (page, x, top, width, height in points). Takes the same `blocks` as generate_basic_pdf (plus title, pdfA, normalize, embedFonts — the only inputs that move a block). Use it to check that content fits on one page, to decide where to put pageBreak blocks, or to estimate before a large generate. Read-only, deterministic, no PDF bytes returned. Token-frugal: verbosity:'summary' (totalPages, blockCount), fields:['totalPages'].",
+        inputSchema: INSPECT_LAYOUT_INPUT_SCHEMA,
+        outputSchema: projectableOutputSchema(
+            INSPECT_LAYOUT_OUTPUT_SCHEMA,
+            { blockCount: { type: 'integer', minimum: 0, description: 'summary only: number of placed blocks (table slices count once each).' } },
+            `Structured layout preview.${PROJECTION_NOTE}`,
+        ),
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        examples: [
+            { title: 'Where does each block land?', input: { title: 'Quarterly report', blocks: [{ type: 'heading', text: 'Summary', level: 1 }, { type: 'paragraph', text: 'Revenue grew 12 % year over year.' }, { type: 'pageBreak' }, { type: 'heading', text: 'Details', level: 2 }] } },
+            { title: 'Does it fit on one page?', input: { title: 'Memo', blocks: [{ type: 'paragraph', text: 'Short note.' }], verbosity: 'summary', fields: ['totalPages'] } },
+        ],
+        handler: inspectLayout,
+    },
 ];
 
 const TOOL_INDEX: ReadonlyMap<string, ToolDefinition> = new Map(TOOLS.map((t) => [t.name, t]));
 
-const SERVER_INSTRUCTIONS = `pdfnative-mcp: 27 tools over the pdfnative v1.7 PDF engine. Tool API 1.6.0. MCP 2026-07-28 (stateless) with automatic fallback to the 2025-era handshake. Every tool has typed input/output schemas and executable _meta.examples; read-only tools never modify input; document tools are byte-identical by default and every new option is opt-in.
+const SERVER_INSTRUCTIONS = `pdfnative-mcp: 28 tools over the pdfnative v1.7 PDF engine. Tool API 1.6.0. MCP 2026-07-28 (stateless) with automatic fallback to the 2025-era handshake. Every tool has typed input/output schemas and executable _meta.examples; read-only tools never modify input; document tools are byte-identical by default and every new option is opt-in.
 
 DECISION TREE:
-  • Plain document (headings, paragraphs, lists, charts) → generate_basic_pdf (no table / image block — merge_pdfs with add_table / embed_image output)
+  • Any document (headings, paragraphs, lists, tables, images, links, toc, barcodes, svg, form fields, charts) → generate_basic_pdf
   • Standalone chart / table / barcode / image → add_chart / add_table / add_barcode / embed_image
   • Non-Latin script, emoji or math symbols → add_international_text (lang:['latin','math'] for formulas)
   • Files inside the PDF (Factur-X / ZUGFeRD invoice, side-cars) → add_attachment (PDF/A-3), read back with extract_attachments
@@ -855,7 +883,8 @@ DECISION TREE:
   • PAdES ladder: sign_pdf profile:'pades' (B-B) → timestamp:true (B-T) → add_ltv (B-LT) → timestamp_pdf (B-LTA); check with verify_pdf ltv:true
   • Encrypt / decrypt → encrypt_pdf / decrypt_pdf (both rebuild the page tree: signatures + AcroForm are dropped)
   • Combine / carve → merge_pdfs (many → one), split_pdf (one → many), extract_pages (subset → one)
-  • Facts / CI assertions → inspect_pdf (check:[…]); signatures → verify_pdf; PDF/UA structure → validate_pdf; text → extract_text
+  • Will it fit / where do page breaks fall? → inspect_layout (dry run of the same blocks, no PDF produced)
+  • Facts / CI assertions → inspect_pdf (check:[…], annotations:true to list existing annotations); signatures → verify_pdf; PDF/UA structure → validate_pdf; text → extract_text
   • Propose an upstream change → draft_governance_issue (local draft, never submitted)
 
 NETWORK POLICY & HUMAN-IN-THE-LOOP:
@@ -872,8 +901,11 @@ COMMON PITFALLS:
   • Signer metadata (name, reason, location, contactInfo, signingTime) is frozen at placeholder time: set it on sign_pdf (auto-inject) or on prepare_signature_placeholder, not afterwards. Several unsigned placeholders → fieldName; extra signature → allowMultiple:true + new fieldName.
   • outputMode:'file' needs PDFNATIVE_MCP_OUTPUT_DIR on the host (SECURITY_VIOLATION otherwise); paths are relative, .pdf, no '..'. With the opt-in response cache a hit carries _meta.cached:true (earlier bytes, same inputs).
   • Barcode data is the raw payload (never URL-encode); ecLevel applies to qr only; ean13 needs 12–13 digits.
+  • Layout options on every document tool: pageSize (A4 default, Letter, Legal, A3, Tabloid), margins (all four), headerTemplate / footerTemplate with {page} {pages} {title} {date} (footerTemplate replaces the default footer, so footerText is then ignored), compress:true (FlateDecode streams, smaller file, different bytes), debug:true (guide rectangles).
+  • generate_basic_pdf 'svg' blocks support paths, basic shapes and <text> only — no transform, <g>, gradients or CSS (silently ignored); 'image' blocks are capped at 24 MiB decoded per call; 'formField' blocks under pdfA inherit PDFA_UNEMBEDDED_FORM_FONT.
+  • Watermarks take text and/or an image (JPEG/PNG, default opacity 0.10) and a position (background | foreground); opacity < 1 is rejected under pdfa1b.
 
-REPRODUCIBILITY: outputs differ on every call because /CreationDate (and /ID) follow the wall clock. For byte-identical output pass creationDate (document tools), signingTime (sign_pdf / prepare_signature_placeholder) and modDate (update_metadata) as fixed ISO-8601 instants — identical on the same host time zone. Timestamps (TSA tokens) are inherently fresh.
+REPRODUCIBILITY: outputs differ on every call because /CreationDate (and /ID) follow the wall clock. For byte-identical output pass creationDate (document tools), signingTime (sign_pdf / prepare_signature_placeholder) and modDate (update_metadata) as fixed ISO-8601 instants — identical on the same host time zone. Timestamps (TSA tokens) are inherently fresh, and the {date} placeholder of header/footer templates is the build-day wall clock (not creationDate) — avoid it when you need stable bytes.
 
 TOKEN-FRUGAL READS & RESOURCES: read tools accept verbosity:'summary' and fields:[…]. Generated PDFs arrive as an embedded resource block (not duplicated in structuredContent); in file mode the result carries a resource_link and the file is listed under resources/list as pdfnative://output/<path>. Prompts: governance_contract, draft_issue_workflow, pades_ladder, print_ready, reproducible_output, pdfa_valid. Docs: docs/AI_GUIDE.md, docs/guides/*.md.`;
 
@@ -916,6 +948,7 @@ function buildInspectResult(output: InspectPdfResult, toolName: string, input: u
         attachmentCount: output.attachments.length,
         // Presence-gated scalars survive the summary: they are the signal an agent asked for.
         ...(output.docTimestampCount !== undefined ? { docTimestampCount: output.docTimestampCount } : {}),
+        ...(output.annotationCount !== undefined ? { annotationCount: output.annotationCount } : {}),
         ...(output.trapped !== undefined ? { trapped: output.trapped } : {}),
         ...(output.checksPassed !== undefined ? { checksPassed: output.checksPassed } : {}),
     };
@@ -1015,6 +1048,27 @@ function buildReadFormFieldsResult(output: ReadFormFieldsResult, toolName: strin
                 text: `${toolName}: ${output.fieldCount} form field(s)${
                     output.fieldCount > 0 ? ` — ${output.fields.map((f) => f.name).slice(0, 20).join(', ')}${output.fieldCount > 20 ? ', …' : ''}` : ''
                 }.`,
+            },
+        ],
+        structuredContent: projectStructured(full, summary, input),
+        ...projectionMeta(full, summary, input),
+    };
+}
+
+function buildInspectLayoutResult(output: InspectLayoutResult, toolName: string, input: unknown): CallToolResult {
+    const full = output as unknown as Record<string, unknown>;
+    const blockCount = output.pages.reduce((n, p) => n + p.blocks.length, 0);
+    const summary: Record<string, unknown> = {
+        pageWidth: output.pageWidth,
+        pageHeight: output.pageHeight,
+        totalPages: output.totalPages,
+        blockCount,
+    };
+    return {
+        content: [
+            {
+                type: 'text',
+                text: `${toolName}: ${output.totalPages} page(s), ${blockCount} block(s), ${output.pageWidth}x${output.pageHeight} pt.`,
             },
         ],
         structuredContent: projectStructured(full, summary, input),
@@ -1155,6 +1209,7 @@ const PRINT_READY_RECIPE = `Print-ready output with any document tool (generate_
 const REPRODUCIBLE_OUTPUT_RECIPE = `Byte-identical output across calls:
 • Document tools: pin creationDate:'2026-01-15T09:00:00Z' (ISO-8601). /CreationDate, XMP dates and the /ID are then derived from the inputs only. Two calls with identical inputs return identical base64 (same host time zone — the engine serialises the instant in local time).
 • prepare_signature_placeholder: also pin signingTime (the /Sig /M entry is frozen at placeholder time). sign_pdf: pin signingTime; the CMS signature is deterministic for RSA, but ECDSA signatures are randomised by design and RFC 3161 timestamps (timestamp:true, timestamp_pdf) are always fresh.
+• Header/footer templates: the {date} placeholder is the build-day wall clock — omit it for stable bytes.
 • update_metadata: pin modDate. encrypt_pdf / decrypt_pdf: never reproducible (fresh IV / salt) and never cached.
 • Proof: call twice and compare structuredContent.sizeBytes and the resource blob, or hash the bytes on the host. With PDFNATIVE_MCP_CACHE_DIR set, a repeated call may be served from cache (_meta.cached:true) — the bytes are the earlier render.`;
 
@@ -1163,8 +1218,9 @@ const PDFA_VALID_RECIPE = `A PDF/A claim that a reference validator (veraPDF) ac
 2. ALWAYS pass embedFonts:true on Latin document tools — without it text is rendered through the unembedded base-14 Helvetica and the claim fails ISO 19005 §6.2.11.4.1 (PDFA_NO_FONT_ENTRIES). add_international_text always embeds its fonts.
 3. Use strict:true to make the call fail (PDF_A_COMPLIANCE_VIOLATION) instead of producing a non-conformant file, or includeDiagnostics:true to read the engine diagnostics in structuredContent.diagnostics.
 4. Avoid watermark opacity < 1 under pdfa1b; keep encryption off (mutually exclusive with PDF/A); prefer a custom outputIntent only with an RGB ICC profile.
-5. inspect_pdf reports the CLAIM (pdfA:'2B'), not its validity; validate_pdf checks PDF/UA structure, not PDF/A. An unsigned signature placeholder (prepare_signature_placeholder) is not yet conformant — it becomes conformant once signed with sign_pdf profile:'pades'.
-6. merge_pdfs / split_pdf / extract_pages drop the XMP packet: re-declare PDF/A on the generating tools, not after carving.`;
+5. Under a PDF/A claim a CMYK JPEG reports PDFA_DEVICE_CMYK_IMAGE (the OutputIntent is sRGB) and any form field reports PDFA_UNEMBEDDED_FORM_FONT — keep images RGB and flatten or drop pdfA for forms.
+6. inspect_pdf reports the CLAIM (pdfA:'2B'), not its validity; validate_pdf checks PDF/UA structure, not PDF/A. An unsigned signature placeholder (prepare_signature_placeholder) is not yet conformant — it becomes conformant once signed with sign_pdf profile:'pades'.
+7. merge_pdfs / split_pdf / extract_pages drop the XMP packet: re-declare PDF/A on the generating tools, not after carving.`;
 
 
 /**

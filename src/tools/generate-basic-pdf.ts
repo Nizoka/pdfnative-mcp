@@ -1,9 +1,13 @@
 /**
  * Tool: generate_basic_pdf
  *
- * Generates a multi-page PDF document with structured blocks (headings, paragraphs,
- * lists) using pdfnative's document builder. The most general-purpose tool — use it
- * whenever you need a "regular" PDF (reports, letters, articles, invoices, manuals).
+ * Generates a multi-page PDF document from structured blocks — headings,
+ * paragraphs, lists, tables, images, links, a printed table of contents,
+ * barcodes, SVG drawings, form fields and charts (every DocumentBlock kind the
+ * engine offers) — using pdfnative's document builder. The most general-purpose
+ * tool: use it whenever you need a "regular" PDF (reports, letters, articles,
+ * invoices, manuals). The inline blocks share their schemas with the dedicated
+ * tools (add_table, embed_image, add_barcode, add_form, add_chart).
  */
 import { buildDocumentPDFBytes, type DocumentBlock } from 'pdfnative';
 import { z } from 'zod';
@@ -11,6 +15,7 @@ import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { splitParagraphSegments } from '../text.js';
 import { CHART_BODY_PROPERTIES, ChartBodySchema, toChartBlock } from '../chart.js';
+import { EXTENDED_BLOCK_SCHEMAS, ExtendedBlockSchemas, createBlockContext, toExtendedBlock } from '../blocks.js';
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
 import { NORMALIZE_ENUM, NORMALIZE_FIELD_DESCRIPTION, NormalizeSchema } from '../normalize.js';
 import {
@@ -34,6 +39,7 @@ import {
     toViewerPreferences,
 } from '../doc-features.js';
 import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
+import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, toLayoutOptions } from '../layout.js';
 import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 export const GENERATE_BASIC_PDF_NAME = 'generate_basic_pdf';
@@ -116,6 +122,7 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
                             ...CHART_BODY_PROPERTIES,
                         },
                     },
+                    ...EXTENDED_BLOCK_SCHEMAS,
                 ],
             },
         },
@@ -139,6 +146,7 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
         pageLabels: PAGE_LABELS_INPUT_SCHEMA,
         viewerPreferences: VIEWER_PREFERENCES_INPUT_SCHEMA,
         ...PRINT_INPUT_PROPERTIES,
+        ...LAYOUT_INPUT_PROPERTIES,
         ...DIAGNOSTIC_INPUT_PROPERTIES,
         outputMode: {
             type: 'string',
@@ -153,6 +161,9 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
     },
     required: ['title', 'blocks'],
 } as const;
+
+/** The `blocks` input — every DocumentBlock kind pdfnative offers; shared with inspect_layout. */
+export const DOCUMENT_BLOCKS_INPUT_SCHEMA = GENERATE_BASIC_PDF_INPUT_SCHEMA.properties.blocks;
 
 const InputSchema = z.strictObject({
     title: z.string().min(1).max(200),
@@ -179,6 +190,7 @@ const InputSchema = z.strictObject({
                     height: z.number().min(1).max(500),
                 }),
                 ChartBodySchema.extend({ type: z.literal('chart') }),
+                ...ExtendedBlockSchemas,
             ]),
         )
         .min(1)
@@ -191,24 +203,25 @@ const InputSchema = z.strictObject({
     pageLabels: PageLabelsSchema.optional(),
     viewerPreferences: ViewerPreferencesSchema.optional(),
     ...PrintInputShape,
+    ...LayoutInputShape,
     ...DiagnosticInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
 
-export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult> {
-    const parsed = InputSchema.safeParse(rawInput);
-    if (!parsed.success) {
-        throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
-    }
-    const {
-        title, blocks, footerText, pdfA, watermark, normalize, outline, pageLabels, viewerPreferences,
-        print, outputIntent, metadata, creationDate, strict, includeDiagnostics, embedFonts, outputMode, outputPath,
-    } = parsed.data;
-    assertWatermarkPdfACompatible(watermark, pdfA);
-    assertPrintPdfACompatible(print, pdfA);
+/** Zod counterpart of {@link DOCUMENT_BLOCKS_INPUT_SCHEMA}; shared with inspect_layout. */
+export const DocumentBlocksSchema = InputSchema.shape.blocks;
+export type DocumentBlocksInput = z.infer<typeof DocumentBlocksSchema>;
 
-    const docBlocks: DocumentBlock[] = blocks.flatMap((block): DocumentBlock[] => {
+/**
+ * Map validated blocks to engine blocks. Paragraph text is split on embedded
+ * newlines; the extended kinds go through src/blocks.ts (which also enforces
+ * the per-call image byte budget). Throws VALIDATION_ERROR when nothing
+ * renderable remains.
+ */
+export function toDocumentBlocks(blocks: DocumentBlocksInput): DocumentBlock[] {
+    const blockContext = createBlockContext();
+    const docBlocks: DocumentBlock[] = blocks.flatMap((block, index): DocumentBlock[] => {
         switch (block.type) {
             case 'heading':
                 return [{ type: 'heading', text: block.text, level: block.level }];
@@ -222,12 +235,29 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
                 return [{ type: 'spacer', height: block.height }];
             case 'chart':
                 return [toChartBlock(block)];
+            default:
+                return [toExtendedBlock(block, index, blockContext)];
         }
     });
     if (docBlocks.length === 0) {
         throw new ToolError('VALIDATION_ERROR', 'blocks must contain at least one block with renderable content.');
     }
+    return docBlocks;
+}
 
+export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult> {
+    const parsed = InputSchema.safeParse(rawInput);
+    if (!parsed.success) {
+        throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
+    }
+    const {
+        title, blocks, footerText, pdfA, watermark, normalize, outline, pageLabels, viewerPreferences,
+        print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, strict, includeDiagnostics, embedFonts, outputMode, outputPath,
+    } = parsed.data;
+    assertWatermarkPdfACompatible(watermark, pdfA);
+    assertPrintPdfACompatible(print, pdfA);
+
+    const docBlocks = toDocumentBlocks(blocks);
     const docMetadata = toDocumentMetadata(metadata);
     const fontEntries = await latinFontEntries(embedFonts);
     const collector = collectDiagnostics(strict);
@@ -250,6 +280,7 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
                 ...(normalize !== undefined ? { normalize } : {}),
                 ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug }),
                 ...collector.layout,
             },
         );

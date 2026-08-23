@@ -11,6 +11,8 @@ import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
 import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
+import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, toLayoutOptions } from '../layout.js';
+import { FORM_FIELD_PROPERTIES, FormFieldSchema, assertFormFieldOptions, toFormFieldBlock } from '../form.js';
 import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 export const ADD_FORM_NAME = 'add_form';
@@ -19,66 +21,8 @@ const FORM_FIELD_SCHEMA = {
     type: 'object',
     additionalProperties: false,
     required: ['fieldType', 'name'],
-    properties: {
-        fieldType: {
-            type: 'string',
-            enum: ['text', 'textarea', 'checkbox', 'radio', 'dropdown'],
-            description: 'Type of form control to render.',
-        },
-        name: {
-            type: 'string',
-            minLength: 1,
-            maxLength: 100,
-            description: 'Unique field name used as the PDF annotation identifier.',
-        },
-        label: {
-            type: 'string',
-            maxLength: 200,
-            description: 'Human-readable label shown above the field.',
-        },
-        value: {
-            type: 'string',
-            maxLength: 2000,
-            description: 'Default value pre-filled in the field.',
-        },
-        options: {
-            type: 'array',
-            description: 'Choices for dropdown or radio fields.',
-            maxItems: 100,
-            items: { type: 'string', maxLength: 200 },
-        },
-        readOnly: { type: 'boolean', description: 'Prevent editing of this field.' },
-        required: { type: 'boolean', description: 'Mark field as required.' },
-        maxLength: {
-            type: 'integer',
-            minimum: 1,
-            maximum: 32767,
-            description: 'Maximum character length for text/textarea fields.',
-        },
-        width: {
-            type: 'number',
-            minimum: 10,
-            maximum: 500,
-            description: 'Field width in points (optional).',
-        },
-        height: {
-            type: 'number',
-            minimum: 10,
-            maximum: 300,
-            description: 'Field height in points (optional).',
-        },
-        checked: {
-            type: 'boolean',
-            description: 'Initial checked state for checkbox fields.',
-        },
-        fontSize: {
-            type: 'number',
-            minimum: 6,
-            maximum: 48,
-            description: 'Font size for text rendering inside the field.',
-        },
-    },
-};
+    properties: FORM_FIELD_PROPERTIES,
+} as const;
 
 export const ADD_FORM_INPUT_SCHEMA = {
     type: 'object',
@@ -108,6 +52,7 @@ export const ADD_FORM_INPUT_SCHEMA = {
             description: PDF_A_FIELD_DESCRIPTION,
         },
         ...PRINT_INPUT_PROPERTIES,
+        ...LAYOUT_INPUT_PROPERTIES,
         ...DIAGNOSTIC_INPUT_PROPERTIES,
         outputMode: {
             type: 'string',
@@ -124,27 +69,13 @@ export const ADD_FORM_INPUT_SCHEMA = {
     required: ['title', 'fields'],
 } as const;
 
-const FieldSchema = z.strictObject({
-    fieldType: z.enum(['text', 'textarea', 'checkbox', 'radio', 'dropdown']),
-    name: z.string().min(1).max(100),
-    label: z.string().max(200).optional(),
-    value: z.string().max(2000).optional(),
-    options: z.array(z.string().max(200)).max(100).optional(),
-    readOnly: z.boolean().optional(),
-    required: z.boolean().optional(),
-    maxLength: z.number().int().min(1).max(32767).optional(),
-    width: z.number().min(10).max(500).optional(),
-    height: z.number().min(10).max(300).optional(),
-    checked: z.boolean().optional(),
-    fontSize: z.number().min(6).max(48).optional(),
-});
-
 const InputSchema = z.strictObject({
     title: z.string().min(1).max(200),
-    fields: z.array(FieldSchema).min(1).max(200),
+    fields: z.array(FormFieldSchema).min(1).max(200),
     footerText: z.string().max(200).optional(),
     pdfA: PdfASchema.optional(),
     ...PrintInputShape,
+    ...LayoutInputShape,
     ...DiagnosticInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
@@ -155,37 +86,13 @@ export async function addForm(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, fields, footerText, pdfA, print, outputIntent, metadata, creationDate, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
+    const { title, fields, footerText, pdfA, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
     assertPrintPdfACompatible(print, pdfA);
 
-    // Validate that radio/dropdown fields have options
-    for (const field of fields) {
-        if ((field.fieldType === 'radio' || field.fieldType === 'dropdown') && (!field.options || field.options.length === 0)) {
-            throw new ToolError(
-                'VALIDATION_ERROR',
-                `Field '${field.name}' of type '${field.fieldType}' requires at least one option.`,
-            );
-        }
-    }
+    for (const field of fields) assertFormFieldOptions(field);
 
-    // Build blocks: title block + form fields
-    const blocks: DocumentBlock[] = fields.map(
-        (field): DocumentBlock => ({
-            type: 'formField',
-            fieldType: field.fieldType as 'text' | 'multilineText' | 'checkbox' | 'radio' | 'dropdown' | 'listbox',
-            name: field.name,
-            ...(field.label !== undefined ? { label: field.label } : {}),
-            ...(field.value !== undefined ? { value: field.value } : {}),
-            ...(field.options !== undefined ? { options: field.options } : {}),
-            ...(field.readOnly !== undefined ? { readOnly: field.readOnly } : {}),
-            ...(field.required !== undefined ? { required: field.required } : {}),
-            ...(field.maxLength !== undefined ? { maxLength: field.maxLength } : {}),
-            ...(field.width !== undefined ? { width: field.width } : {}),
-            ...(field.height !== undefined ? { height: field.height } : {}),
-            ...(field.checked !== undefined ? { checked: field.checked } : {}),
-            ...(field.fontSize !== undefined ? { fontSize: field.fontSize } : {}),
-        }),
-    );
+    // One formField block per field; 'textarea' is mapped to the engine's 'multilineText'.
+    const blocks: DocumentBlock[] = fields.map((field): DocumentBlock => toFormFieldBlock(field));
 
     const docMetadata = toDocumentMetadata(metadata);
     const fontEntries = await latinFontEntries(embedFonts);
@@ -204,6 +111,7 @@ export async function addForm(rawInput: unknown): Promise<OutputResult> {
             {
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug }),
                 ...collector.layout,
             },
         );

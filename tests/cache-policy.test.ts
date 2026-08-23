@@ -1,5 +1,5 @@
 /**
- * Server-level cache policy (review round 2, A-5): what the opt-in response
+ * Server-level cache policy: what the opt-in response
  * cache may serve, how a hit is signalled, and what the key is namespaced by.
  */
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';

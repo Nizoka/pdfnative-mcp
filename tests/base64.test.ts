@@ -1,5 +1,5 @@
 /**
- * Boundary diagnostics for base64 inputs (review round 2, A-4 / F-4):
+ * Boundary diagnostics for base64 inputs:
  * the classic agent mistakes — `data:` URI, PEM where DER is expected,
  * double-encoded base64 — must fail with a coded error and a remedy,
  * never with an opaque engine exception.

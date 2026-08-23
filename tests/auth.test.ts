@@ -1,5 +1,7 @@
 /**
- * Opt-in HTTP bearer token (`PDFNATIVE_MCP_HTTP_TOKEN`, review round 2 M-6).
+ * Opt-in HTTP bearer token (`PDFNATIVE_MCP_HTTP_TOKEN`): the loopback bind and
+ * Host/Origin guard do not stop other local processes, so operators can require
+ * a shared secret on every request.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -58,7 +60,7 @@ describe('HTTP fixture with a bearer token (end-to-end)', () => {
             expect(denied.headers['www-authenticate']).toMatch(/^Bearer /);
             const ok = await send(fx.port, { headers: { ...req.headers, authorization: `Bearer ${TOKEN}` }, body: req.body });
             expect(ok.status).toBe(200);
-            expect(((ok.json?.['result'] as { tools?: unknown[] })?.tools ?? []).length).toBe(27);
+            expect(((ok.json?.['result'] as { tools?: unknown[] })?.tools ?? []).length).toBe(28);
         } finally {
             await fx.close();
         }

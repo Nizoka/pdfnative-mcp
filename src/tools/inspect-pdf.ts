@@ -44,6 +44,7 @@ import {
     type SignatureWidget,
 } from '../pdf-introspection.js';
 import { mapDecryptError, PASSWORD_INPUT_SCHEMA, PasswordSchema } from '../encryption.js';
+import { throwIfInflateCapError } from '../inflate-cap.js';
 
 export const INSPECT_PDF_NAME = 'inspect_pdf';
 
@@ -55,7 +56,9 @@ const RECT_SCHEMA = {
 } as const;
 const DSS_SCHEMA = DSS_OUTPUT_SCHEMA;
 
-const CHECK_VALUES = ['pdfa', 'signed', 'encrypted', 'placeholder', 'attachments', 'dss', 'docTimestamp', 'trapped'] as const;
+const CHECK_VALUES = ['pdfa', 'signed', 'encrypted', 'placeholder', 'attachments', 'dss', 'docTimestamp', 'trapped', 'annotations'] as const;
+/** `/Contents` is truncated to this many characters in `annotations[]` to keep responses compact. */
+const ANNOTATION_CONTENTS_MAX = 200;
 type CheckValue = (typeof CHECK_VALUES)[number];
 
 export const INSPECT_PDF_INPUT_SCHEMA = {
@@ -79,11 +82,17 @@ export const INSPECT_PDF_INPUT_SCHEMA = {
             description:
                 'When true, include a signatures[] array describing every signature field (field name, SubFilter, document-timestamp flag, placeholder flag, ByteRange, /Contents length, /VRI key). Off by default to keep responses compact.',
         },
+        annotations: {
+            type: 'boolean',
+            default: false,
+            description:
+                'When true, include an annotations[] array listing every page annotation (/Annots: links, text notes, highlights, shapes, widgets…) with its 0-based page, subtype, rect and, when present, contents (truncated to 200 chars), title, color, quadPoints and link url. Off by default to keep responses compact.',
+        },
         check: {
             type: 'array',
             description:
-                "CI assertions → checks (requested keys only) + checksPassed (all hold). 'signed' = a signature field with signed content exists (structural; validity is verify_pdf's job), 'placeholder' = an unsigned placeholder exists, 'dss' = /DSS present, 'docTimestamp' = a /DocTimeStamp exists, 'trapped' = /Info /Trapped set.",
-            maxItems: 8,
+                "CI assertions → checks (requested keys only) + checksPassed (all hold). 'signed' = a signature field with signed content exists (structural; validity is verify_pdf's job), 'placeholder' = an unsigned placeholder exists, 'dss' = /DSS present, 'docTimestamp' = a /DocTimeStamp exists, 'trapped' = /Info /Trapped set, 'annotations' = at least one page annotation exists.",
+            maxItems: 9,
             items: { type: 'string', enum: [...CHECK_VALUES] },
         },
         verbosity: {
@@ -190,6 +199,30 @@ export const INSPECT_PDF_OUTPUT_SCHEMA = {
                 },
             },
         },
+        annotations: {
+            type: 'array',
+            description:
+                'Page annotations (opt-in via the `annotations` input), in page order then /Annots order. Only the keys the annotation actually carries are emitted.',
+            items: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                    page: { type: 'integer', minimum: 0, description: '0-based page index.' },
+                    subtype: { type: 'string', description: '/Subtype, e.g. Link, Text, Highlight, Square, FreeText, Widget.' },
+                    rect: { ...RECT_SCHEMA, description: '/Rect [x1, y1, x2, y2] in PDF user space; absent when malformed.' },
+                    contents: { type: 'string', maxLength: ANNOTATION_CONTENTS_MAX, description: 'Decoded /Contents, truncated to 200 characters.' },
+                    title: { type: 'string', description: 'Decoded /T (author / title).' },
+                    color: { type: 'array', items: { type: 'number' }, description: '/C colour components (0–1; 1, 3 or 4 values).' },
+                    quadPoints: { type: 'array', items: { type: 'number' }, description: '/QuadPoints of a text-markup annotation.' },
+                    url: { type: 'string', description: 'Target of a URI-action link annotation.' },
+                },
+            },
+        },
+        annotationCount: {
+            type: 'integer',
+            minimum: 0,
+            description: 'Total number of page annotations (opt-in via the `annotations` input).',
+        },
         dss: {
             ...DSS_SCHEMA,
             description: 'Document Security Store summary (ISO 32000-2 §12.8.4.3), present only when the catalog has a /DSS.',
@@ -234,7 +267,8 @@ const InputSchema = z.strictObject({
     password: PasswordSchema.optional(),
     pages: z.boolean().default(false),
     signatures: z.boolean().default(false),
-    check: z.array(z.enum(CHECK_VALUES)).max(8).optional(),
+    annotations: z.boolean().default(false),
+    check: z.array(z.enum(CHECK_VALUES)).max(9).optional(),
     verbosity: z.enum(['summary', 'full']).optional(),
     fields: z.array(z.string().min(1)).max(16).optional(),
 });
@@ -263,6 +297,18 @@ export interface SignatureSummary {
     readonly vriKey: string | null;
 }
 
+/** One page annotation as reported by `inspect_pdf` (`annotations: true`). */
+export interface AnnotationSummary {
+    readonly page: number;
+    readonly subtype: string;
+    readonly rect?: readonly [number, number, number, number];
+    readonly contents?: string;
+    readonly title?: string;
+    readonly color?: readonly number[];
+    readonly quadPoints?: readonly number[];
+    readonly url?: string;
+}
+
 export interface InspectPdfResult {
     readonly version: string;
     readonly pageCount: number;
@@ -276,6 +322,10 @@ export interface InspectPdfResult {
     readonly perPage?: ReadonlyArray<{ readonly index: number; readonly width: number; readonly height: number } & PageBoxes>;
     /** Opt-in via `signatures: true`. */
     readonly signatures?: readonly SignatureSummary[];
+    /** Opt-in via `annotations: true`. */
+    readonly annotations?: readonly AnnotationSummary[];
+    /** Opt-in via `annotations: true`. */
+    readonly annotationCount?: number;
     /** Present only when the catalog carries a /DSS. */
     readonly dss?: DssSummary;
     /** Present only when /Info carries /Trapped. */
@@ -473,6 +523,24 @@ function readPerPage(reader: PdfReader): InspectPdfResult['perPage'] {
     });
 }
 
+/** Walk every page's /Annots through `reader.getAnnotations()` (pdfnative v1.5.0). */
+function readAnnotations(reader: PdfReader): AnnotationSummary[] {
+    const out: AnnotationSummary[] = [];
+    for (let page = 0; page < reader.pageCount; page++) {
+        for (const a of reader.getAnnotations(page)) {
+            const entry: { -readonly [K in keyof AnnotationSummary]: AnnotationSummary[K] } = { page, subtype: a.subtype };
+            if (a.rect !== null) entry.rect = a.rect;
+            if (a.contents !== undefined) entry.contents = a.contents.length > ANNOTATION_CONTENTS_MAX ? a.contents.slice(0, ANNOTATION_CONTENTS_MAX) : a.contents;
+            if (a.title !== undefined) entry.title = a.title;
+            if (a.color !== undefined) entry.color = a.color;
+            if (a.quadPoints !== undefined) entry.quadPoints = a.quadPoints;
+            if (a.url !== undefined) entry.url = a.url;
+            out.push(entry);
+        }
+    }
+    return out;
+}
+
 function summariseSignatures(widgets: readonly SignatureWidget[]): SignatureSummary[] {
     return widgets.map((w) => ({
         fieldName: w.fieldName,
@@ -490,13 +558,14 @@ export async function inspectPdf(rawInput: unknown): Promise<InspectPdfResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { pdfBase64, password, pages: includePages, signatures: includeSignatures, check } = parsed.data;
+    const { pdfBase64, password, pages: includePages, signatures: includeSignatures, annotations: includeAnnotations, check } = parsed.data;
 
     const bytes = decodeBase64(pdfBase64);
     let reader: PdfReader;
     try {
         reader = openPdf(bytes, password !== undefined ? { password } : undefined);
     } catch (err) {
+        throwIfInflateCapError(err);
         mapDecryptError(err, password !== undefined);
     }
 
@@ -545,6 +614,14 @@ export async function inspectPdf(rawInput: unknown): Promise<InspectPdfResult> {
         result.signatures = summariseSignatures(widgets);
     }
 
+    // Annotations are walked lazily: only when listed or asserted via check:['annotations'].
+    const wantsAnnotations = includeAnnotations || (check?.includes('annotations') ?? false);
+    const annotations = wantsAnnotations ? readAnnotations(reader) : [];
+    if (includeAnnotations) {
+        result.annotations = annotations;
+        result.annotationCount = annotations.length;
+    }
+
     // Presence-gated fields (same precedent as pageLabels / encryptionInfo): emitted only
     // when the document actually carries the feature, so default output stays byte-identical.
     if (dss !== null) {
@@ -569,6 +646,7 @@ export async function inspectPdf(rawInput: unknown): Promise<InspectPdfResult> {
             dss: dss !== null,
             docTimestamp: docTimestampCount > 0,
             trapped: trapped !== null,
+            annotations: annotations.length > 0,
         };
         // Only the requested checks are reported: an unrequested key reading `false`
         // would be indistinguishable from a failed assertion.

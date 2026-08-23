@@ -439,6 +439,49 @@ const CORPUS = [
             }),
     },
     {
+        file: 'composite-blocks-pdfa2b.pdf',
+        tool: 'generate_basic_pdf',
+        // Every non-form block kind in one document: toc, table, link, barcode,
+        // svg (paths + <text>), image (RGB JPEG) and chart. All pure vector or
+        // RGB raster, so the PDF/A-2b claim must hold with embedded fonts.
+        produce: () =>
+            producePdf('generate_basic_pdf', {
+                title: 'Corpus — composite blocks under PDF/A-2b',
+                pdfA: 'pdfa2b',
+                blocks: [
+                    { type: 'toc', maxLevel: 2 },
+                    { type: 'heading', text: 'Figures', level: 1 },
+                    { type: 'paragraph', text: 'Tables, links, barcodes and drawings in one archival document.' },
+                    { type: 'table', headers: ['Item', 'Qty'], rows: [['Widget', '2'], ['Gadget', '5']], zebra: true, caption: 'Stock', clipCells: true },
+                    { type: 'link', text: 'Project home', url: 'https://github.com/Nizoka/pdfnative-mcp' },
+                    { type: 'heading', text: 'Codes', level: 2 },
+                    { type: 'barcode', format: 'qr', data: 'https://example.com', width: 120, align: 'center' },
+                    { type: 'svg', data: '<svg viewBox="0 0 20 10"><rect x="1" y="1" width="18" height="8" fill="#1a73e8"/><text x="10" y="7" font-size="4" fill="#ffffff" text-anchor="middle">svg</text></svg>', width: 160, height: 80, alt: 'Blue box with the word svg' },
+                    { type: 'chart', chartType: 'bar', series: [{ label: 'Units', values: [3, 5, 2] }], categories: ['A', 'B', 'C'] },
+                ],
+                ...EMBED,
+            }),
+    },
+    {
+        file: 'layout-letter-templates-compress-pdfa2b.pdf',
+        tool: 'generate_basic_pdf',
+        // Layout options under PDF/A-2b: Letter page, custom margins, running
+        // header/footer templates and FlateDecode streams (compress). The XMP
+        // packet must stay uncompressed for the claim to be discoverable.
+        produce: () =>
+            producePdf('generate_basic_pdf', {
+                title: 'Corpus — Letter, templates, compressed streams',
+                pdfA: 'pdfa2b',
+                pageSize: 'Letter',
+                margins: { top: 60, right: 48, bottom: 50, left: 48 },
+                headerTemplate: { left: '{title}', right: 'Page {page} of {pages}' },
+                footerTemplate: { center: 'Archival copy' },
+                compress: true,
+                blocks: Array.from({ length: 40 }, (_, i) => ({ type: 'paragraph', text: `Paragraph ${i + 1} of a two-page Letter document with running header and footer.` })),
+                ...EMBED,
+            }),
+    },
+    {
         file: 'form-pdfa2b.pdf',
         tool: 'add_form',
         // KNOWN FAILURE (pdfnative 1.7.0): the AcroForm /DR default-appearance

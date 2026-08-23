@@ -82,7 +82,7 @@ describe('readVerbosity / readFields', () => {
     });
 });
 
-describe('fields projection — unmatched paths are surfaced (A-18)', () => {
+describe('fields projection — unmatched paths are surfaced', () => {
     it('adds _meta.unmatchedFields + availableFields when a requested path matches nothing, and nothing otherwise', async () => {
         const { callToolDirect, ensureCompressionReady } = await import('../src/server.js');
         const { generateBasicPdf } = await import('../src/tools/generate-basic-pdf.js');

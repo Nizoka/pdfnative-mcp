@@ -28,6 +28,7 @@ import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
 import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
+import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, toLayoutOptions } from '../layout.js';
 import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 export const PREPARE_SIGNATURE_PLACEHOLDER_NAME = 'prepare_signature_placeholder';
@@ -144,6 +145,7 @@ export const PREPARE_SIGNATURE_PLACEHOLDER_INPUT_SCHEMA = {
             },
         },
         ...PRINT_INPUT_PROPERTIES,
+        ...LAYOUT_INPUT_PROPERTIES,
         ...DIAGNOSTIC_INPUT_PROPERTIES,
         outputMode: {
             type: 'string',
@@ -182,6 +184,7 @@ const InputSchema = z.strictObject({
     pdfA: PdfASchema.optional(),
     blocks: z.array(BlockSchema).max(2000).optional(),
     ...PrintInputShape,
+    ...LayoutInputShape,
     ...DiagnosticInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
@@ -227,6 +230,12 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
         outputIntent,
         metadata,
         creationDate,
+        pageSize,
+        margins,
+        headerTemplate,
+        footerTemplate,
+        compress,
+        debug,
         strict,
         includeDiagnostics,
         embedFonts,
@@ -264,6 +273,7 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
             {
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug }),
                 ...collector.layout,
             },
         );

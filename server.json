@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.github.Nizoka/pdfnative-mcp",
-  "description": "PDF generation, PDF/A and PDF/UA checks, charts, forms, encryption, PAdES LTV signing. 27 tools.",
+  "description": "PDF generation, PDF/A and PDF/UA checks, charts, forms, encryption, PAdES LTV signing. 28 tools.",
   "repository": {
     "url": "https://github.com/Nizoka/pdfnative-mcp",
     "source": "github"
@@ -55,6 +55,13 @@
           "description": "Opt-in bearer token for the HTTP transport (at least 16 characters, no whitespace). When set, every request to /mcp must carry 'Authorization: Bearer <token>'; otherwise 401. Never logged or echoed.",
           "isRequired": false,
           "isSecret": true
+        },
+        {
+          "name": "PDFNATIVE_MCP_MAX_INFLATE_BYTES",
+          "description": "Per-stream decompression cap in bytes for FlateDecode content (zip-bomb mitigation; engine default 104857600 = 100 MiB). Positive integer >= 1024; an invalid value refuses to start the server. Lower it on shared hosts, raise it for trusted archives of large scanned documents. A stream exceeding the cap fails the call with PDF_PARSE_FAILED.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "number"
         },
         {
           "name": "PDFNATIVE_MCP_TSA_URL",

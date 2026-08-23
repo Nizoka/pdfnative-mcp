@@ -129,7 +129,7 @@ describe('examples/*.json', () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* F-17: multi-step / placeholder examples run for real, chained in order     */
+/* Multi-step / placeholder examples run for real, chained in order           */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -229,7 +229,7 @@ const chainedFiles = exampleFiles.filter((f) => {
     return steps.length > 1 || steps.some((s) => hasPlaceholder(s.arguments));
 });
 
-describe('examples/*.json — multi-step and placeholder examples run end-to-end (F-17)', () => {
+describe('examples/*.json — multi-step and placeholder examples run end-to-end', () => {
     const ENV = [TSA_URL_ENV, TSA_AUTH_ENV, REVOCATION_ENV, ALLOWED_HOSTS_ENV];
     let ctx: ChainContext;
     let tsa: MockTsaServer;

@@ -34,7 +34,7 @@ describe('server', () => {
         expect(typeof __serverMetadata.title).toBe('string');
         expect(__serverMetadata.title.length).toBeGreaterThan(0);
         expect(__serverMetadata.description).toMatch(/MCP server/i);
-        expect(__serverMetadata.description).toMatch(/27 tools/);
+        expect(__serverMetadata.description).toMatch(/28 tools/);
     });
 
     it('SERVER_INSTRUCTIONS advertises decision tree and pitfalls for AI clients', () => {
@@ -103,6 +103,7 @@ describe('server', () => {
             'extract_text',
             'fill_form',
             'generate_basic_pdf',
+            'inspect_layout',
             'inspect_pdf',
             'merge_pdfs',
             'prepare_signature_placeholder',

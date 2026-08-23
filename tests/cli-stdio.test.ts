@@ -200,3 +200,42 @@ describe.skipIf(!hasDist)('dist/cli.js over stdio — large frames', () => {
         expectCleanExit(session);
     }, 60_000);
 });
+
+describe.skipIf(!hasDist)('dist/cli.js — PDFNATIVE_MCP_MAX_INFLATE_BYTES', () => {
+    function spawnWithCap(value: string): Promise<{ code: number | null; stderr: string }> {
+        return new Promise((resolve, reject) => {
+            const child = spawn(process.execPath, [CLI], {
+                stdio: ['pipe', 'pipe', 'pipe'],
+                env: { ...process.env, PDFNATIVE_MCP_PORT: '', PDFNATIVE_MCP_MAX_INFLATE_BYTES: value },
+            });
+            let stderr = '';
+            const timer = setTimeout(() => {
+                child.kill('SIGKILL');
+                reject(new Error(`startup timed out; stderr: ${stderr}`));
+            }, 20_000);
+            child.stderr.on('data', (c: Buffer) => {
+                stderr += c.toString('utf8');
+                // A valid cap is logged before "ready"; stop the child once it is serving.
+                if (stderr.includes('ready (stdio transport')) child.kill('SIGTERM');
+            });
+            child.on('exit', (code) => {
+                clearTimeout(timer);
+                resolve({ code, stderr });
+            });
+            child.on('error', reject);
+        });
+    }
+
+    it('refuses to start on an invalid value', async () => {
+        const { code, stderr } = await spawnWithCap('lots');
+        expect(code).toBe(1);
+        expect(stderr).toContain('fatal:');
+        expect(stderr).toContain('PDFNATIVE_MCP_MAX_INFLATE_BYTES');
+    });
+
+    it('logs the applied cap and serves on a valid value', async () => {
+        const { stderr } = await spawnWithCap('4194304');
+        expect(stderr).toContain('decompression cap set to 4194304 bytes');
+        expect(stderr).toContain('ready (stdio transport');
+    });
+});

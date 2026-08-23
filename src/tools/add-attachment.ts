@@ -29,6 +29,7 @@ import { z } from 'zod';
 import { ToolError } from '../errors.js';
 import { emitPdf, type OutputResult } from '../output.js';
 import { PRINT_INPUT_PROPERTIES, PrintInputShape, toDocumentMetadata, toPrintLayout } from '../print.js';
+import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, toLayoutOptions } from '../layout.js';
 import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 export const ADD_ATTACHMENT_NAME = 'add_attachment';
@@ -86,6 +87,7 @@ export const ADD_ATTACHMENT_INPUT_SCHEMA = {
             },
         },
         ...PRINT_INPUT_PROPERTIES,
+        ...LAYOUT_INPUT_PROPERTIES,
         ...DIAGNOSTIC_INPUT_PROPERTIES,
         outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
         outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf (no absolute paths, no '..')." },
@@ -109,6 +111,7 @@ const InputSchema = z.strictObject({
         .min(1)
         .max(20),
     ...PrintInputShape,
+    ...LayoutInputShape,
     ...DiagnosticInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
@@ -139,7 +142,7 @@ export async function addAttachment(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, blocks, footerText, attachments, print, outputIntent, metadata, creationDate, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
+    const { title, blocks, footerText, attachments, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
 
     const docBlocks: DocumentBlock[] =
         blocks !== undefined && blocks.length > 0
@@ -172,6 +175,7 @@ export async function addAttachment(rawInput: unknown): Promise<OutputResult> {
                 tagged: 'pdfa3b',
                 attachments: pdfAttachments,
                 ...toPrintLayout({ print, outputIntent, creationDate }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug }),
                 ...collector.layout,
             },
         );

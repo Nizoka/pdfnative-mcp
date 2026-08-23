@@ -21,6 +21,7 @@ import {
     type PdfReader,
     type PdfValue,
 } from 'pdfnative';
+import { throwIfInflateCapError } from './inflate-cap.js';
 
 /** Resolve the `/AcroForm` dictionary, or `null` when absent / malformed. */
 export function getAcroForm(reader: PdfReader): PdfDict | null {
@@ -405,7 +406,15 @@ export function collectEmbeddedFiles(
                 const subtype = fStream.dict.get('Subtype');
                 if (subtype !== undefined && isName(subtype)) file.mimeType = subtype.value.replace(/#2F/gi, '/');
                 if (includeData) {
-                    const decoded = reader.decodeStream(fStream);
+                    let decoded: Uint8Array;
+                    try {
+                        decoded = reader.decodeStream(fStream);
+                    } catch (err) {
+                        // An embedded file exceeding the operator's inflate cap gets a coded error
+                        // naming the remedy; anything else keeps its original (engine) message.
+                        throwIfInflateCapError(err);
+                        throw err;
+                    }
                     file.data = decoded;
                     // Prefer the actual decoded length when the dictionary lacked /Params /Size.
                     if (file.sizeBytes === undefined) file.sizeBytes = decoded.length;

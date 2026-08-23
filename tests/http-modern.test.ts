@@ -163,7 +163,7 @@ describe('HTTP transport — MCP 2026-07-28 hardening (header/body agreement, fr
         expect(err.message).toContain('Mcp-Method');
     });
 
-    it('missing MCP-Protocol-Version header with a modern _meta envelope is accepted (SDK behaviour, M-9)', async () => {
+    it('missing MCP-Protocol-Version header with a modern _meta envelope is accepted (SDK behaviour)', async () => {
         // The SDK v2 handler is lenient here: the `_meta` envelope alone is enough
         // to classify the request as 2026-07-28, and the absent header is not a
         // mismatch. Documented as observed behaviour, not a contract of this server.

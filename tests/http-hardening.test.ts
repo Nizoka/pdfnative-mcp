@@ -8,14 +8,14 @@ import { startHttpFixture, send, modernRequest, JSON_HEADERS, type HttpFixture }
 
 /**
  * HTTP transport hardening regressions:
- *   - F-20: the request-body cap (413 path) — exercised through an injected
+ *   - the request-body cap (413 path) — exercised through an injected
  *     cap so the test does not have to push 256 MiB over loopback.
- *   - M-3: keep-alive connections must not accumulate socket listeners
+ *   - keep-alive connections must not accumulate socket listeners
  *     (the disconnect guard is observed on the per-request response object).
  *   - 2026-07-28 `subscriptions/listen`: what this stateless server answers
  *     when nothing is subscribable, and that a client hang-up tears it down.
  */
-describe('HTTP transport — request-body cap (F-20)', () => {
+describe('HTTP transport — request-body cap', () => {
     const CAP = 4096;
     let fx: HttpFixture;
 
@@ -61,7 +61,7 @@ describe('HTTP transport — request-body cap (F-20)', () => {
     });
 });
 
-describe('HTTP transport — keep-alive listener hygiene (M-3)', () => {
+describe('HTTP transport — keep-alive listener hygiene', () => {
     let fx: HttpFixture;
     const sockets = new Set<Socket>();
     const warnings: Error[] = [];

@@ -10,6 +10,8 @@
  *
  * Transport selection:
  *   - stdio (default): suitable for local host integration (Claude Desktop, Cursor, etc.)
+ *   - PDFNATIVE_MCP_MAX_INFLATE_BYTES=<n> overrides the engine's 100 MiB per-stream
+ *     decompression cap (positive integer bytes; an invalid value refuses to start).
  *   - HTTP: set PDFNATIVE_MCP_PORT=<port> to expose the MCP endpoint on that port.
  *           Requests are POST /mcp (2026-07-28 clients send `Mcp-Method` / `Mcp-Name`
  *           headers and the `_meta` envelope; 2025-era clients use `initialize`).
@@ -36,6 +38,7 @@
  * ```
  */
 import { createServer, ensureCompressionReady } from './server.js';
+import { applyInflateCap, MAX_INFLATE_ENV } from './inflate-cap.js';
 
 /**
  * Largest single JSON-RPC frame accepted on stdio (256 MiB). Sized for the
@@ -50,6 +53,11 @@ function log(line: string): void {
 
 async function main(): Promise<void> {
     await ensureCompressionReady();
+    // Optional operator override of the engine's zip-bomb decompression cap
+    // (PDFNATIVE_MCP_MAX_INFLATE_BYTES). Read once; an invalid value throws before serving.
+    if (process.env[MAX_INFLATE_ENV] !== undefined && process.env[MAX_INFLATE_ENV] !== '') {
+        log(`decompression cap set to ${applyInflateCap()} bytes (${MAX_INFLATE_ENV})`);
+    }
 
     const factory = (): ReturnType<typeof createServer> => createServer();
     const onerror = (err: Error): void => log(`transport error: ${err.message}`);

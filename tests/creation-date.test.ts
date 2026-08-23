@@ -1,5 +1,5 @@
 /**
- * `creationDate` (review round 2, A-13): the opt-in reproducibility knob on
+ * `creationDate`: the opt-in reproducibility knob on
  * every document-producing tool. Pinned ⇒ two calls with identical inputs
  * return identical bytes; absent ⇒ the engine's wall-clock default applies and
  * the output is unchanged from before the option existed (byte-identity is

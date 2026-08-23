@@ -227,12 +227,12 @@ describe('network policy (operator-configured egress, SSRF guard)', () => {
 });
 
 /**
- * F-21: the operator egress path over REAL loopback sockets (global fetch,
+ * The operator egress path over REAL loopback sockets (global fetch,
  * no seam) — the TSA `Authorization` header must actually arrive on the wire,
  * and the CRL GET path must reach an allow-listed host with the right verb and
  * Accept header while a non-listed literal never opens a connection.
  */
-describe('network egress over real loopback sockets (F-21)', () => {
+describe('network egress over real loopback sockets', () => {
     let pki: MockPki;
     beforeAll(() => {
         pki = createMockPki();

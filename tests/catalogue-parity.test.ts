@@ -1,5 +1,5 @@
 /**
- * Catalogue parity gate (review round 2): the *shape* of `tools/list` —
+ * Catalogue parity gate: the *shape* of `tools/list` —
  * names, titles, annotations, input/output schemas with every `description`
  * removed, and the presence of examples — must match the committed fixture.
  *

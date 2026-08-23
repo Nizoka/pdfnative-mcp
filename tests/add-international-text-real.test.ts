@@ -20,7 +20,7 @@ function latin1(b64: string): string {
     return Buffer.from(b64, 'base64').toString('latin1');
 }
 
-describe('add_international_text — real engine rendering (F-19)', () => {
+describe('add_international_text — real engine rendering', () => {
     beforeAll(async () => {
         await ensureCompressionReady();
     });
@@ -80,7 +80,7 @@ describe('add_international_text — real engine rendering (F-19)', () => {
     });
 });
 
-describe('add_international_text — FONT_LOAD_FAILED through the real font registry (F-19)', () => {
+describe('add_international_text — FONT_LOAD_FAILED through the real font registry', () => {
     // The tool registers each lang's loader once per process; afterwards pdfnative's
     // public registry is the only thing consulted, so swapping the loader there (a
     // supported engine API, not a module mock) and clearing the data cache makes the
