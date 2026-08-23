@@ -37,19 +37,19 @@ export const DIAGNOSTIC_INPUT_PROPERTIES = {
         type: 'boolean',
         default: false,
         description:
-            "Escalate PDF/A conformance diagnostics (e.g. PDFA_NO_FONT_ENTRIES: text rendered through the unembedded base-14 Helvetica while claiming PDF/A) to a PDF_A_COMPLIANCE_VIOLATION error instead of producing a non-conformant file. Pair with embedFonts=true. Default false (the PDF is produced; diagnostics are silent unless includeDiagnostics=true).",
+            "Fail with PDF_A_COMPLIANCE_VIOLATION instead of producing a non-conformant PDF/A file (e.g. PDFA_NO_FONT_ENTRIES without embedFonts). Pair with embedFonts=true.",
     },
     includeDiagnostics: {
         type: 'boolean',
         default: false,
         description:
-            'Return the PDF/A conformance diagnostics pdfnative raised while building (`diagnostics[]` in the structured result, possibly empty). Default false — the default response shape is unchanged.',
+            'Return the PDF/A diagnostics raised while building as `diagnostics[]` (possibly empty).',
     },
     embedFonts: {
         type: 'boolean',
         default: false,
         description:
-            'Embed the Noto Sans Latin font instead of relying on the viewer-supplied base-14 Helvetica. Required for a *valid* PDF/A claim (ISO 19005 §6.2.11.4.1 — veraPDF rejects unembedded fonts) and for strict=true to pass; adds ~0.3 MiB and changes the output bytes. Default false for backward compatibility.',
+            'Embed Noto Sans Latin instead of the viewer base-14 Helvetica. REQUIRED for a valid PDF/A claim (ISO 19005 §6.2.11.4.1) and for strict=true; adds ~0.3 MiB.',
     },
 } as const;
 
@@ -64,7 +64,7 @@ export const DiagnosticInputShape = {
 export const DIAGNOSTICS_OUTPUT_PROPERTY = {
     diagnostics: {
         type: 'array',
-        description: 'PDF/A conformance diagnostics raised while building (only present when includeDiagnostics=true).',
+        description: 'PDF/A diagnostics (when includeDiagnostics=true).',
         items: {
             type: 'object',
             additionalProperties: false,

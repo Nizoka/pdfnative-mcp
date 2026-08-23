@@ -82,7 +82,7 @@ export const INSPECT_PDF_INPUT_SCHEMA = {
         check: {
             type: 'array',
             description:
-                "Optional CI assertions. The result.checksPassed flag is true only when every requested check holds (e.g. ['pdfa','signed']); result.checks lists only the requested keys. 'signed' = at least one signature field with signed content (an extra unsigned placeholder does not negate it), 'placeholder' = at least one unsigned placeholder, 'dss' a /DSS Document Security Store, 'docTimestamp' at least one /DocTimeStamp, 'trapped' an /Info /Trapped entry.",
+                "CI assertions → checks (requested keys only) + checksPassed (all hold). 'signed' = a signature field with signed content exists (structural; validity is verify_pdf's job), 'placeholder' = an unsigned placeholder exists, 'dss' = /DSS present, 'docTimestamp' = a /DocTimeStamp exists, 'trapped' = /Info /Trapped set.",
             maxItems: 8,
             items: { type: 'string', enum: [...CHECK_VALUES] },
         },
@@ -91,7 +91,7 @@ export const INSPECT_PDF_INPUT_SCHEMA = {
             enum: ['summary', 'full'],
             default: 'full',
             description:
-                "Response verbosity. 'full' (default) returns every field; 'summary' returns a token-frugal scalar subset (version, pageCount, encryption, pdfA, signatureCount, hasSignaturePlaceholder, attachmentCount, plus docTimestampCount / trapped / checksPassed when present) — drops the attachments[], info, perPage and signatures[] arrays and the dss object.",
+                "'full' (default) or 'summary' (scalars only: version, pageCount, encryption, pdfA, signatureCount, hasSignaturePlaceholder, attachmentCount, + docTimestampCount / trapped / checksPassed when present; arrays and dss dropped).",
         },
         fields: {
             type: 'array',

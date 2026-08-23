@@ -62,7 +62,12 @@ describe('server', () => {
             prompts: Array<{ name: string; title?: string; description?: string }>;
         };
         const promptNames = promptList.prompts.map((p) => p.name).sort();
-        expect(promptNames).toEqual(['draft_issue_workflow', 'governance_contract']);
+        expect(promptNames).toEqual(['draft_issue_workflow', 'governance_contract', 'pades_ladder', 'pdfa_valid', 'print_ready', 'reproducible_output']);
+        // Recipe prompts are self-contained text: every one names the tools it drives.
+        for (const [name, tool] of [['pades_ladder', 'add_ltv'], ['print_ready', 'outputIntent'], ['reproducible_output', 'creationDate'], ['pdfa_valid', 'embedFonts']] as const) {
+            const recipe = (await rpc('prompts/get', { name })) as { messages: Array<{ content: { text: string } }> };
+            expect(recipe.messages[0]?.content.text).toContain(tool);
+        }
         const got = (await rpc('prompts/get', { name: 'governance_contract' })) as { messages: Array<{ role: string; content: { type: string; text: string } }> };
         expect(got.messages[0]?.role).toBe('user');
         expect(got.messages[0]?.content.text).toMatch(/DRAFTSMAN/);

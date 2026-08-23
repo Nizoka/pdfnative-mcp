@@ -114,7 +114,7 @@ export const SIGN_PDF_INPUT_SCHEMA = {
             type: 'string',
             enum: ['pkcs7', 'pades'],
             default: 'pkcs7',
-            description: "CMS profile. 'pkcs7' (default, adbe.pkcs7.detached, legacy-compatible) or 'pades' (ETSI EN 319 142-1 baseline: ESS signing-certificate-v2 attribute, ETSI.CAdES.detached SubFilter when the placeholder is injected here). Use 'pades' when you plan to add a timestamp, add_ltv or timestamp_pdf.",
+            description: "'pkcs7' (default, adbe.pkcs7.detached) or 'pades' (ETSI EN 319 142-1 baseline; ETSI.CAdES.detached when the placeholder is injected here). Use 'pades' before timestamp / add_ltv / timestamp_pdf.",
         },
         timestamp: {
             type: 'boolean',
@@ -138,7 +138,7 @@ export const SIGN_PDF_INPUT_SCHEMA = {
         signingTime: {
             type: 'string',
             format: 'date-time',
-            description: 'ISO-8601 signing instant. Written to /Sig /M only when THIS call injects the placeholder (a placeholder prepared earlier keeps its own /M) and to the CMS signing-time attribute under the pkcs7 profile. Defaults to now. Not a trusted time — use timestamp=true for that.',
+            description: 'ISO-8601 signing instant → /Sig /M (only when THIS call injects the placeholder) and the CMS signing-time (pkcs7 profile). Default: now. Not trusted time — use timestamp:true for that.',
         },
         outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
         outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf (no absolute paths, no '..')." },

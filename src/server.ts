@@ -382,15 +382,15 @@ const PDF_OUTPUT_SCHEMA = {
     additionalProperties: false,
     required: ['mode', 'sizeBytes'],
     description:
-        "Structured result of a PDF-producing tool. In base64 mode the PDF bytes are delivered out-of-band as an embedded `resource` content block (data: URI), NOT duplicated here, to keep responses token-frugal. In file mode `filePath` is the sandboxed absolute path.",
+        "Result of a PDF-producing tool. base64 mode: the PDF arrives as an embedded `resource` content block (not duplicated here); file mode: `filePath`.",
     properties: {
         mode: { type: 'string', enum: ['base64', 'file'] },
         sizeBytes: { type: 'integer', minimum: 0 },
-        filePath: { type: 'string', description: "Absolute sandboxed file path (when mode='file')." },
+        filePath: { type: 'string', description: "Sandboxed absolute path (file mode)." },
         ...DIAGNOSTICS_OUTPUT_PROPERTY,
         summary: {
             type: 'object',
-            description: 'Tool-specific summary (e.g. add_ltv material counts). Only present when the tool produces one.',
+            description: 'Tool-specific summary, when produced.',
             additionalProperties: true,
         },
     },
@@ -416,7 +416,7 @@ const MULTI_PDF_OUTPUT_SCHEMA = {
                 properties: {
                     index: { type: 'integer', minimum: 0 },
                     sizeBytes: { type: 'integer', minimum: 0 },
-                    filePath: { type: 'string', description: "Absolute sandboxed file path (when mode='file')." },
+                    filePath: { type: 'string', description: "Sandboxed absolute path (file mode)." },
                 },
             },
         },
@@ -445,7 +445,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: GENERATE_BASIC_PDF_NAME,
         title: 'Generate basic PDF',
         description:
-            'Generate a multi-page A4 PDF from structured blocks (headings, paragraphs, lists, page breaks, spacers). DEFAULT TOOL for plain documents — prefer this over specialized tools unless you need barcodes, tables, attachments, or non-Latin scripts. Optional pdfA flag enables Tagged PDF / PDF/A-1b/2b/2u/3b output (auto-embeds Noto Sans for non-WinAnsi Latin per ISO 19005 §6.3.4). Returns the PDF as base64 by default, or writes it to a sandboxed file path when outputMode=file. Charts v2: the \'chart\' block accepts the same options as add_chart (stackedBar / stackedBarH / area / scatter, axis2, xAxis linear/time, dataLabels, labelStride/labelRotation). Print production (pdfnative 1.7): `print` sets TrimBox/BleedBox/ArtBox/CropBox (or the `bleed` shorthand), printer\'s crop/registration `marks` and `/UserUnit`; `metadata` writes /Author, /Subject, /Keywords and /Trapped; `outputIntent` supplies a custom RGB ICC profile for PDF/A. PDF/A conformance: `embedFonts: true` embeds Noto Sans Latin (required for a VALID PDF/A claim — base-14 Helvetica is not embedded), `strict: true` fails with PDF_A_COMPLIANCE_VIOLATION instead of producing a non-conformant file, `includeDiagnostics: true` returns the engine diagnostics (e.g. PDFA_NO_FONT_ENTRIES) in `structuredContent.diagnostics`. All new inputs are optional; defaults stay byte-identical. `viewerPreferences` also accepts the print-dialog defaults `duplex`, `pickTrayByPDFSize`, `printPageRange` and `numCopies`.',
+            "Multi-page A4 PDF from structured blocks (heading, paragraph, list, table, chart, image, page break, spacer). DEFAULT for plain documents — reach for add_table / add_chart / add_barcode / add_attachment / add_international_text only when the document IS that thing or needs non-Latin scripts. `pdfA` + `embedFonts:true` for a valid PDF/A-1b/2b/2u/3b claim; `outline` / `pageLabels` / `viewerPreferences` / `watermark` for navigation and presentation; `print`, `metadata`, `outputIntent`, `creationDate` as on every document tool. The 'chart' block takes the same body as add_chart.",
         inputSchema: GENERATE_BASIC_PDF_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -459,15 +459,13 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ADD_BARCODE_NAME,
         title: 'Add barcode / QR code',
         description:
-            "Generate a single-page PDF embedding a barcode or QR code. Supported formats:\n  • qr        — URLs, vCards, any UTF-8 text ≤ 4296 chars. Use ecLevel='H' for printed media (logos/dirt-tolerant); 'M' (default) for screens.\n  • code128   — alphanumeric SKUs, ASCII payloads.\n  • ean13     — retail product codes (must be 12 or 13 digits; 13th is auto-computed).\n  • datamatrix— dense industrial / aerospace markings.\n  • pdf417    — ID cards, boarding passes.\nCommon recipe for a QR code pointing to a URL: { format: 'qr', data: 'https://example.com', caption: 'Scan me' }. The `data` field is the raw payload — do NOT pre-encode URLs. Print production (pdfnative 1.7): `print` sets TrimBox/BleedBox/ArtBox/CropBox (or the `bleed` shorthand), printer's crop/registration `marks` and `/UserUnit`; `metadata` writes /Author, /Subject, /Keywords and /Trapped; `outputIntent` supplies a custom RGB ICC profile for PDF/A. PDF/A conformance: `embedFonts: true` embeds Noto Sans Latin (required for a VALID PDF/A claim — base-14 Helvetica is not embedded), `strict: true` fails with PDF_A_COMPLIANCE_VIOLATION instead of producing a non-conformant file, `includeDiagnostics: true` returns the engine diagnostics (e.g. PDFA_NO_FONT_ENTRIES) in `structuredContent.diagnostics`. All new inputs are optional; defaults stay byte-identical.",
+            "Single-page PDF with a barcode: qr (URLs, vCards, UTF-8 ≤ 4296 chars; ecLevel 'H' for print, 'M' default), code128 (ASCII SKUs), ean13 (12–13 digits, checksum auto), datamatrix (dense industrial marks), pdf417 (ID cards, boarding passes). `data` is the raw payload — never pre-encode. Typical: { format:'qr', data:'https://example.com', caption:'Scan me' }. PDF/A, print, metadata and creationDate options as on every document tool.",
         inputSchema: ADD_BARCODE_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
             { title: 'QR code pointing to a URL (most common case)', input: { format: 'qr', data: 'https://google.com', caption: 'Scan to visit Google' } },
             { title: 'QR code with high error correction (printed media)', input: { format: 'qr', data: 'https://example.com/page?id=123', ecLevel: 'H', caption: 'Scan me' } },
-            { title: 'Code 128 for an inventory SKU', input: { format: 'code128', data: 'SKU-2025-001', title: 'Warehouse label' } },
-            { title: 'EAN-13 retail product code', input: { format: 'ean13', data: '4006381333931' } },
         ],
         handler: addBarcode,
     },
@@ -475,7 +473,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: SIGN_PDF_NAME,
         title: 'Sign PDF (RSA / ECDSA, PAdES)',
         description:
-            "Apply a PAdES-compatible CMS digital signature to a PDF. Since v1.0.0 you can sign ANY PDF in ONE call — autoInjectPlaceholder defaults to true, so you do NOT need to run prepare_signature_placeholder first unless you want to customize the placeholder appearance. Supports RSA-SHA256 and ECDSA-SHA256 (P-256). Required inputs: pdfBase64, algorithm, certDerBase64, plus EITHER rsaKeyPkcs1DerBase64 (when algorithm='rsa-sha256') OR ecPrivateScalarHex / ecPrivateKeyDerBase64 (when algorithm='ecdsa-sha256'). To convert PEM keys to DER base64: `openssl pkey -in key.pem -outform DER | base64 -w0`. To convert a PEM X.509 cert: `openssl x509 -in cert.pem -outform DER | base64 -w0`. After signing, call verify_pdf to confirm validity. v1.6.0 (pdfnative 1.7): `profile: 'pades'` (ETSI EN 319 142-1 baseline, ESS signing-certificate-v2, ETSI.CAdES.detached), `algorithm` rsa-sha384 / rsa-sha512, `certChainDerBase64` (intermediates), `timestamp: true` for a PAdES B-T RFC 3161 signature timestamp through the operator-configured TSA (PDFNATIVE_MCP_TSA_URL — TSA_NOT_CONFIGURED otherwise, no network call without it), `fieldName` to pick a placeholder (PLACEHOLDER_AMBIGUOUS when several are unsigned) and `allowMultiple: true` to add a further signature. Signer metadata (signerName/reason/location/contactInfo) and `signingTime` are baked into the placeholder this call injects — `signingTime` reaches /Sig /M ONLY when this call injects the placeholder; a pre-built placeholder (prepare_signature_placeholder) keeps its own /M. Continue the ladder with add_ltv (B-LT) and timestamp_pdf (B-LTA).",
+            "CMS / PAdES signature in ONE call: a missing /Sig placeholder is auto-injected (prepare_signature_placeholder is optional). Inputs: pdfBase64, algorithm (rsa-sha256/384/512, ecdsa-sha256 P-256), certDerBase64 (+ certChainDerBase64 intermediates) and the DER key (rsaKeyPkcs1DerBase64 for rsa-*, ecPrivateKeyDerBase64 or ecPrivateScalarHex for ECDSA; PEM is rejected with the openssl remedy). `profile:'pades'` (ETSI EN 319 142-1 baseline) is the right choice when add_ltv / timestamp_pdf follow; `timestamp:true` = PAdES B-T through the operator TSA (TSA_NOT_CONFIGURED otherwise, no network without it). signerName/reason/location/contactInfo/signingTime are baked into the placeholder THIS call injects (a pre-built placeholder keeps its own). Several unsigned placeholders → pass fieldName (PLACEHOLDER_AMBIGUOUS); `allowMultiple:true` + a new fieldName adds a further signature. Verify with verify_pdf.",
         inputSchema: SIGN_PDF_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         // openWorldHint: timestamp=true performs egress to the operator-configured TSA.
@@ -490,7 +488,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ADD_INTERNATIONAL_TEXT_NAME,
         title: 'Add international text',
         description:
-            'Generate a PDF rendering text in any of 24 scripts (Arabic, Hebrew, Thai, CJK, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Vietnamese, Turkish, Polish, Latin fallback) with optional COLRv1 colour emoji and mathematical / technical symbols (the "math" font — Noto Sans Math, ∀ ∃ √ ∑ ∫ ∞ ± ÷ ×). BiDi reordering (incl. UAX#9 isolates), Arabic harakat positioning, and complex-script OpenType shaping are handled automatically by the embedded Noto fonts; input is NFC-normalised for maximal glyph coverage and embedded newlines auto-split into paragraphs. Pass `lang` as a single code or an array (e.g. ["ar","emoji"] or ["latin","math"]) for multi-script / symbol runs. pdfnative 1.7: colour-emoji flag and ZWJ sequences (🇫🇷, 👨‍👩‍👧) render as single glyphs; Arabic/Persian joining, RTL digit order and paired-delimiter mirroring are now UAX #9 conformant. Print production (pdfnative 1.7): `print` (page boxes, bleed, marks, /UserUnit), `metadata` (/Author /Subject /Keywords /Trapped) and `outputIntent` (custom RGB ICC under PDF/A). Fonts are always embedded here, so `embedFonts` is not exposed; `strict: true` escalates any PDF/A diagnostic to PDF_A_COMPLIANCE_VIOLATION and `includeDiagnostics: true` echoes them. `viewerPreferences` also accepts the print-dialog defaults `duplex`, `pickTrayByPDFSize`, `printPageRange` and `numCopies`.',
+            "PDF rendering text in 24 scripts (Arabic, Hebrew, Thai, CJK, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Vietnamese, …), COLRv1 colour emoji and mathematical symbols ('math': ∀ ∃ √ ∑ ∫ ∞). BiDi (UAX #9), Arabic joining and complex-script shaping are automatic; input is NFC-normalised; newlines split paragraphs. `lang` is a code or an array for mixed runs (['ar','emoji'], ['latin','math']). Fonts are always embedded, so `embedFonts` does not exist here. PDF/A, print, metadata and creationDate options as on every document tool.",
         inputSchema: ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -504,14 +502,13 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ADD_TABLE_NAME,
         title: 'Add table / report',
         description:
-            'Generate a tabular PDF report from column headers and data rows. Ideal for data exports, financial summaries, schedules. Smart-table fields (pdfnative v1.2) automatically engage the document backend: `wrap` (auto/always/never), `repeatHeader` (header row on every page), `zebra` (alternate-row tint), `caption` (above the table, tagged for PDF/A), `minRowHeight` (points), `cellPadding` (points). Every row must have the same length as `headers`. For PDF/A output, set pdfA="pdfa2b" (most compatible). Print production (pdfnative 1.7): `print` sets TrimBox/BleedBox/ArtBox/CropBox (or the `bleed` shorthand), printer\'s crop/registration `marks` and `/UserUnit`; `metadata` writes /Author, /Subject, /Keywords and /Trapped; `outputIntent` supplies a custom RGB ICC profile for PDF/A. PDF/A conformance: `embedFonts: true` embeds Noto Sans Latin (required for a VALID PDF/A claim — base-14 Helvetica is not embedded), `strict: true` fails with PDF_A_COMPLIANCE_VIOLATION instead of producing a non-conformant file, `includeDiagnostics: true` returns the engine diagnostics (e.g. PDFA_NO_FONT_ENTRIES) in `structuredContent.diagnostics`. All new inputs are optional; defaults stay byte-identical. `print`, `metadata` and `embedFonts` apply to both table backends. `viewerPreferences` also accepts the print-dialog defaults `duplex`, `pickTrayByPDFSize`, `printPageRange` and `numCopies`.',
+            "Tabular PDF report from `headers` + `rows` (every row the same length). Smart-table options: wrap, repeatHeader (header on every page), zebra, caption (tagged for PDF/A), minRowHeight, cellPadding, cellBorders, cellVAlign, autoFitColumns, clipCells. Use a 'table' block in generate_basic_pdf when the table sits inside a longer document. PDF/A (pdfA + embedFonts:true), print, metadata, watermark and creationDate options as on every document tool.",
         inputSchema: ADD_TABLE_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
             { title: 'Sales report', input: { title: 'Sales', headers: ['Item', 'Qty', 'Total'], rows: [['Widget', '100', '$1,000']] } },
             { title: 'Smart table with caption + zebra + repeated header', input: { title: 'Q4', headers: ['Month', 'Revenue'], rows: [['Oct', '$1,000'], ['Nov', '$1,500'], ['Dec', '$2,100']], caption: 'Quarterly revenue', zebra: true, repeatHeader: true, wrap: 'auto' } },
-            { title: 'Archival PDF/A-2b table', input: { title: 'Q4', headers: ['Item', 'Qty'], rows: [['Widget', '100']], pdfA: 'pdfa2b', clipCells: true } },
         ],
         handler: addTable,
     },
@@ -519,7 +516,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ADD_FORM_NAME,
         title: 'Add interactive form',
         description:
-            'Generate a PDF containing an interactive AcroForm with text fields, text areas, checkboxes, radio buttons, and dropdowns. Suitable for data-capture forms, surveys, and fillable templates. Print production (pdfnative 1.7): `print` sets TrimBox/BleedBox/ArtBox/CropBox (or the `bleed` shorthand), printer\'s crop/registration `marks` and `/UserUnit`; `metadata` writes /Author, /Subject, /Keywords and /Trapped; `outputIntent` supplies a custom RGB ICC profile for PDF/A. PDF/A conformance: `embedFonts: true` embeds Noto Sans Latin (required for a VALID PDF/A claim — base-14 Helvetica is not embedded), `strict: true` fails with PDF_A_COMPLIANCE_VIOLATION instead of producing a non-conformant file, `includeDiagnostics: true` returns the engine diagnostics (e.g. PDFA_NO_FONT_ENTRIES) in `structuredContent.diagnostics`. All new inputs are optional; defaults stay byte-identical.',
+            'New PDF with an interactive AcroForm: text fields, text areas, checkboxes, radio buttons, dropdowns (data capture, surveys, fillable templates). To fill or flatten an EXISTING form use read_form_fields + fill_form. PDF/A, print, metadata and creationDate options as on every document tool.',
         inputSchema: ADD_FORM_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -532,7 +529,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: EMBED_IMAGE_NAME,
         title: 'Embed image in PDF',
         description:
-            'Generate a PDF document with an embedded JPEG or PNG image. The image is accepted as a base64-encoded string and can include an optional caption and custom render dimensions. Print production (pdfnative 1.7): `print` sets TrimBox/BleedBox/ArtBox/CropBox (or the `bleed` shorthand), printer\'s crop/registration `marks` and `/UserUnit`; `metadata` writes /Author, /Subject, /Keywords and /Trapped; `outputIntent` supplies a custom RGB ICC profile for PDF/A. PDF/A conformance: `embedFonts: true` embeds Noto Sans Latin (required for a VALID PDF/A claim — base-14 Helvetica is not embedded), `strict: true` fails with PDF_A_COMPLIANCE_VIOLATION instead of producing a non-conformant file, `includeDiagnostics: true` returns the engine diagnostics (e.g. PDFA_NO_FONT_ENTRIES) in `structuredContent.diagnostics`. All new inputs are optional; defaults stay byte-identical.',
+            "PDF with one embedded JPEG or PNG (base64; PNG without alpha channel) plus optional caption and render width/height. For an image inside a longer document use an 'image' block in generate_basic_pdf. PDF/A, print, metadata and creationDate options as on every document tool.",
         inputSchema: EMBED_IMAGE_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -545,7 +542,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: PREPARE_SIGNATURE_PLACEHOLDER_NAME,
         title: 'Prepare signature placeholder',
         description:
-            "Create a PDF with an embedded /Sig AcroForm placeholder ready to be digitally signed by the sign_pdf tool. NOTE: as of v1.0.0, sign_pdf auto-injects a placeholder when missing (autoInjectPlaceholder defaults to true), so this tool is OPTIONAL. Use it only when you need to: (a) customize the placeholder size for >4096-bit RSA keys via placeholderBytes, (b) attach the signature widget to a specific page via pageIndex, or (c) precompute and ship the placeholder PDF separately from the signing step. Otherwise call sign_pdf directly with any PDF. pdfnative 1.7: signer metadata (signerName/reason/location/contactInfo) is now baked into the /Sig dictionary (earlier engines dropped it); `subFilter: 'ETSI.CAdES.detached'` for PAdES baseline, `reserveTimestamp: true` to size the placeholder for an RFC 3161 token. Print production (pdfnative 1.7): `print` sets TrimBox/BleedBox/ArtBox/CropBox (or the `bleed` shorthand), printer's crop/registration `marks` and `/UserUnit`; `metadata` writes /Author, /Subject, /Keywords and /Trapped; `outputIntent` supplies a custom RGB ICC profile for PDF/A. PDF/A conformance: `embedFonts: true` embeds Noto Sans Latin (required for a VALID PDF/A claim — base-14 Helvetica is not embedded), `strict: true` fails with PDF_A_COMPLIANCE_VIOLATION instead of producing a non-conformant file, `includeDiagnostics: true` returns the engine diagnostics (e.g. PDFA_NO_FONT_ENTRIES) in `structuredContent.diagnostics`. All new inputs are optional; defaults stay byte-identical.",
+            "New PDF carrying an unsigned /Sig placeholder for a LATER sign_pdf call. OPTIONAL — sign_pdf auto-injects one. Use it to size the placeholder (placeholderBytes for > 4096-bit keys, reserveTimestamp for an RFC 3161 token), to pin the widget page (pageIndex), to choose subFilter 'ETSI.CAdES.detached' (PAdES), or to ship the placeholder separately. signerName/reason/location/contactInfo/signingTime are frozen into /Sig here — sign_pdf cannot rewrite them later. NOTE: the unsigned file is not yet a conformant PDF/A (empty /Contents); it becomes one once signed. PDF/A, print, metadata and creationDate options as on every document tool.",
         inputSchema: PREPARE_SIGNATURE_PLACEHOLDER_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -558,7 +555,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: INSPECT_PDF_NAME,
         title: 'Inspect PDF metadata',
         description:
-            "Read-only inspection of an existing PDF: version, page count, encryption state, PDF/A claim, signature count, hasSignaturePlaceholder, embedded attachments[], document info / metadata. Use the `check` array for CI-style assertions — supported values: 'pdfa', 'signed' (true when at least one signature has signed content), 'encrypted', 'placeholder' (unsigned /Sig widget present), 'attachments' (at least one /EmbeddedFile). The checksPassed boolean is true only when ALL requested checks hold. v1.6.0: `signatures: true` lists every signature field (subFilter, isDocTimestamp, isPlaceholder, byteRange, vriKey); `dss`, `docTimestampCount` and `trapped` appear when present; `pages: true` also reports trimBox/bleedBox/artBox/cropBox/userUnit; new `check` values 'dss', 'docTimestamp', 'trapped'.",
+            "Read-only facts about a PDF: version, pageCount, encryption, pdfA claim (the claim, not its validity — use veraPDF for that), signatureCount, hasSignaturePlaceholder, attachments[], info; presence-gated dss / docTimestampCount / trapped; `signatures:true` lists every field (subFilter, isDocTimestamp, isPlaceholder, byteRange, vriKey); `pages:true` adds per-page sizes and boxes. `check:[…]` turns it into a CI assertion ('pdfa','signed','encrypted','placeholder','attachments','dss','docTimestamp','trapped') → checks (requested keys only) + checksPassed. Encrypted sources: pass `password`. Token-frugal: verbosity:'summary', fields:[…].",
         inputSchema: INSPECT_PDF_INPUT_SCHEMA,
         outputSchema: projectableOutputSchema(
             INSPECT_PDF_OUTPUT_SCHEMA,
@@ -572,8 +569,6 @@ const TOOLS: readonly ToolDefinition[] = [
         examples: [
             { title: 'CI: assert PDF/A + signed', input: { pdfBase64: '<base64>', check: ['pdfa', 'signed'] } },
             { title: 'Detect Factur-X attachments', input: { pdfBase64: '<base64>', check: ['attachments'] } },
-            { title: 'Detect an unsigned placeholder ready for sign_pdf', input: { pdfBase64: '<base64>', check: ['placeholder'] } },
-            { title: 'Token-frugal summary verdict', input: { pdfBase64: '<base64>', verbosity: 'summary' } },
         ],
         handler: inspectPdf,
     },
@@ -581,7 +576,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: VERIFY_PDF_NAME,
         title: 'Verify PDF signatures',
         description:
-            "Read-only verification of every PAdES Baseline / adbe.pkcs7.detached signature in a PDF. For each /Sig widget, recomputes the ByteRange SHA-256, validates the CMS messageDigest (integrity), and verifies the CMS signatureValue with the embedded signer certificate. Supports RSA-SHA256 and ECDSA-SHA256 (P-256). The response shape: { allValid, signatureCount, summary, signatures: [{ valid, integrity, signerSubject, signingTime, reason, chainTrust: 'self-signed'|'unverified'|'trusted', errors: [] }] }. Read `allValid` for an overall yes/no; iterate `signatures[]` for per-signature detail. Without trustedRootsDerBase64, chainTrust is 'self-signed' (single-cert chain) or 'unverified' (signer rooted in an external CA). v1.6.0: document timestamps (/DocTimeStamp) are verified as RFC 3161 tokens and count in allValid like any signature — a sound timestamp no longer fails the verdict (pre-1.6 bug), a tampered one (imprint mismatch, bad token signature) does; RSA-SHA384/512 supported; per-signature `subFilter`. Pass `ltv: true` for the PAdES long-term-validation view — profile, signature timestamp, revocation status read from embedded /DSS material only, and ltvLevel (B-B / B-T / B-LT / B-LTA) with explicit caveats.",
+            "Read-only verification of every signature: ByteRange digest vs CMS messageDigest (integrity), CMS signatureValue vs the embedded signer certificate (RSA-SHA256/384/512, ECDSA P-256), chain trust when trustedRootsDerBase64 is given ('self-signed' | 'unverified' | 'trusted' otherwise). /DocTimeStamp entries are verified as RFC 3161 tokens and count in allValid like any signature. Result: { allValid, signatureCount, summary, signatures:[{ valid, integrity, signerSubject, signingTime, chainTrust, errors[] }] }. `ltv:true` adds the PAdES view: per-signature profile, timestamp, revocation (read from embedded /DSS only — responder signatures are not re-verified) and ltvLevel B-B / B-T / B-LT / B-LTA with explicit caveats. Token-frugal: verbosity:'summary', fields:['allValid'].",
         inputSchema: VERIFY_PDF_INPUT_SCHEMA,
         outputSchema: projectableOutputSchema(
             VERIFY_PDF_OUTPUT_SCHEMA,
@@ -592,7 +587,6 @@ const TOOLS: readonly ToolDefinition[] = [
         examples: [
             { title: 'Verify a signed PDF (no chain trust)', input: { pdfBase64: '<signed-pdf-base64>' } },
             { title: 'Verify with a trusted root certificate', input: { pdfBase64: '<signed-pdf-base64>', trustedRootsDerBase64: ['<root-cert-der-base64>'] } },
-            { title: 'Token-frugal yes/no verdict', input: { pdfBase64: '<signed-pdf-base64>', verbosity: 'summary', fields: ['allValid'] } },
         ],
         handler: verifyPdf,
     },
@@ -600,7 +594,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ADD_ATTACHMENT_NAME,
         title: 'Add embedded file attachment (PDF/A-3, Factur-X)',
         description:
-            "Generate a PDF/A-3 (ISO 19005-3) document with one or more embedded files. USE THIS INSTEAD OF generate_basic_pdf when you need a Factur-X / ZUGFeRD electronic invoice (single XML payload with relationship='Source'), or any PDF that must carry machine-readable side-files. The visible document body is supplied via the optional `blocks` parameter (same block schema as generate_basic_pdf). The tool auto-emits PDF/A-3b conformance — PDF/A-3 is the only PDF/A part that legally permits embedded files. Each attachment is capped at 8 MiB. Print production (pdfnative 1.7): `print` sets TrimBox/BleedBox/ArtBox/CropBox (or the `bleed` shorthand), printer's crop/registration `marks` and `/UserUnit`; `metadata` writes /Author, /Subject, /Keywords and /Trapped; `outputIntent` supplies a custom RGB ICC profile for PDF/A. PDF/A conformance: `embedFonts: true` embeds Noto Sans Latin (required for a VALID PDF/A claim — base-14 Helvetica is not embedded), `strict: true` fails with PDF_A_COMPLIANCE_VIOLATION instead of producing a non-conformant file, `includeDiagnostics: true` returns the engine diagnostics (e.g. PDFA_NO_FONT_ENTRIES) in `structuredContent.diagnostics`. All new inputs are optional; defaults stay byte-identical. Without `embedFonts: true` the PDF/A-3 claim raises PDFA_NO_FONT_ENTRIES (visible via includeDiagnostics); with `strict: true` the call fails instead.",
+            "PDF/A-3b document with embedded files — the tool for Factur-X / ZUGFeRD e-invoices (one XML attachment, relationship 'Source', mimeType application/xml) or any PDF carrying machine-readable side-files (≤ 8 MiB each). Body via `blocks` (same schema as generate_basic_pdf). Pair with `embedFonts:true` for a valid PDF/A-3 claim (strict:true fails otherwise). Read them back with extract_attachments. Print, metadata and creationDate options as on every document tool.",
         inputSchema: ADD_ATTACHMENT_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -613,7 +607,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: EXTRACT_TEXT_NAME,
         title: 'Extract plain text from PDF',
         description:
-            "Plain-text extraction from a PDF: walks each page's content stream, decodes the Tj/'/\"/TJ operands through each font's /ToUnicode CMap, /Encoding /Differences or base encoding (pdfnative 1.6), and returns pages[] + fullText (+ positioned runs with includeRuns). result.extractable is FALSE only when a page decoded ENTIRELY to U+FFFD — a font with no usable /ToUnicode CMap or base encoding (expected for some subset fonts; not an error) — and `extractableReason` says so; blank pages stay extractable. Encrypted PDFs are supported since v1.5.0: pass `password` (user or owner; an empty user password opens without one) — a protected document without it returns PASSWORD_REQUIRED / PASSWORD_INVALID. Tagged-mode structure-tree extraction (cleaner output for tagged PDFs) is tracked on the roadmap.",
+            "Plain-text extraction: decodes Tj/TJ operands through each font's /ToUnicode CMap, /Encoding /Differences or base encoding and returns pages[] + fullText (positioned runs with includeRuns:true; `pages` selects 0-based pages). `extractable` is false only when a page decoded ENTIRELY to U+FFFD (a font with no usable mapping — expected for some subset fonts, not an error; extractableReason explains). Encrypted sources: pass `password` (PASSWORD_REQUIRED / PASSWORD_INVALID otherwise). Token-frugal: verbosity:'summary', fields:[…].",
         inputSchema: EXTRACT_TEXT_INPUT_SCHEMA,
         outputSchema: projectableOutputSchema(
             EXTRACT_TEXT_OUTPUT_SCHEMA,
@@ -634,7 +628,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: VALIDATE_PDF_NAME,
         title: 'Validate PDF/UA structure',
         description:
-            "Read-only PDF/UA (ISO 14289-1) structural conformance check. Verifies the accessibility prerequisites of a Tagged PDF: catalog /MarkInfo /Marked true, /StructTreeRoot (+ /ParentTree), /Metadata (XMP), /Lang, and per-page MCID uniqueness. Response shape: { standard: 'pdf-ua-1', valid, errors: [], warnings: [], summary }. Read `valid` for an overall yes/no; iterate `errors[]` for blocking violations and `warnings[]` for best-practice recommendations. This is a fast structural gate, NOT a full reference validator (veraPDF) — it does not check fonts, colour or rendering. Generate accessible input with any document tool using pdfA (e.g. pdfA='pdfa2u'), then validate the result here.",
+            "Read-only PDF/UA-1 (ISO 14289-1) structural gate for Tagged PDF: /MarkInfo /Marked, /StructTreeRoot (+ /ParentTree), XMP /Metadata, /Lang, per-page MCID uniqueness. Result { standard:'pdf-ua-1', valid, errors[], warnings[], summary }. Fast and structural only — NOT a reference validator (veraPDF): fonts, colour and rendering are not checked. Unparsable input → PDF_PARSE_FAILED. Generate tagged input with pdfA (e.g. 'pdfa2u') first.",
         inputSchema: VALIDATE_PDF_INPUT_SCHEMA,
         outputSchema: projectableOutputSchema(
             VALIDATE_PDF_OUTPUT_SCHEMA,
@@ -654,14 +648,13 @@ const TOOLS: readonly ToolDefinition[] = [
         name: EXTRACT_ATTACHMENTS_NAME,
         title: 'Extract embedded files from PDF',
         description:
-            "Read-only extraction of embedded files from a PDF (PDF/A-3 / Factur-X / ZUGFeRD). Walks the catalog /Names → /EmbeddedFiles tree and returns each attachment's metadata (name, mimeType, AFRelationship, description, sizeBytes) plus, by default, its decoded payload as dataBase64. Completes the invoice round-trip: add_attachment → inspect_pdf → extract_attachments. Pass `filename` to pull a single named file, or `includeData: false` for a metadata-only probe. Encrypted PDFs are supported since v1.5.0: pass `password` (user or owner) — a protected document without it returns PASSWORD_REQUIRED / PASSWORD_INVALID.",
+            "Read-only extraction of embedded files (PDF/A-3, Factur-X, ZUGFeRD): name, mimeType, AFRelationship, description, sizeBytes and (by default) the payload as dataBase64. `filename` selects one file; `includeData:false` probes metadata only. Encrypted sources: pass `password`. Token-frugal: verbosity:'summary'.",
         inputSchema: EXTRACT_ATTACHMENTS_INPUT_SCHEMA,
         outputSchema: projectableOutputSchema(EXTRACT_ATTACHMENTS_OUTPUT_SCHEMA, {}, `Structured attachment-extraction result.${PROJECTION_NOTE}`),
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
             { title: 'Extract every embedded file (with payloads)', input: { pdfBase64: '<base64>' } },
             { title: 'Pull just the Factur-X XML payload', input: { pdfBase64: '<base64>', filename: 'factur-x.xml' } },
-            { title: 'Metadata-only probe (no payloads)', input: { pdfBase64: '<base64>', includeData: false, verbosity: 'summary' } },
         ],
         handler: extractAttachments,
     },
@@ -669,7 +662,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: MERGE_PDFS_NAME,
         title: 'Merge PDFs',
         description:
-            "Concatenate 2–50 source PDFs into a single document (pdfnative v1.4 page-tree API). Each kept page's object graph is deep-copied into a fresh, self-contained PDF. Signatures and AcroForms are dropped (a page-tree edit invalidates /ByteRange); self-contained URI link annotations are preserved unless dropAnnotations=true. Encrypted sources open with `password` (PASSWORD_REQUIRED / PASSWORD_INVALID otherwise); the output is unencrypted unless `encrypt` is set. A secure-by-default 256 MiB in-memory assembly guard (maxOutputSizeBytes) guards against memory exhaustion; the emitted PDF is separately capped at 50 MiB (OUTPUT_TOO_LARGE). Returns one PDF (base64 or sandboxed file). NOTE (verified with veraPDF in v1.6.0): the rebuilt document carries no XMP packet, so a source PDF/A claim does NOT survive — re-declare PDF/A on the generating tools instead. Page boxes (TrimBox/BleedBox/ArtBox) and /UserUnit DO survive (pdfnative 1.7).",
+            'Concatenate 2–50 PDFs (`pdfsBase64[]`) into one fresh, self-contained document. Page-tree rebuild: signatures and AcroForm are dropped, XMP (and thus a PDF/A claim) does not survive — re-declare PDF/A on the generating tools; page boxes and /UserUnit do survive; URI links kept unless dropAnnotations:true. Encrypted sources open with one `password` (PASSWORD_REQUIRED / PASSWORD_INVALID); output unencrypted unless `encrypt`. Guards: 256 MiB assembly (maxOutputSizeBytes), 50 MiB output (OUTPUT_TOO_LARGE).',
         inputSchema: MERGE_PDFS_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -682,7 +675,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: SPLIT_PDF_NAME,
         title: 'Split PDF into ranges',
         description:
-            "Split one PDF into several documents — one per requested page range (pdfnative v1.4 page-tree API). Ranges are 0-based and inclusive; `end` defaults to `start` (a single page). Each output is a fresh, self-contained PDF (signatures/AcroForm dropped; URI links kept unless dropAnnotations=true). Encrypted sources open with `password` (PASSWORD_REQUIRED / PASSWORD_INVALID otherwise); the output is unencrypted unless `encrypt` is set. In base64 mode every produced PDF is returned as its own embedded resource block; in file mode each is written to a 1-based indexed sibling of outputPath ('out.pdf' → 'out-1.pdf', 'out-2.pdf', …). Use extract_pages instead when you want a single PDF from an arbitrary page subset. NOTE (verified with veraPDF in v1.6.0): the rebuilt document carries no XMP packet, so a source PDF/A claim does NOT survive — re-declare PDF/A on the generating tools instead. Page boxes (TrimBox/BleedBox/ArtBox) and /UserUnit DO survive (pdfnative 1.7).",
+            "Split one PDF into several documents, one per `ranges[]` entry ({ start, end? }, 0-based inclusive; end defaults to start). Multi-output result: base64 mode returns one embedded resource per part; file mode writes indexed siblings ('out.pdf' → 'out-1.pdf', 'out-2.pdf', …). Same page-tree caveats as merge_pdfs (signatures/AcroForm/XMP dropped; boxes kept). Encrypted sources: `password`. Need ONE document from a page subset? Use extract_pages.",
         inputSchema: SPLIT_PDF_INPUT_SCHEMA,
         outputSchema: MULTI_PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -695,7 +688,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: EXTRACT_PAGES_NAME,
         title: 'Extract pages into one PDF',
         description:
-            "Extract an arbitrary subset of pages (0-based, in the order given) from a PDF into a SINGLE new document (pdfnative v1.4 page-tree API). The output is a fresh, self-contained PDF (signatures/AcroForm dropped; URI links kept unless dropAnnotations=true). Encrypted sources open with `password` (PASSWORD_REQUIRED / PASSWORD_INVALID otherwise); the output is unencrypted unless `encrypt` is set. Use split_pdf instead when you need several output PDFs (one per range). NOTE (verified with veraPDF in v1.6.0): the rebuilt document carries no XMP packet, so a source PDF/A claim does NOT survive — re-declare PDF/A on the generating tools instead. Page boxes (TrimBox/BleedBox/ArtBox) and /UserUnit DO survive (pdfnative 1.7).",
+            'Keep an arbitrary `pages[]` subset (0-based, in the given order) in ONE fresh PDF. Same page-tree caveats as merge_pdfs (signatures/AcroForm/XMP dropped; boxes kept; URI links unless dropAnnotations). Encrypted sources: `password`; output unencrypted unless `encrypt`. Need several documents? Use split_pdf.',
         inputSchema: EXTRACT_PAGES_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -708,7 +701,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ANNOTATE_PDF_NAME,
         title: 'Annotate PDF (markup / drawing)',
         description:
-            "Add markup / drawing annotations (ISO 32000-1 §12.5) to an existing PDF via pdfnative v1.5's annotation writer. Non-destructive incremental update: original content is preserved byte-for-byte and each annotation is appended to the target page's /Annots. Types: text (sticky note), highlight | underline | strikeout | squiggly (text-markup), square | circle (shapes), line, freetext. Each annotation needs a 0-based `page` and a `rect` [x1,y1,x2,y2]; line also needs `start`/`end`. Optional per-annotation: contents, color, opacity, title, plus type-specific fields (open/icon, quadPoints, interiorColor/borderWidth, fontSize). Encrypted sources are rejected (ENCRYPTED_SOURCE). NOTE: annotations are visual overlays — they do NOT remove or redact the underlying content.",
+            'Append markup annotations (ISO 32000-1 §12.5) to an existing PDF as a non-destructive incremental update (original bytes preserved). Types: text (sticky note), highlight | underline | strikeout | squiggly, square | circle, line (needs start/end), freetext. Each needs a 0-based `page` and `rect` [x1,y1,x2,y2]; optional contents, color, opacity, title and type-specific fields. VISUAL OVERLAY ONLY — nothing is removed or redacted (covered text stays extractable). Encrypted sources → ENCRYPTED_SOURCE (decrypt_pdf first).',
         inputSchema: ANNOTATE_PDF_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -722,7 +715,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: DRAFT_GOVERNANCE_ISSUE_NAME,
         title: 'Draft a governance-compliant GitHub issue (HITL)',
         description:
-            "Produce a LOCAL, governance-compliant GitHub issue draft plus a structured compliance report — and NEVER submit anything. This is the MCP-native embodiment of the pdfnative AI-governance / Human-In-The-Loop contract (.github/ai-governance.json, .github/AGENT_RULES.md): the agent is a DRAFTSMAN, the human is the only gate. The server makes no outbound network call by default — its only possible egress is to operator-configured TSA / OCSP / CRL endpoints, never GitHub — and has NO GitHub write path. The assembled draft is validated against the zero-dependency + reproduction policy; a violation (proposing a runtime dependency, missing reproduction, or duplicateSearchPerformed=false) throws GOVERNANCE_VIOLATION so the human must fix it before submitting under their own identity. Returns the draft markdown inline by default; outputMode='file' also writes a .md to the sandbox. After calling this, present BOTH the draft and the compliance report to the user, then STOP.",
+            "Produce a LOCAL GitHub issue draft + compliance report for pdfnative / pdfnative-mcp and NEVER submit it — the agent drafts, a human reviews and files it under their own identity (Human-In-The-Loop contract, .github/AGENT_RULES.md). No GitHub write path exists. The draft is checked against the zero-dependency + reproduction policy; a violation (new runtime dependency, missing reproduction, duplicateSearchPerformed:false) throws GOVERNANCE_VIOLATION. Returns markdown inline (outputMode:'file' also writes a .md). Present the draft AND the report to the user, then STOP.",
         inputSchema: DRAFT_GOVERNANCE_ISSUE_INPUT_SCHEMA,
         outputSchema: DRAFT_GOVERNANCE_ISSUE_OUTPUT_SCHEMA,
         // Not readOnlyHint: outputMode='file' writes a .md into the sandbox (like every
@@ -738,7 +731,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: READ_FORM_FIELDS_NAME,
         title: 'Read AcroForm fields',
         description:
-            "Read-only enumeration of an existing PDF's interactive AcroForm fields (pdfnative v1.6.0). Returns each terminal field's fully-qualified name, classified type (text | checkbox | radio | dropdown | listbox | button | signature | unknown), current value, flags (readOnly / required / multiline), choice options, and widget placements. Call this FIRST to discover field names before driving fill_form. Encrypted sources are supported via `password`. Token-frugal: verbosity:'summary' returns just { fieldCount }.",
+            "Read-only list of an existing PDF's AcroForm fields: fully-qualified name, type (text | checkbox | radio | dropdown | listbox | button | signature | unknown), value, flags (readOnly / required / multiline), options, widget placements. Call it BEFORE fill_form to learn the names. Encrypted sources: `password`. Token-frugal: verbosity:'summary' → { fieldCount }.",
         inputSchema: READ_FORM_FIELDS_INPUT_SCHEMA,
         outputSchema: projectableOutputSchema(READ_FORM_FIELDS_OUTPUT_SCHEMA, {}, `Structured AcroForm field listing.${PROJECTION_NOTE}`),
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -752,14 +745,13 @@ const TOOLS: readonly ToolDefinition[] = [
         name: FILL_FORM_NAME,
         title: 'Fill / flatten an existing AcroForm',
         description:
-            "Fill (and optionally flatten) the AcroForm of an EXISTING PDF (pdfnative v1.6.0) — the counterpart to add_form, which CREATES a new form. Non-destructive incremental update: original bytes are preserved (a prior signature stays valid for its revision). `values` maps fully-qualified field name → value: text/choice take a string (array for multi-select listboxes); checkbox/radio take a boolean or the export-state string. Set flatten:true to stamp appearances into page content and drop the interactive layer (pass no values + flatten:true for a pure flatten). Encrypted documents are supported via `password` (appended objects are encrypted under the existing scheme). Signature fields cannot be filled (FORM_UNSUPPORTED). Discover field names with read_form_fields first.",
+            "Fill and/or flatten the AcroForm of an EXISTING PDF (add_form creates one) as an incremental update — prior signatures stay valid for their revision. `values`: fully-qualified name → string (array for multi-select), boolean or export state for checkbox/radio. `flatten:true` stamps appearances and drops the interactive layer (with no values = pure flatten). Unknown names → FORM_FIELD_NOT_FOUND unless onUnknownField:'ignore'; signature fields cannot be filled (FORM_UNSUPPORTED). Encrypted sources: `password`.",
         inputSchema: FILL_FORM_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
             { title: 'Fill a couple of fields', input: { pdfBase64: '<base64>', values: { fullName: 'Alice Martin', subscribe: true } } },
             { title: 'Fill and flatten (final, non-editable)', input: { pdfBase64: '<base64>', values: { fullName: 'Alice Martin' }, flatten: true } },
-            { title: 'Pure flatten (no value changes)', input: { pdfBase64: '<base64>', flatten: true } },
         ],
         handler: fillFormTool,
     },
@@ -767,14 +759,13 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ADD_CHART_NAME,
         title: 'Add native vector chart',
         description:
-            "Generate a single-page PDF with a native vector chart (pdfnative v1.6.0): bar, barH (horizontal bar), line (optional markers), pie or donut — rendered as pure PDF path operators, zero rasterisation. Multi-series bar/line, legends, 'nice' 1/2/5×10ⁿ axis ticks, gridlines, negative values, and a tagged-PDF /Figure + /Alt (auto-generated when altText omitted, so PDF/A stays conformant). Pie/donut use exactly one series (each value = a slice). Colours are hex strings (e.g. '#3366cc'). For a chart embedded amongst headings/paragraphs/tables, use a 'chart' block inside generate_basic_pdf instead. Charts v2 (pdfnative 1.7): kinds bar / barH / stackedBar / stackedBarH / line / area / scatter / pie / donut; per-series `xValues` (numbers or ISO-8601 dates) with `xAxis.type` 'linear' | 'time', a secondary right axis (`axis2` + series `yAxis: 'right'`), `axis.scale: 'log'`, per-point `dataLabels`, and `labelStride` / `labelRotation` for crowded category labels. Cross-field rules are validated by the engine and reported as CHART_ERROR with the remedy. Print production (pdfnative 1.7): `print` sets TrimBox/BleedBox/ArtBox/CropBox (or the `bleed` shorthand), printer's crop/registration `marks` and `/UserUnit`; `metadata` writes /Author, /Subject, /Keywords and /Trapped; `outputIntent` supplies a custom RGB ICC profile for PDF/A. PDF/A conformance: `embedFonts: true` embeds Noto Sans Latin (required for a VALID PDF/A claim — base-14 Helvetica is not embedded), `strict: true` fails with PDF_A_COMPLIANCE_VIOLATION instead of producing a non-conformant file, `includeDiagnostics: true` returns the engine diagnostics (e.g. PDFA_NO_FONT_ENTRIES) in `structuredContent.diagnostics`. All new inputs are optional; defaults stay byte-identical.",
+            "Single-page PDF with a native vector chart (pure path operators, no raster): bar, barH, stackedBar, stackedBarH, line (markers), area, scatter, pie, donut. Multi-series, legends, 'nice' ticks, gridlines, negatives; per-series xValues with xAxis.type 'linear' | 'time' (ISO-8601), secondary right axis (axis2 + yAxis:'right'), axis.scale 'log', dataLabels, labelStride / labelRotation. Pie/donut take exactly one series. Colours are hex ('#3366cc'). Tagged /Figure + /Alt (auto when altText is omitted). Engine cross-field rules surface as CHART_ERROR with the remedy. Inside a longer document use a 'chart' block in generate_basic_pdf. PDF/A (pdfA + embedFonts:true), print, metadata and creationDate as on every document tool.",
         inputSchema: ADD_CHART_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
             { title: 'Grouped bar chart (2 series)', input: { chartType: 'bar', title: 'Quarterly revenue', categories: ['Q1', 'Q2', 'Q3', 'Q4'], series: [{ label: '2025', values: [12, 18, 15, 22] }, { label: '2026', values: [14, 20, 19, 25] }], axis: { grid: true } } },
             { title: 'Pie chart', input: { chartType: 'pie', title: 'Market share', categories: ['A', 'B', 'C'], series: [{ label: 'Share', values: [55, 30, 15] }] } },
-            { title: 'Archival PDF/A-2b line chart', input: { chartType: 'line', markers: true, categories: ['Jan', 'Feb', 'Mar'], series: [{ label: 'Signups', values: [120, 180, 260] }], pdfA: 'pdfa2b' } },
         ],
         handler: addChart,
     },
@@ -782,7 +773,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ENCRYPT_PDF_NAME,
         title: 'Encrypt / re-secure a PDF',
         description:
-            "Re-secure an existing PDF with the PDF Standard Security Handler (pdfnative v1.6.0): AES-128 (V4/R4, default) or AES-256 (V5/R6). RC4 is never emitted. Set ownerPassword (required) and optionally userPassword (open password), algorithm, and permissions { print, copy, modify, extractText }. Re-encrypt an already-encrypted source under a NEW password by passing its current `password` (password rotation in one call). CAVEAT: encryption rebuilds the page tree, so existing signatures and the interactive AcroForm are DROPPED and only self-contained URI links are kept — encrypt BEFORE signing, not after.",
+            'Encrypt an existing PDF with the Standard Security Handler: AES-128 (default) or AES-256; RC4 is never emitted. ownerPassword required; optional userPassword (open password), permissions { print, copy, modify, extractText }. Rotate the password of an already-encrypted source by passing its current `password`. CAVEAT: the page tree is rebuilt — signatures and AcroForm are DROPPED, only URI links kept; encrypt BEFORE signing. Never cached.',
         inputSchema: ENCRYPT_PDF_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -796,7 +787,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: DECRYPT_PDF_NAME,
         title: 'Decrypt a PDF',
         description:
-            "Open an encrypted PDF (pdfnative v1.6.0 reader/decryptor — RC4 V1–V4, AES-128 V4/R4, AES-256 V5/R6) and emit an UNENCRYPTED copy. Pass `password` (user or owner); documents with an empty user password decrypt without one. CAVEAT: decryption rebuilds the page tree, so existing signatures and the interactive AcroForm are DROPPED and only self-contained URI links are kept. To READ an encrypted PDF without rebuilding it, pass `password` directly to inspect_pdf / extract_text / extract_attachments instead.",
+            'Emit an UNENCRYPTED copy of an encrypted PDF (RC4 V1–V4, AES-128, AES-256) given `password` (user or owner; empty user password needs none). CAVEAT: the page tree is rebuilt — signatures and AcroForm are DROPPED. To merely READ an encrypted PDF pass `password` to inspect_pdf / extract_text / extract_attachments / read_form_fields instead. Never cached.',
         inputSchema: DECRYPT_PDF_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -809,7 +800,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: UPDATE_METADATA_NAME,
         title: 'Update document metadata',
         description:
-            "Rewrite the /Info dictionary (title, author, subject, keywords) of an EXISTING PDF as a non-destructive incremental update (pdfnative v1.7 PdfModifier.updateMetadata); XMP stays in sync on PDF/A documents and /ModDate is refreshed (pin modDate for reproducible bytes). Earlier revisions and their signatures are preserved verbatim — the new revision is unsigned, so sign_pdf / timestamp_pdf again if needed. Encrypted sources are rejected (decrypt_pdf first). For metadata at GENERATION time use the `metadata` option of the document tools instead.",
+            'Rewrite /Info (title, author, subject, keywords) of an EXISTING PDF as an incremental update; XMP stays in sync on PDF/A documents; /ModDate is refreshed (pin `modDate` for reproducible bytes on the same host TZ). Earlier revisions and signatures stay byte-identical — the new revision is unsigned (sign_pdf / timestamp_pdf again if needed). Encrypted sources → ENCRYPTED_SOURCE. For metadata at generation time use the `metadata` option of the document tools.',
         inputSchema: UPDATE_METADATA_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -822,7 +813,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ADD_LTV_NAME,
         title: 'Embed LTV validation material (PAdES B-LT)',
         description:
-            "Embed a Document Security Store (/DSS + per-signature /VRI) with the certificates and OCSP/CRL revocation material future verifiers need — PAdES B-LT (ETSI EN 319 142-1), shown as 'LTV enabled' by Adobe Reader once the chain's root is trusted. Step 3 of the ladder: sign_pdf (profile=pades, timestamp=true) → add_ltv → timestamp_pdf. mode='online' (default) collects material through the OPERATOR-configured revocation provider (PDFNATIVE_MCP_REVOCATION + PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS; REVOCATION_NOT_CONFIGURED otherwise — no network call is ever made without it); mode='offline' embeds caller-supplied DER certificates / OCSP responses / CRLs with zero network access. Incremental: an existing /DSS is merged, earlier revisions stay byte-identical. Requires at least one signed signature; unencrypted PDFs only.",
+            "PAdES B-LT: embed a Document Security Store (/DSS + per-signature /VRI) with the certificates and OCSP/CRL material future verifiers need ('LTV enabled' in Adobe Reader once the root is trusted). Ladder step 3: sign_pdf (profile:'pades', timestamp:true) → add_ltv → timestamp_pdf. mode 'online' (default) fetches through the OPERATOR revocation provider (PDFNATIVE_MCP_REVOCATION + PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS; REVOCATION_NOT_CONFIGURED otherwise — no network without it); mode 'offline' embeds caller-supplied DER certificates / OCSP responses / CRLs with zero network. Incremental (existing /DSS merged). Needs ≥ 1 signed signature; unencrypted PDFs only.",
         inputSchema: ADD_LTV_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -836,7 +827,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: TIMESTAMP_PDF_NAME,
         title: 'Add a document timestamp (PAdES B-LTA)',
         description:
-            "Append an RFC 3161 document timestamp (/DocTimeStamp, ETSI.RFC3161) covering the whole document — PAdES B-LTA archival level. Step 4 of the ladder after add_ltv; re-run periodically (before the TSA certificate expires) to extend the chain. When fieldName is OMITTED the engine picks a free name (DocTimeStamp1, DocTimeStamp2, …); an explicit fieldName that collides with an already-signed field fails instead of being suffixed. Uses the OPERATOR-configured TSA (PDFNATIVE_MCP_TSA_URL); fails with TSA_NOT_CONFIGURED otherwise and never contacts the network without it. The token is verified (status, imprint, nonce) before embedding. Unencrypted PDFs only.",
+            "PAdES B-LTA: append an RFC 3161 document timestamp (/DocTimeStamp, ETSI.RFC3161) over the whole document. Ladder step 4 after add_ltv; re-run before the TSA certificate expires. fieldName omitted → DocTimeStamp1, 2, …; a fieldName colliding with a signed field fails. Uses the OPERATOR TSA (PDFNATIVE_MCP_TSA_URL; TSA_NOT_CONFIGURED otherwise, no network without it). The token's status, imprint and nonce are checked before embedding (its own signature is verified by verify_pdf). Unencrypted PDFs only.",
         inputSchema: TIMESTAMP_PDF_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -850,74 +841,41 @@ const TOOLS: readonly ToolDefinition[] = [
 
 const TOOL_INDEX: ReadonlyMap<string, ToolDefinition> = new Map(TOOLS.map((t) => [t.name, t]));
 
-const SERVER_INSTRUCTIONS = `pdfnative-mcp bridges the zero-dependency 'pdfnative' v1.7 library to MCP. API version: 1.6.0 (stable). 27 tools. Protocol: MCP 2026-07-28 with automatic fallback to the 2025-era handshake.
+const SERVER_INSTRUCTIONS = `pdfnative-mcp: 27 tools over the pdfnative v1.7 PDF engine. Tool API 1.6.0. MCP 2026-07-28 (stateless) with automatic fallback to the 2025-era handshake. Every tool has typed input/output schemas and executable _meta.examples; read-only tools never modify input; document tools are byte-identical by default and every new option is opt-in.
 
-DECISION TREE — pick the right tool in one step:
-  • Plain document (headings, paragraphs, lists, charts)     → ${GENERATE_BASIC_PDF_NAME}
-  • Native vector chart (bar / stacked / line / area / scatter / pie / donut) → ${ADD_CHART_NAME}
-  • QR code / barcode (URL, SKU, EAN)                        → ${ADD_BARCODE_NAME}
-  • Non-Latin script (Arabic, Hindi, Chinese, Japanese…)     → ${ADD_INTERNATIONAL_TEXT_NAME}
-  • Tabular / report data                                    → ${ADD_TABLE_NAME}
-  • Create a NEW interactive form                            → ${ADD_FORM_NAME}
-  • Read fields of an EXISTING form                          → ${READ_FORM_FIELDS_NAME}
-  • Fill / flatten an EXISTING form                          → ${FILL_FORM_NAME}
-  • Embed a JPEG/PNG into a PDF                              → ${EMBED_IMAGE_NAME}
-  • Add markup annotations (highlight, note, shapes, line)   → ${ANNOTATE_PDF_NAME}
-  • Sign any PDF (auto-injects placeholder)                  → ${SIGN_PDF_NAME}   (PAdES B-B; profile='pades' + timestamp=true → B-T)
-  • Customize signature placeholder before signing           → ${PREPARE_SIGNATURE_PLACEHOLDER_NAME} → ${SIGN_PDF_NAME}
-  • Long-term validation: embed certs + OCSP/CRL (/DSS)      → ${ADD_LTV_NAME}        (PAdES B-LT; after sign_pdf)
-  • Archive / document timestamp (re-run periodically)       → ${TIMESTAMP_PDF_NAME}  (PAdES B-LTA; after add_ltv)
-  • Change title/author/subject/keywords of an EXISTING PDF  → ${UPDATE_METADATA_NAME}
-  • Factur-X / ZUGFeRD invoice or any PDF with attachments   → ${ADD_ATTACHMENT_NAME}   (NOT generate_basic_pdf)
-  • Encrypt / re-secure a PDF (AES-128 / AES-256)            → ${ENCRYPT_PDF_NAME}
-  • Decrypt an encrypted PDF                                 → ${DECRYPT_PDF_NAME}
-  • Concatenate several PDFs into one                        → ${MERGE_PDFS_NAME}
-  • Split a PDF into per-range PDFs                          → ${SPLIT_PDF_NAME}
-  • Pull a subset of pages into one PDF                      → ${EXTRACT_PAGES_NAME}
-  • Inspect / assert PDF metadata in CI                      → ${INSPECT_PDF_NAME}
-  • Verify all PAdES signatures (+ ltv:true for B-B…B-LTA)   → ${VERIFY_PDF_NAME}
-  • Validate PDF/UA accessibility structure                  → ${VALIDATE_PDF_NAME}
-  • Pull Unicode text (optionally positioned runs) from a PDF → ${EXTRACT_TEXT_NAME}
-  • Pull embedded files back out (Factur-X XML, side-cars)   → ${EXTRACT_ATTACHMENTS_NAME}
-  • Draft a GitHub issue for human review (never submits)    → ${DRAFT_GOVERNANCE_ISSUE_NAME}
+DECISION TREE:
+  • Plain document (headings, paragraphs, lists, tables, charts, images) → generate_basic_pdf
+  • Standalone chart / table / barcode / image → add_chart / add_table / add_barcode / embed_image
+  • Non-Latin script, emoji or math symbols → add_international_text (lang:['latin','math'] for formulas)
+  • Files inside the PDF (Factur-X / ZUGFeRD invoice, side-cars) → add_attachment (PDF/A-3), read back with extract_attachments
+  • NEW interactive form → add_form; EXISTING form → read_form_fields (names) then fill_form (fill / flatten)
+  • Markup on an existing PDF (highlight, note, shapes) → annotate_pdf (overlay only, never redaction)
+  • Change /Info of an existing PDF → update_metadata
+  • Sign → sign_pdf (auto-injects the placeholder; prepare_signature_placeholder only to customise it)
+  • PAdES ladder: sign_pdf profile:'pades' (B-B) → timestamp:true (B-T) → add_ltv (B-LT) → timestamp_pdf (B-LTA); check with verify_pdf ltv:true
+  • Encrypt / decrypt → encrypt_pdf / decrypt_pdf (both rebuild the page tree: signatures + AcroForm are dropped)
+  • Combine / carve → merge_pdfs (many → one), split_pdf (one → many), extract_pages (subset → one)
+  • Facts / CI assertions → inspect_pdf (check:[…]); signatures → verify_pdf; PDF/UA structure → validate_pdf; text → extract_text
+  • Propose an upstream change → draft_governance_issue (local draft, never submitted)
 
-AI-GOVERNANCE & HUMAN-IN-THE-LOOP (non-negotiable):
-  • This server is a DRAFTSMAN, never an autonomous submitter. It has NO GitHub write path and makes NO outbound network call by default.
-  • NETWORK POLICY (pdfnative 1.7 LTV): the ONLY outbound requests the server can ever make go to endpoints the OPERATOR configured in the environment — an RFC 3161 TSA (PDFNATIVE_MCP_TSA_URL, used by sign_pdf timestamp=true and timestamp_pdf) and OCSP/CRL responders (PDFNATIVE_MCP_REVOCATION + an allow-list in PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS, used by add_ltv mode='online'). Tool arguments can NEVER supply a URL. Without that configuration the tools fail fast with TSA_NOT_CONFIGURED / REVOCATION_NOT_CONFIGURED; the current policy is: ${describeNetworkPolicy()}.
-  • To propose a bug/feature/issue, call ${DRAFT_GOVERNANCE_ISSUE_NAME}: it returns a local, policy-checked draft + a compliance report. Present BOTH to the user, then STOP. The user reviews and submits manually under their own GitHub identity.
-  • Never propose adding a runtime dependency (hard blocker, GOVERNANCE_VIOLATION). Search open AND closed issues first (duplicateSearchPerformed must be true). Include a minimal, locally-executed reproduction.
+NETWORK POLICY & HUMAN-IN-THE-LOOP:
+  • No outbound network by default. The only possible egress goes to OPERATOR-configured endpoints: an RFC 3161 TSA (PDFNATIVE_MCP_TSA_URL — sign_pdf timestamp:true, timestamp_pdf) and OCSP/CRL responders (PDFNATIVE_MCP_REVOCATION + allow-list PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS — add_ltv mode:'online'). Tool arguments can never carry a URL. Unconfigured → TSA_NOT_CONFIGURED / REVOCATION_NOT_CONFIGURED. Current policy: ${describeNetworkPolicy()}.
+  • This server is a DRAFTSMAN: no GitHub write path. draft_governance_issue returns a draft + compliance report — show both to the user, then STOP; a human submits. Never propose a runtime dependency (GOVERNANCE_VIOLATION).
 
-COMMON PITFALLS (read these to avoid retry loops):
-  • Barcode 'data' is the RAW payload — do NOT URL-encode URLs. For a QR pointing to https://google.com just pass data: 'https://google.com'.
-  • Barcode 'ecLevel' (L|M|Q|H) applies ONLY to format='qr' and is ignored elsewhere. Use 'H' for printed media.
-  • EAN-13 'data' must be exactly 12 or 13 digits (the 13th check digit is auto-computed if you pass 12).
-  • sign_pdf accepts ONLY DER-encoded inputs in base64. Convert from PEM with: openssl pkey -in key.pem -outform DER | base64 -w0  (and openssl x509 -in cert.pem -outform DER | base64 -w0 for the cert).
-  • sign_pdf RSA key must be PKCS#1 DER (field 'rsaKeyPkcs1DerBase64'). ECDSA key may be SEC1 or PKCS#8 DER (field 'ecPrivateKeyDerBase64') or the raw 32-byte scalar as 64 hex chars (field 'ecPrivateScalarHex'). DER keys are signed with a native constant-time node:crypto provider; the raw scalar uses the pure-JS path.
-  • sign_pdf auto-injects a placeholder when missing — call it directly on ANY PDF unless you specifically need to customize the placeholder.
-  • merge_pdfs / split_pdf / extract_pages now ACCEPT encrypted sources via 'password' (pdfnative 1.6) and can re-encrypt output via 'encrypt' { ownerPassword, userPassword?, algorithm?, permissions? }. A missing/wrong password yields PASSWORD_REQUIRED / PASSWORD_INVALID. They ALWAYS drop signatures + AcroForm (a page-tree edit invalidates them) and keep self-contained URI links unless dropAnnotations=true. Page indices/ranges are 0-based. split_pdf returns one PDF per range (file mode writes 'out-1.pdf', 'out-2.pdf', …); extract_pages returns a single PDF.
-  • ENCRYPTION: encrypt_pdf re-secures a PDF (AES-128 default / AES-256; ownerPassword required; RC4 never emitted) and decrypt_pdf emits an unencrypted copy — BOTH rebuild the page tree, so they drop signatures + AcroForm. To merely READ an encrypted PDF, pass 'password' to inspect_pdf / extract_text / extract_attachments / verify_pdf instead of decrypting. inspect_pdf surfaces precise cipher details in 'encryptionInfo'.
-  • FORMS: add_form CREATES a new interactive form; read_form_fields lists an EXISTING form's fields (call it first to get names); fill_form fills/flattens an EXISTING form (values map field name → string | boolean | string[]; flatten:true bakes it in; pure flatten = flatten:true with no values). Signature fields cannot be filled (FORM_UNSUPPORTED). Encrypted forms work via 'password'.
-  • CHARTS (v2, pdfnative 1.7): add_chart draws bar / barH / stackedBar / stackedBarH / line / area / scatter / pie / donut as native vectors (colours are hex strings; pie/donut use one series). Scatter and linear/time x axes need per-series 'xValues' (numbers, or ISO-8601 dates for xAxis.type='time'); a series with yAxis='right' gets the secondary 'axis2'; axis.scale='log' needs strictly positive, non-stacked data; 'dataLabels', 'labelStride' and 'labelRotation' tune labelling (overlapping x labels are thinned automatically — labelStride:1 forces every label). Cross-field mistakes come back as CHART_ERROR with the remedy. For a chart amongst other content, add a 'chart' block to generate_basic_pdf. Alt text is auto-generated for PDF/A when omitted.
-  • extract_text now returns real Unicode (pdfnative 1.6 resolves /ToUnicode); pass includeRuns:true for positioned runs and 'password' for encrypted PDFs. 'extractable' is false only when a page decodes entirely to U+FFFD (a font with no usable mapping).
-  • annotate_pdf adds VISUAL OVERLAY markup only (highlight, sticky note, square/circle, line, freetext) via a non-destructive incremental update; it does NOT remove/redact underlying content (the covered text stays extractable). Encrypted sources are rejected (ENCRYPTED_SOURCE). Each annotation needs a 0-based 'page' and a 'rect' [x1,y1,x2,y2]; 'line' also needs 'start'/'end'.
-  • For Factur-X / ZUGFeRD invoices, use add_attachment (PDF/A-3) — generate_basic_pdf cannot embed files.
-  • PDF/A: pass pdfA='pdfa2b' for the widest reader compatibility. PDF/A-3 is required when you have attachments. HONESTY NOTE: the document tools render Latin text through the viewer's base-14 Helvetica, which is NOT embedded — a PDF/A claim on such a file is rejected by veraPDF (ISO 19005 §6.2.11.4.1). For a VALID claim pass embedFonts:true (embeds Noto Sans Latin; add_international_text always embeds). strict:true fails the call with PDF_A_COMPLIANCE_VIOLATION instead of producing a non-conformant file; includeDiagnostics:true echoes the engine's diagnostics (e.g. PDFA_NO_FONT_ENTRIES) in structuredContent.diagnostics.
-  • PRINT PRODUCTION (pdfnative 1.7): every document tool accepts 'print' ({ bleed } shorthand or explicit trimBox/bleedBox/artBox/cropBox, printer's 'marks', large-format 'userUnit' — not under pdfa1b), 'metadata' (/Author /Subject /Keywords /Trapped) and 'outputIntent' (custom RGB ICC for PDF/A). viewerPreferences also takes print-dialog defaults (duplex, pickTrayByPDFSize, printPageRange, numCopies). Page boxes survive merge_pdfs / split_pdf / extract_pages; inspect_pdf (pages:true) reports them. Bad print options come back as PRINT_ERROR.
-  • SIGNATURE LADDER (PAdES, ETSI EN 319 142-1): B-B = sign_pdf (profile:'pades' recommended; rsa-sha256/384/512 or ecdsa-sha256) → B-T = sign_pdf with timestamp:true (needs the operator TSA) → B-LT = add_ltv (mode:'online' via the operator revocation provider, or mode:'offline' with caller-supplied DER certs/OCSP/CRLs — zero network) → B-LTA = timestamp_pdf (needs the operator TSA; re-run before the TSA cert expires). Verify with verify_pdf ltv:true (reports profile, timestamp, revocation status read from embedded /DSS material only, and ltvLevel). Signer name/reason/location/contactInfo are baked into the placeholder — when you pre-built one with prepare_signature_placeholder they are fixed there. Several unsigned placeholders → pass fieldName (PLACEHOLDER_AMBIGUOUS otherwise); add a second signature with allowMultiple:true + a fresh fieldName.
-  • PDF/A text is now robust: embedded newlines ('\\n') in paragraphs are auto-split into separate paragraphs; the Euro sign and other CP-1252 symbols extract correctly (pdfnative 1.3); wrapped table cells get unique per-line MCIDs. Write naturally — no manual workarounds needed.
-  • Math / technical symbols (∀ ∃ √ ∑ ∫ ∞ ± ÷ ×) render via add_international_text with the 'math' font: pass lang:['latin','math'] (or add 'math' to any script list) to route math codepoints to the bundled Noto Sans Math (OFL-1.1).
-  • generate_basic_pdf supports nested lists (a list item may be { text, items: [...] }), a document 'outline' (bookmarks; pass 'auto' to derive from headings) and 'pageLabels' (e.g. roman front-matter then decimal body). All PDF/A-safe. inspect_pdf now surfaces those page labels back as a 'pageLabels' array.
-  • add_table supports per-cell 'cellBorders' and 'cellVAlign' (top/middle/bottom) — both engage the document backend. generate_basic_pdf, add_table and add_international_text accept 'viewerPreferences' (reader presentation hints, /ViewerPreferences).
-  • add_international_text covers 24 lang codes incl. COLRv1 colour emoji with flag and ZWJ sequences (🇫🇷, 👨‍👩‍👧 render as single glyphs since pdfnative 1.7); pass 'lang' as a single code or an array (e.g. ["ar","emoji"]) for multi-script runs. Input is NFC-normalised by default; override with normalize ('NFC'|'NFD'|'NFKC'|'NFKD'|false).
-  • generate_basic_pdf and add_table accept an optional text 'watermark' (e.g. { text: 'DRAFT' }). Opacity < 1.0 is rejected under pdfA='pdfa1b' (ISO 19005-1 forbids transparency) — use pdfa2b/2u/3b instead.
-  • Round-trip: build an invoice with add_attachment, confirm with inspect_pdf (check:['attachments']), then pull the XML back with extract_attachments (filename:'factur-x.xml').
-  • outputMode='file' is only available when the host sets PDFNATIVE_MCP_OUTPUT_DIR; otherwise PDFs are returned as base64. draft_governance_issue writes a .md there when outputMode='file'.
-  • TOKEN-FRUGAL READS: the read-only tools (inspect_pdf, verify_pdf, validate_pdf, extract_text, extract_attachments) accept verbosity:'summary' for a compact scalar-only verdict (drops large arrays / full text) and fields:[...] for dot-path projection (e.g. fields:['allValid']). Defaults are unchanged (full output). Generated PDFs are returned as an embedded resource block, not duplicated in structuredContent.
+COMMON PITFALLS:
+  • Page indices and ranges are 0-based everywhere (pages, ranges.start/end, annotations[].page, pageIndex); only viewerPreferences.printPageRange is 1-based (PDF spec).
+  • Keys and certificates are DER base64, never PEM: openssl x509 -in cert.pem -outform DER | base64 -w0; openssl pkey -in key.pem -outform DER | base64 -w0 (RSA PKCS#1 or PKCS#8, EC SEC1 or PKCS#8). pdfBase64 is the raw PDF, not a data: URI.
+  • PDF/A claim ≠ PDF/A validity: Latin text uses the unembedded base-14 Helvetica unless embedFonts:true (add_international_text always embeds). Pass embedFonts:true with pdfA for a claim veraPDF accepts; strict:true fails instead of producing a non-conformant file; includeDiagnostics:true echoes the engine diagnostics. pdfa2b is the most compatible level; attachments need pdfa3b; an unsigned placeholder is only conformant once signed.
+  • Page-tree tools (merge / split / extract) and encrypt / decrypt drop signatures and AcroForm; page-tree tools also drop XMP (re-declare PDF/A on generation); page boxes survive. To READ an encrypted PDF pass password to the read tools instead of decrypting.
+  • inspect_pdf check:'signed' is structural (a signed field exists) — use verify_pdf for validity. checks lists only the keys you requested.
+  • verbosity:'summary' keeps scalars (inspect: docTimestampCount/trapped/checksPassed when present; verify: ltvLevel with ltv:true) and drops arrays; use fields:[…] for dot-path projection — unmatched paths are reported in _meta.unmatchedFields.
+  • Signer metadata (name, reason, location, contactInfo, signingTime) is frozen at placeholder time: set it on sign_pdf (auto-inject) or on prepare_signature_placeholder, not afterwards. Several unsigned placeholders → fieldName; extra signature → allowMultiple:true + new fieldName.
+  • outputMode:'file' needs PDFNATIVE_MCP_OUTPUT_DIR on the host (SECURITY_VIOLATION otherwise); paths are relative, .pdf, no '..'. With the opt-in response cache a hit carries _meta.cached:true (earlier bytes, same inputs).
+  • Barcode data is the raw payload (never URL-encode); ecLevel applies to qr only; ean13 needs 12–13 digits.
 
-  • TOKEN-FRUGAL READS also apply to read_form_fields (verbosity:'summary' → { fieldCount }).
-  • MCP RESOURCES: when the host sets PDFNATIVE_MCP_OUTPUT_DIR, every PDF written in outputMode='file' is exposed as an MCP resource (resources/list + resources/read, uri 'pdfnative://output/<name>.pdf'); file-mode tool results also carry a resource_link so you can re-reference the artifact across calls.
+REPRODUCIBILITY: outputs differ on every call because /CreationDate (and /ID) follow the wall clock. For byte-identical output pass creationDate (document tools), signingTime (sign_pdf / prepare_signature_placeholder) and modDate (update_metadata) as fixed ISO-8601 instants — identical on the same host time zone. Timestamps (TSA tokens) are inherently fresh.
 
-Every tool ships JSON-Schema-typed inputs/outputs, _meta.apiVersion = '1.6.0', and worked-example _meta.examples. The server also exposes MCP prompts ('governance_contract', 'draft_issue_workflow') and MCP resources for generated PDFs. See docs/AI_GUIDE.md for a longer walk-through and docs/guides/AI_GOVERNANCE.md for the HITL contract.`;
+TOKEN-FRUGAL READS & RESOURCES: read tools accept verbosity:'summary' and fields:[…]. Generated PDFs arrive as an embedded resource block (not duplicated in structuredContent); in file mode the result carries a resource_link and the file is listed under resources/list as pdfnative://output/<path>. Prompts: governance_contract, draft_issue_workflow, pades_ladder, print_ready, reproducible_output, pdfa_valid. Docs: docs/AI_GUIDE.md, docs/guides/*.md.`;
 
 function buildDraftGovernanceIssueResult(output: DraftGovernanceIssueResult, toolName: string): CallToolResult {
     const where = output.outputMode === 'file' ? ` and written to ${output.filePath}` : '';
@@ -1179,6 +1137,36 @@ interface PromptDefinition {
     readonly text: string;
 }
 
+const PADES_LADDER_RECIPE = `PAdES ladder with pdfnative-mcp (ETSI EN 319 142-1):
+1. B-B — sign_pdf { pdfBase64, algorithm:'rsa-sha256' | 'rsa-sha384' | 'rsa-sha512' | 'ecdsa-sha256', certDerBase64, certChainDerBase64:[intermediates], rsaKeyPkcs1DerBase64 | ecPrivateKeyDerBase64, profile:'pades', signerName, reason, signingTime }. Keys/certs are DER base64 (openssl … -outform DER | base64 -w0). The placeholder is injected automatically.
+2. B-T — same call with timestamp:true. Requires the operator to set PDFNATIVE_MCP_TSA_URL (and PDFNATIVE_MCP_TSA_AUTH if the TSA needs it); otherwise TSA_NOT_CONFIGURED and no network request is made.
+3. B-LT — add_ltv { pdfBase64 }. mode:'online' (default) needs PDFNATIVE_MCP_REVOCATION=online + PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS listing the OCSP/CRL hosts; mode:'offline' takes certificatesDerBase64 / ocspResponsesDerBase64 / crlsDerBase64 you exported yourself (zero network). Existing /DSS is merged.
+4. B-LTA — timestamp_pdf { pdfBase64 } (operator TSA again). Re-run before the TSA certificate expires to extend the chain.
+Verify at any step: verify_pdf { pdfBase64, ltv:true, trustedRootsDerBase64:[root] } → signatures[].profile / timestamp / revocation and ltvLevel ('B-B' | 'B-T' | 'B-LT' | 'B-LTA'). Caveats: revocation status is read from embedded /DSS material only; TSA trust is evaluated only when its root is in trustedRootsDerBase64. Keep the document unencrypted until the ladder is complete (encryption rebuilds the page tree and drops signatures).`;
+
+const PRINT_READY_RECIPE = `Print-ready output with any document tool (generate_basic_pdf, add_table, add_chart, …):
+• print: { bleed: 8.5 } (3 mm; TrimBox = MediaBox inset, BleedBox = MediaBox) or explicit trimBox / bleedBox / artBox / cropBox as [x0, y0, x1, y1] points; marks: true (or { crop, registration, length, offset, weight }) needs a TrimBox; userUnit for pages over 14400 pt (raises the header to PDF 1.7, not allowed under pdfa1b).
+• metadata: { author, subject, keywords, trapped:'True' | 'False' | 'Unknown' } → /Info (+ XMP under PDF/A).
+• outputIntent: { iccProfileBase64 (RGB ICC), outputConditionIdentifier:'sRGB IEC61966-2.1', registryName?, outputCondition?, info? } replaces the built-in sRGB intent under PDF/A; CMYK profiles are rejected (PRINT_ERROR).
+• viewerPreferences: { duplex:'DuplexFlipLongEdge', pickTrayByPDFSize:true, printPageRange:[[1, 4]], numCopies:2 } for print-dialog defaults (printPageRange is 1-based).
+• Check the result with inspect_pdf { pages:true } (trimBox / bleedBox / artBox / cropBox / userUnit per page) and check:['trapped'].
+• Page boxes and /UserUnit survive merge_pdfs / split_pdf / extract_pages; XMP and PDF/A claims do not.`;
+
+const REPRODUCIBLE_OUTPUT_RECIPE = `Byte-identical output across calls:
+• Document tools: pin creationDate:'2026-01-15T09:00:00Z' (ISO-8601). /CreationDate, XMP dates and the /ID are then derived from the inputs only. Two calls with identical inputs return identical base64 (same host time zone — the engine serialises the instant in local time).
+• prepare_signature_placeholder: also pin signingTime (the /Sig /M entry is frozen at placeholder time). sign_pdf: pin signingTime; the CMS signature is deterministic for RSA, but ECDSA signatures are randomised by design and RFC 3161 timestamps (timestamp:true, timestamp_pdf) are always fresh.
+• update_metadata: pin modDate. encrypt_pdf / decrypt_pdf: never reproducible (fresh IV / salt) and never cached.
+• Proof: call twice and compare structuredContent.sizeBytes and the resource blob, or hash the bytes on the host. With PDFNATIVE_MCP_CACHE_DIR set, a repeated call may be served from cache (_meta.cached:true) — the bytes are the earlier render.`;
+
+const PDFA_VALID_RECIPE = `A PDF/A claim that a reference validator (veraPDF) accepts:
+1. Choose the level: pdfa2b (widest compatibility), pdfa2u (Unicode mapping guaranteed), pdfa1b (simple text + images; no transparency, no /UserUnit), pdfa3b only when embedding files (add_attachment sets it automatically).
+2. ALWAYS pass embedFonts:true on Latin document tools — without it text is rendered through the unembedded base-14 Helvetica and the claim fails ISO 19005 §6.2.11.4.1 (PDFA_NO_FONT_ENTRIES). add_international_text always embeds its fonts.
+3. Use strict:true to make the call fail (PDF_A_COMPLIANCE_VIOLATION) instead of producing a non-conformant file, or includeDiagnostics:true to read the engine diagnostics in structuredContent.diagnostics.
+4. Avoid watermark opacity < 1 under pdfa1b; keep encryption off (mutually exclusive with PDF/A); prefer a custom outputIntent only with an RGB ICC profile.
+5. inspect_pdf reports the CLAIM (pdfA:'2B'), not its validity; validate_pdf checks PDF/UA structure, not PDF/A. An unsigned signature placeholder (prepare_signature_placeholder) is not yet conformant — it becomes conformant once signed with sign_pdf profile:'pades'.
+6. merge_pdfs / split_pdf / extract_pages drop the XMP packet: re-declare PDF/A on the generating tools, not after carving.`;
+
+
 /**
  * MCP prompts surfacing the AI-governance / Human-In-The-Loop contract so any
  * client can load the rules and the draft workflow directly. Read-only text;
@@ -1198,6 +1186,30 @@ const PROMPTS: readonly PromptDefinition[] = [
         description:
             'Step-by-step workflow for drafting a GitHub issue with the draft_governance_issue tool and handing it to a human for review and submission.',
         text: DRAFT_ISSUE_WORKFLOW,
+    },
+    {
+        name: 'pades_ladder',
+        title: 'PAdES ladder B-B → B-LTA',
+        description: 'Step-by-step recipe to sign a PDF and raise it to PAdES B-T / B-LT / B-LTA with this server, including what the operator must configure and how to verify each level.',
+        text: PADES_LADDER_RECIPE,
+    },
+    {
+        name: 'print_ready',
+        title: 'Print-ready PDF (bleed, marks, OutputIntent)',
+        description: 'Recipe for a press-ready document: page boxes / bleed, printer marks, /UserUnit, metadata and a custom OutputIntent, with the PDF/A interactions that matter.',
+        text: PRINT_READY_RECIPE,
+    },
+    {
+        name: 'reproducible_output',
+        title: 'Byte-identical, reproducible output',
+        description: 'How to obtain the same bytes from repeated calls: which inputs to pin (creationDate, signingTime, modDate), what stays non-deterministic (timestamps, encryption), and how to prove it.',
+        text: REPRODUCIBLE_OUTPUT_RECIPE,
+    },
+    {
+        name: 'pdfa_valid',
+        title: 'PDF/A that veraPDF accepts',
+        description: 'Recipe for a PDF/A claim that passes a reference validator: embedFonts, strict diagnostics, level choice, attachments under PDF/A-3, and what inspect_pdf can and cannot tell you.',
+        text: PDFA_VALID_RECIPE,
     },
 ];
 

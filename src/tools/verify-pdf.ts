@@ -95,7 +95,7 @@ export const VERIFY_PDF_INPUT_SCHEMA = {
             type: 'boolean',
             default: false,
             description:
-                'When true, add the PAdES long-term-validation view: per signature `profile`, `timestamp`, `revocation` (from embedded /DSS material only) and `ltvLevel` (B-B / B-T / B-LT / B-LTA); document-level `dss`, `ltvLevel` and `caveats`. Off by default — the default response is unchanged.',
+                'Add the PAdES view: per signature profile, timestamp, revocation (embedded /DSS only), ltvLevel (B-B / B-T / B-LT / B-LTA); document-level dss, ltvLevel, caveats.',
         },
         verbosity: {
             type: 'string',

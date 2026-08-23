@@ -21,7 +21,7 @@ const BOX_SCHEMA = {
     minItems: 4,
     maxItems: 4,
     items: { type: 'number' },
-    description: 'Page box as [x0, y0, x1, y1] in PDF points (origin bottom-left); must lie within the MediaBox.',
+    description: '[x0, y0, x1, y1] in points, origin bottom-left, inside the MediaBox.',
 } as const;
 
 /** JSON Schema fragments — spread into a tool's `properties`. */
@@ -30,20 +30,20 @@ export const PRINT_INPUT_PROPERTIES = {
         type: 'object',
         additionalProperties: false,
         description:
-            "Print-production options (ISO 32000-1 §14.11): page boxes (TrimBox/BleedBox/ArtBox/CropBox), the `bleed` shorthand (TrimBox = MediaBox inset by N points, BleedBox = MediaBox), printer's crop + registration marks drawn outside the TrimBox, and /UserUnit for large formats (raises the header to PDF 1.7; not allowed under pdfa1b). Byte-identical output when omitted.",
+            "Print production (ISO 32000-1 §14.11): page boxes, `bleed` shorthand (TrimBox = MediaBox inset), crop/registration marks outside the TrimBox, /UserUnit for large formats (PDF 1.7; not under pdfa1b). See docs/guides/PRINT.md.",
         properties: {
             bleed: {
                 type: 'number',
                 exclusiveMinimum: 0,
                 maximum: 200,
-                description: 'Bleed in points (e.g. 8.5 = 3 mm). Mutually exclusive with trimBox. Derives TrimBox = MediaBox inset by this amount.',
+                description: 'Bleed in points (8.5 = 3 mm); sets TrimBox = MediaBox inset. Exclusive with trimBox.',
             },
             trimBox: BOX_SCHEMA,
             bleedBox: BOX_SCHEMA,
             artBox: BOX_SCHEMA,
             cropBox: BOX_SCHEMA,
             marks: {
-                description: "Printer's marks (requires a TrimBox via bleed or trimBox): `true` for the defaults, or an object to tune them.",
+                description: "Printer's marks (needs bleed or trimBox): true for defaults, or an object.",
                 oneOf: [
                     { type: 'boolean' },
                     {
@@ -63,7 +63,7 @@ export const PRINT_INPUT_PROPERTIES = {
                 type: 'number',
                 minimum: 1,
                 maximum: 75000,
-                description: 'Size of one user-space unit in multiples of 1/72 inch (/UserUnit, PDF 1.6+). Use for pages larger than 14400 points. Rejected under pdfa1b.',
+                description: '/UserUnit (multiples of 1/72 in) for pages over 14400 pt. Rejected under pdfa1b.',
             },
         },
     },
@@ -72,9 +72,9 @@ export const PRINT_INPUT_PROPERTIES = {
         additionalProperties: false,
         required: ['iccProfileBase64', 'outputConditionIdentifier'],
         description:
-            'Caller-supplied OutputIntent for PDF/A (tagged) output: an RGB ICC profile and its condition strings replace the built-in sRGB intent. Non-RGB (e.g. CMYK) profiles are rejected.',
+            'Custom PDF/A OutputIntent: an RGB ICC profile + condition strings replacing the built-in sRGB intent (CMYK rejected).',
         properties: {
-            iccProfileBase64: { type: 'string', minLength: 1, maxLength: 11_000_000, description: 'Base64-encoded ICC profile bytes (RGB data colour space, ≤ 8 MiB).' },
+            iccProfileBase64: { type: 'string', minLength: 1, maxLength: 11_000_000, description: 'ICC profile bytes, base64 (RGB, ≤ 8 MiB).' },
             outputConditionIdentifier: { type: 'string', minLength: 1, maxLength: 200, description: 'e.g. "sRGB IEC61966-2.1".' },
             registryName: { type: 'string', maxLength: 200, description: 'Default "http://www.color.org".' },
             outputCondition: { type: 'string', maxLength: 200 },
@@ -84,7 +84,7 @@ export const PRINT_INPUT_PROPERTIES = {
     metadata: {
         type: 'object',
         additionalProperties: false,
-        description: 'Document-level metadata written to /Info and (under PDF/A) the XMP packet: author, subject, keywords and the /Trapped print flag.',
+        description: '/Info (+ XMP under PDF/A): author, subject, keywords, /Trapped.',
         properties: {
             author: { type: 'string', maxLength: 500 },
             subject: { type: 'string', maxLength: 1000 },
@@ -92,7 +92,7 @@ export const PRINT_INPUT_PROPERTIES = {
             trapped: {
                 type: 'string',
                 enum: ['True', 'False', 'Unknown'],
-                description: 'Whether the document has been trapped for high-end colour printing (/Trapped + XMP pdf:Trapped).',
+                description: '/Trapped print flag.',
             },
         },
     },
@@ -100,7 +100,7 @@ export const PRINT_INPUT_PROPERTIES = {
         type: 'string',
         format: 'date-time',
         description:
-            'Pin /Info /CreationDate (and XMP xmp:CreateDate under PDF/A) to this ISO-8601 instant, e.g. "2026-01-15T09:00:00Z". Makes the output byte-identical across repeated calls with the same inputs (content-addressable storage, reproducible builds, cache-friendly). Omitted: the current wall-clock time, so every call differs.',
+            'ISO-8601 instant for /CreationDate (+ XMP). Pin it for byte-identical output across calls (same host TZ); omitted = wall clock, so every call differs.',
     },
 } as const;
 

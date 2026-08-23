@@ -127,13 +127,13 @@ export const ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA = {
         pdfA: {
             type: 'string',
             enum: [...PDF_A_ENUM],
-            description: "Optional PDF/A conformance level. When set, Tagged PDF + sRGB OutputIntent + XMP metadata are emitted; the 'latin' Noto Sans fallback is auto-registered for non-WinAnsi Latin (ISO 19005-1 \u00a76.3.4). See docs/guides/PDFA.md for the full authoring guide.",
+            description: 'PDF/A level (Tagged PDF + sRGB OutputIntent + XMP). Fonts are embedded here, so the claim is valid as-is. See docs/guides/PDFA.md.',
         },
         normalize: {
             type: 'string',
             enum: [...NORMALIZE_ENUM],
             description:
-                "Unicode normalization form applied before shaping. Defaults to 'NFC' (recommended for international scripts: composes decomposed sequences for the widest glyph coverage). Override with 'NFD'/'NFKC'/'NFKD' only for specialised needs.",
+                "Unicode normalization before shaping. Default 'NFC' (widest glyph coverage); NFD/NFKC/NFKD or false for special needs.",
         },
         viewerPreferences: VIEWER_PREFERENCES_INPUT_SCHEMA,
         ...PRINT_INPUT_PROPERTIES,

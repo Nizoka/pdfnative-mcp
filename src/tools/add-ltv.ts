@@ -60,7 +60,7 @@ export const ADD_LTV_INPUT_SCHEMA = {
             enum: ['online', 'offline'],
             default: 'online',
             description:
-                "'online' collects OCSP/CRL material through the operator-configured revocation provider (PDFNATIVE_MCP_REVOCATION + PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS; REVOCATION_NOT_CONFIGURED otherwise — no network call is ever made without it). 'offline' embeds caller-supplied DER material without any network access.",
+                "'online': fetch OCSP/CRL through the operator provider (PDFNATIVE_MCP_REVOCATION + allow-list; REVOCATION_NOT_CONFIGURED otherwise). 'offline': embed the caller-supplied DER material, zero network.",
         },
         extraCertificatesDerBase64: DER_LIST(32, 'online: additional DER certificates (intermediates / roots) to complete chains the CMS does not carry.'),
         preferOcsp: { type: 'boolean', default: true, description: 'online: try OCSP before CRL for each certificate (default true).' },

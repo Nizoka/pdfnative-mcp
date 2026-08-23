@@ -96,7 +96,7 @@ export const PREPARE_SIGNATURE_PLACEHOLDER_INPUT_SCHEMA = {
         pdfA: {
             type: 'string',
             enum: [...PDF_A_ENUM],
-            description: PDF_A_FIELD_DESCRIPTION + ' Note: PDF/A + signatures requires PAdES-A; verify with inspect_pdf.',
+            description: PDF_A_FIELD_DESCRIPTION + " The unsigned placeholder is NOT yet conformant (empty /Contents, ISO 19005-2 §6.4.3); it is once signed with sign_pdf profile:'pades'.",
         },
         blocks: {
             type: 'array',
