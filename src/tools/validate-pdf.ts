@@ -22,6 +22,7 @@
 import { validatePdfUA } from 'pdfnative';
 import { z } from 'zod';
 import { ToolError } from '../errors.js';
+import { decodePdfBase64 } from '../base64.js';
 
 export const VALIDATE_PDF_NAME = 'validate_pdf';
 
@@ -73,7 +74,7 @@ export const VALIDATE_PDF_OUTPUT_SCHEMA = {
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfBase64: z.string().min(4),
     verbosity: z.enum(['summary', 'full']).optional(),
     fields: z.array(z.string().min(1)).max(16).optional(),
@@ -88,11 +89,7 @@ export interface ValidatePdfResult {
 }
 
 function decodeBase64(value: string): Uint8Array {
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', 'pdfBase64 is not valid base64.');
-    }
+    return decodePdfBase64(value, 'pdfBase64');
 }
 
 export async function validatePdf(rawInput: unknown): Promise<ValidatePdfResult> {
@@ -107,6 +104,15 @@ export async function validatePdf(rawInput: unknown): Promise<ValidatePdfResult>
     }
 
     const result = validatePdfUA(bytes);
+
+    // The engine reports an unparsable document as a conformance failure
+    // ('Unparseable PDF: …'). Every other read tool raises PDF_PARSE_FAILED for
+    // that condition, so surface it with the same code: a base64 slip must not
+    // read as 'document not accessible' in a CI loop.
+    const unparseable = result.errors.find((e) => e.startsWith('Unparseable PDF:'));
+    if (unparseable !== undefined) {
+        throw new ToolError('PDF_PARSE_FAILED', `${unparseable}. Pass the raw PDF bytes as base64 (inspect_pdf reports the same condition).`);
+    }
 
     const summary = result.valid
         ? `PDF/UA structural prerequisites hold${result.warnings.length > 0 ? ` (${result.warnings.length} warning(s))` : ''}.`

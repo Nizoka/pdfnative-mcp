@@ -10,7 +10,8 @@
  * sibling of `outputPath` (`out.pdf` → `out-1.pdf`, `out-2.pdf`, …).
  *
  * Faithful-wrapper notes (pdfnative semantics):
- *   - Encrypted sources are rejected → `ENCRYPTED_SOURCE`.
+ *   - Encrypted sources open with `password`; missing / wrong password →
+ *     `PASSWORD_REQUIRED` / `PASSWORD_INVALID`.
  *   - Signatures and the `/AcroForm` are dropped; self-contained URI links are
  *     kept unless `dropAnnotations` is set.
  *   - Ranges are 0-based and inclusive; `end` defaults to `start`.
@@ -20,6 +21,7 @@ import { z } from 'zod';
 
 import { emitPdfMulti, type MultiOutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { decodePdfBase64 } from '../base64.js';
 import { mapPageTreeError } from '../pagetree.js';
 import {
     ENCRYPT_INPUT_SCHEMA,
@@ -72,7 +74,7 @@ export const SPLIT_PDF_INPUT_SCHEMA = {
             minimum: 1,
             description: 'Maximum size, in bytes, of each produced PDF. Defaults to 268435456 (256 MiB).',
         },
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
         outputPath: {
             type: 'string',
             description: "Base output path (file mode). Each PDF is written to an indexed sibling: 'out.pdf' → 'out-1.pdf', 'out-2.pdf', …",
@@ -80,14 +82,14 @@ export const SPLIT_PDF_INPUT_SCHEMA = {
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfBase64: z.string().min(4),
     password: PasswordSchema.optional(),
     encrypt: EncryptSchema.optional(),
     ranges: z
         .array(
             z
-                .object({
+                .strictObject({
                     start: z.number().int().min(0),
                     end: z.number().int().min(0).optional(),
                 })
@@ -106,11 +108,7 @@ const InputSchema = z.object({
 });
 
 function decodeBase64(value: string, field: string): Uint8Array {
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', `${field} is not valid base64.`);
-    }
+    return decodePdfBase64(value, field);
 }
 
 export async function splitPdfTool(rawInput: unknown): Promise<MultiOutputResult> {

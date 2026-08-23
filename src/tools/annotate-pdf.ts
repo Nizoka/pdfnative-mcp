@@ -31,6 +31,7 @@ import { z } from 'zod';
 
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { decodePdfBase64 } from '../base64.js';
 
 export const ANNOTATE_PDF_NAME = 'annotate_pdf';
 
@@ -108,8 +109,8 @@ export const ANNOTATE_PDF_INPUT_SCHEMA = {
                 },
             },
         },
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
-        outputPath: { type: 'string' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
+        outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf (no absolute paths, no '..')." },
     },
 } as const;
 
@@ -118,7 +119,7 @@ const pointSchema = z.tuple([z.number(), z.number()]);
 const colorSchema = z.union([z.string(), z.tuple([z.number(), z.number(), z.number()])]);
 
 const AnnotationSchema = z
-    .object({
+    .strictObject({
         page: z.number().int().min(0),
         type: z.enum(ANNOTATION_TYPES),
         rect: rectSchema,
@@ -141,7 +142,7 @@ const AnnotationSchema = z
         }
     });
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfBase64: z.string().min(4),
     annotations: z.array(AnnotationSchema).min(1).max(200),
     outputMode: z.enum(['base64', 'file']).default('base64'),
@@ -151,11 +152,7 @@ const InputSchema = z.object({
 type AnnotationInput = z.infer<typeof AnnotationSchema>;
 
 function decodeBase64(value: string): Uint8Array {
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', 'pdfBase64 is not valid base64.');
-    }
+    return decodePdfBase64(value, 'pdfBase64');
 }
 
 /** Fields shared by every annotation variant. */
@@ -244,7 +241,7 @@ export async function annotatePdf(rawInput: unknown): Promise<OutputResult> {
     if (isEncrypted(reader)) {
         throw new ToolError(
             'ENCRYPTED_SOURCE',
-            'annotate_pdf does not support encrypted PDFs. Decrypt the source outside the server first.',
+            'annotate_pdf does not support encrypted PDFs. Run decrypt_pdf first (this drops signatures and AcroForm), annotate, then encrypt_pdf again.',
         );
     }
 

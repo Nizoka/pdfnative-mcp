@@ -21,4 +21,4 @@ export const PdfASchema = z.enum(
 
 /** Shared JSON Schema description with PDF/A authoring guidance for AI agents. */
 export const PDF_A_FIELD_DESCRIPTION =
-    "Optional PDF/A conformance level (powered by pdfnative v1.2). Use 'pdfa1b' for archival of simple text+images, 'pdfa2b'/'pdfa2u' for richer content (2u guarantees Unicode mapping), 'pdfa3b' when embedding source attachments (Factur-X / ZUGFeRD). Mutually exclusive with PDF encryption. See docs/guides/PDFA.md.";
+    "PDF/A level: pdfa1b (simple text+images), pdfa2b/pdfa2u (richer; 2u = Unicode mapping), pdfa3b (attachments / Factur-X). Pair with embedFonts=true for a valid claim. Exclusive with encryption. See docs/guides/PDFA.md.";

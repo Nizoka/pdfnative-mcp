@@ -31,6 +31,13 @@ describe('registry metadata parity', () => {
         expect(server['name']).toBe(pkg['mcpName']);
     });
 
+    it('advertises the same websiteUrl in serverInfo (Implementation) as server.json and package.json homepage', async () => {
+        const pkg = await readJson('package.json');
+        const server = await readJson('server.json');
+        expect(__serverMetadata.websiteUrl).toBe(server['websiteUrl']);
+        expect(__serverMetadata.websiteUrl).toBe(pkg['homepage']);
+    });
+
     it('keeps version in lock-step across package.json, server.json and the server runtime', async () => {
         const pkg = await readJson('package.json');
         const server = await readJson('server.json');

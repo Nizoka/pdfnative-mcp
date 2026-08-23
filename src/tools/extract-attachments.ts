@@ -24,6 +24,7 @@ import { openPdf, type PdfReader } from 'pdfnative';
 import { z } from 'zod';
 
 import { ToolError } from '../errors.js';
+import { decodePdfBase64 } from '../base64.js';
 import { collectEmbeddedFiles } from '../pdf-introspection.js';
 import { mapDecryptError, PASSWORD_INPUT_SCHEMA, PasswordSchema } from '../encryption.js';
 
@@ -102,7 +103,7 @@ export const EXTRACT_ATTACHMENTS_OUTPUT_SCHEMA = {
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfBase64: z.string().min(4),
     password: PasswordSchema.optional(),
     filename: z.string().min(1).max(255).optional(),
@@ -126,12 +127,7 @@ export interface ExtractAttachmentsResult {
 }
 
 function decodeBase64(value: string): Uint8Array {
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-        /* v8 ignore next 3 */
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', 'pdfBase64 is not valid base64.');
-    }
+    return decodePdfBase64(value, 'pdfBase64');
 }
 
 export async function extractAttachments(rawInput: unknown): Promise<ExtractAttachmentsResult> {

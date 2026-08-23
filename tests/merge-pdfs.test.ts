@@ -89,4 +89,19 @@ describe('merge_pdfs', () => {
         const bytes = await fs.readFile(result.filePath as string);
         assertValidPdf(new Uint8Array(bytes), 2);
     });
+
+    it('preserves print page boxes and /UserUnit of the source pages (pdfnative 1.7)', async () => {
+        const { generateBasicPdf } = await import('../src/tools/generate-basic-pdf.js');
+        const src = await generateBasicPdf({
+            title: 'Print',
+            blocks: [{ type: 'paragraph', text: 'Bleed page.' }],
+            print: { bleed: 8.5, userUnit: 2 },
+        });
+        const plain = await makePdfBase64(1, 'Plain');
+        const result = await mergePdfsTool({ pdfsBase64: [src.base64 as string, plain] });
+        expect(assertValidPdf(result.base64 as string)).toBe(2);
+        const text = Buffer.from(result.base64 as string, 'base64').toString('latin1');
+        expect(text).toContain('/TrimBox');
+        expect(text).toContain('/UserUnit');
+    });
 });

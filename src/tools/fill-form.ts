@@ -32,6 +32,7 @@ import { z } from 'zod';
 
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { decodePdfBase64 } from '../base64.js';
 import { mapDecryptError, PASSWORD_INPUT_SCHEMA, PasswordSchema } from '../encryption.js';
 
 export const FILL_FORM_NAME = 'fill_form';
@@ -77,12 +78,12 @@ export const FILL_FORM_INPUT_SCHEMA = {
                 "Behaviour when a value contains non-WinAnsi characters (appearance font is Helvetica/WinAnsi). 'throw' (default) rejects it; 'needAppearances' writes the value and sets /NeedAppearances so the viewer regenerates the appearance.",
         },
         password: PASSWORD_INPUT_SCHEMA,
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
         outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf." },
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfBase64: z.string().min(4),
     values: z.record(z.string(), z.union([z.string(), z.boolean(), z.array(z.string()).max(1000)])).optional(),
     flatten: z.boolean().default(false),
@@ -94,18 +95,13 @@ const InputSchema = z.object({
 });
 
 function decodeBase64(value: string): Uint8Array {
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-        /* v8 ignore next 3 */
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', 'pdfBase64 is not valid base64.');
-    }
+    return decodePdfBase64(value, 'pdfBase64');
 }
 
 /** Translate a pdfnative form error into a stable {@link ToolError}. Always throws. */
 function mapFormError(err: unknown, hadPassword: boolean): never {
     if (err instanceof FormFieldNotFoundError) {
-        throw new ToolError('FORM_FIELD_NOT_FOUND', err.message);
+        throw new ToolError('FORM_FIELD_NOT_FOUND', `${err.message}. List the real field names with read_form_fields, or pass onUnknownField:'ignore' to skip unknown keys.`);
     }
     if (err instanceof FormValueTypeError) {
         throw new ToolError('FORM_VALUE_TYPE_ERROR', err.message);

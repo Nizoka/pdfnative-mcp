@@ -86,3 +86,35 @@ describe('generate_basic_pdf watermark + normalize', () => {
         await expect(generateBasicPdf({ ...BASE, normalize: 'NFG' })).rejects.toThrow(ToolError);
     });
 });
+
+describe('generate_basic_pdf print + diagnostics inputs (v1.6.0)', () => {
+    it('embedFonts + pdfA + includeDiagnostics yields a valid PDF with no font diagnostic', async () => {
+        const result = await generateBasicPdf({ ...BASE, embedFonts: true, pdfA: 'pdfa2b', includeDiagnostics: true });
+        assertValidPdf(result.base64!);
+        expect(result.diagnostics!.map((d) => d.code)).not.toContain('PDFA_NO_FONT_ENTRIES');
+    });
+
+    it('maps an engine chart failure inside a chart block to CHART_ERROR', async () => {
+        await expect(
+            generateBasicPdf({
+                title: 'Chart',
+                blocks: [{ type: 'chart', chartType: 'bar', categories: ['a', 'b'], series: [{ label: 's', values: [1, 2, 3] }] }],
+            }),
+        ).rejects.toMatchObject({ code: 'CHART_ERROR' });
+    });
+
+    it('writes diagnostics alongside a file-mode result', async () => {
+        const { promises: fs } = await import('node:fs');
+        const os = await import('node:os');
+        const path = await import('node:path');
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfnative-diag-'));
+        process.env['PDFNATIVE_MCP_OUTPUT_DIR'] = dir;
+        try {
+            const result = await generateBasicPdf({ ...BASE, pdfA: 'pdfa2b', includeDiagnostics: true, outputMode: 'file', outputPath: 'diag.pdf' });
+            expect(result.mode).toBe('file');
+            expect(result.diagnostics!.map((d) => d.code)).toContain('PDFA_NO_FONT_ENTRIES');
+        } finally {
+            delete process.env['PDFNATIVE_MCP_OUTPUT_DIR'];
+        }
+    });
+});

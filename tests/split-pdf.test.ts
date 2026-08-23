@@ -85,4 +85,21 @@ describe('split_pdf', () => {
             assertValidPdf(new Uint8Array(bytes));
         }
     });
+
+    it('preserves print page boxes and /UserUnit of the source pages (pdfnative 1.7)', async () => {
+        const { generateBasicPdf } = await import('../src/tools/generate-basic-pdf.js');
+        const src = await generateBasicPdf({
+            title: 'Print',
+            blocks: [{ type: 'paragraph', text: 'Page one.' }, { type: 'pageBreak' }, { type: 'paragraph', text: 'Page two.' }],
+            print: { bleed: 8.5, userUnit: 2 },
+        });
+        const result = await splitPdfTool({ pdfBase64: src.base64 as string, ranges: [{ start: 0 }, { start: 1 }] });
+        expect(result.count).toBe(2);
+        for (const part of result.parts) {
+            assertValidPdf(part.base64 as string);
+            const text = Buffer.from(part.base64 as string, 'base64').toString('latin1');
+            expect(text).toContain('/TrimBox');
+            expect(text).toContain('/UserUnit');
+        }
+    });
 });

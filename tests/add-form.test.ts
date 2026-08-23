@@ -99,3 +99,24 @@ describe('add_form', () => {
         expect(decode(result.base64!)).toBe(PDF_HEADER);
     });
 });
+
+describe('add_form print + diagnostics inputs (v1.6.0)', () => {
+    const FORM = { title: 'Survey', fields: [{ fieldType: 'text', name: 'fullName', label: 'Full name' }] } as const;
+
+    it('embedFonts + pdfA + includeDiagnostics yields a valid PDF with no font diagnostic', async () => {
+        const result = await addForm({ ...FORM, embedFonts: true, pdfA: 'pdfa2b', includeDiagnostics: true });
+        assertValidPdf(result.base64!);
+        expect(result.diagnostics!.map((d) => d.code)).not.toContain('PDFA_NO_FONT_ENTRIES');
+    });
+
+    it('strict + pdfA without embedFonts is rejected with PDF_A_COMPLIANCE_VIOLATION', async () => {
+        await expect(addForm({ ...FORM, pdfA: 'pdfa2b', strict: true })).rejects.toMatchObject({ code: 'PDF_A_COMPLIANCE_VIOLATION' });
+    });
+
+    it('print bleed + metadata reach the output', async () => {
+        const result = await addForm({ ...FORM, print: { bleed: 8.5 }, metadata: { author: 'A' } });
+        const text = Buffer.from(result.base64!, 'base64').toString('latin1');
+        expect(text).toContain('/TrimBox');
+        expect(text).toContain('/Author (A)');
+    });
+});

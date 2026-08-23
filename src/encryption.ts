@@ -32,7 +32,7 @@ export const PASSWORD_INPUT_SCHEMA = {
     minLength: 1,
     maxLength: 4096,
     description:
-        'Password to open an encrypted source PDF (user or owner — both are tried). Omit for unencrypted documents. Never logged or echoed back.',
+        'Password (user or owner) of an encrypted source. Never logged or echoed.',
 } as const;
 
 /** Zod counterpart of {@link PASSWORD_INPUT_SCHEMA}. */
@@ -44,29 +44,29 @@ export const ENCRYPT_INPUT_SCHEMA = {
     additionalProperties: false,
     required: ['ownerPassword'],
     description:
-        'Re-encrypt the produced PDF with the PDF Standard Security Handler (AES-128 V4/R4 default, or AES-256 V5/R6). RC4 is never emitted. Requires a Web Crypto CSPRNG.',
+        'Re-encrypt the output (Standard Security Handler; AES-128 default or AES-256; RC4 never emitted).',
     properties: {
         ownerPassword: {
             type: 'string',
             minLength: 1,
             maxLength: 4096,
-            description: 'Owner password (required, non-empty). Controls permissions and full access.',
+            description: 'Owner password (full access).',
         },
         userPassword: {
             type: 'string',
             maxLength: 4096,
-            description: "User (open) password. Omitted or empty string means the document opens without a password prompt.",
+            description: 'Open password; omitted/empty = opens without a prompt.',
         },
         algorithm: {
             type: 'string',
             enum: ['aes128', 'aes256'],
             default: 'aes128',
-            description: 'Content cipher: aes128 (V4/R4, widest compatibility) or aes256 (V5/R6, strongest).',
+            description: 'aes128 (V4/R4, widest compatibility) or aes256 (V5/R6).',
         },
         permissions: {
             type: 'object',
             additionalProperties: false,
-            description: 'Access permission flags (enforced by conforming readers). Each defaults to allowed when omitted.',
+            description: 'Permission flags; each defaults to allowed.',
             properties: {
                 print: { type: 'boolean' },
                 copy: { type: 'boolean' },
@@ -78,12 +78,12 @@ export const ENCRYPT_INPUT_SCHEMA = {
 } as const;
 
 /** Zod counterpart of {@link ENCRYPT_INPUT_SCHEMA}. */
-export const EncryptSchema = z.object({
+export const EncryptSchema = z.strictObject({
     ownerPassword: z.string().min(1).max(4096),
     userPassword: z.string().max(4096).optional(),
     algorithm: z.enum(['aes128', 'aes256']).optional(),
     permissions: z
-        .object({
+        .strictObject({
             print: z.boolean().optional(),
             copy: z.boolean().optional(),
             modify: z.boolean().optional(),

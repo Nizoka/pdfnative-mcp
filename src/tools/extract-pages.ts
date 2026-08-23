@@ -10,7 +10,8 @@
  * `extract_pages` always produces exactly one PDF.
  *
  * Faithful-wrapper notes (pdfnative semantics):
- *   - Encrypted sources are rejected → `ENCRYPTED_SOURCE`.
+ *   - Encrypted sources open with `password`; missing / wrong password →
+ *     `PASSWORD_REQUIRED` / `PASSWORD_INVALID`.
  *   - Signatures and the `/AcroForm` are dropped; self-contained URI links are
  *     kept unless `dropAnnotations` is set.
  *   - Page indices are 0-based; order is preserved.
@@ -20,6 +21,7 @@ import { z } from 'zod';
 
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { decodePdfBase64 } from '../base64.js';
 import { mapPageTreeError } from '../pagetree.js';
 import {
     ENCRYPT_INPUT_SCHEMA,
@@ -60,12 +62,12 @@ export const EXTRACT_PAGES_INPUT_SCHEMA = {
             minimum: 1,
             description: 'Maximum size, in bytes, of the produced PDF. Defaults to 268435456 (256 MiB).',
         },
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
-        outputPath: { type: 'string' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
+        outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf (no absolute paths, no '..')." },
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfBase64: z.string().min(4),
     password: PasswordSchema.optional(),
     encrypt: EncryptSchema.optional(),
@@ -77,11 +79,7 @@ const InputSchema = z.object({
 });
 
 function decodeBase64(value: string, field: string): Uint8Array {
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', `${field} is not valid base64.`);
-    }
+    return decodePdfBase64(value, field);
 }
 
 export async function extractPagesTool(rawInput: unknown): Promise<OutputResult> {

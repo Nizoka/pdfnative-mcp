@@ -19,6 +19,7 @@ import { z } from 'zod';
 
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { decodePdfBase64 } from '../base64.js';
 import { mapPageTreeError } from '../pagetree.js';
 import { PASSWORD_INPUT_SCHEMA, PasswordSchema } from '../encryption.js';
 
@@ -38,12 +39,12 @@ export const DECRYPT_PDF_INPUT_SCHEMA = {
             ...PASSWORD_INPUT_SCHEMA,
             description: 'Password to open the encrypted source (user or owner). Omit only for documents with an empty user password.',
         },
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
         outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf." },
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfBase64: z.string().min(4),
     password: PasswordSchema.optional(),
     outputMode: z.enum(['base64', 'file']).default('base64'),
@@ -51,12 +52,7 @@ const InputSchema = z.object({
 });
 
 function decodeBase64(value: string): Uint8Array {
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-        /* v8 ignore next 3 */
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', 'pdfBase64 is not valid base64.');
-    }
+    return decodePdfBase64(value, 'pdfBase64');
 }
 
 export async function decryptPdf(rawInput: unknown): Promise<OutputResult> {

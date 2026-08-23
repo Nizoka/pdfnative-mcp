@@ -28,6 +28,16 @@ import { z } from 'zod';
 
 import { ToolError } from '../errors.js';
 import { emitPdf, type OutputResult } from '../output.js';
+import { PRINT_INPUT_PROPERTIES, PrintInputShape, toDocumentMetadata, toPrintLayout } from '../print.js';
+import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, toLayoutOptions } from '../layout.js';
+
+// Build-time encryption is not offered here: a signature placeholder must stay signable and a
+// PDF/A-3 attachment container may not be encrypted (ISO 19005-1 §6.3.2).
+const { encrypt: _encryptProperty, ...UNENCRYPTED_LAYOUT_PROPERTIES } = LAYOUT_INPUT_PROPERTIES;
+const { encrypt: _encryptShape, ...UnencryptedLayoutShape } = LayoutInputShape;
+void _encryptProperty;
+void _encryptShape;
+import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 export const ADD_ATTACHMENT_NAME = 'add_attachment';
 
@@ -83,18 +93,21 @@ export const ADD_ATTACHMENT_INPUT_SCHEMA = {
                 },
             },
         },
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
-        outputPath: { type: 'string' },
+        ...PRINT_INPUT_PROPERTIES,
+        ...UNENCRYPTED_LAYOUT_PROPERTIES,
+        ...DIAGNOSTIC_INPUT_PROPERTIES,
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
+        outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf (no absolute paths, no '..')." },
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     title: z.string().min(1).max(200),
     blocks: z.array(z.unknown()).max(200).optional(),
     footerText: z.string().max(200).optional(),
     attachments: z
         .array(
-            z.object({
+            z.strictObject({
                 filename: z.string().min(1).max(255),
                 mimeType: z.string().min(1).max(200),
                 dataBase64: z.string().min(1),
@@ -104,6 +117,9 @@ const InputSchema = z.object({
         )
         .min(1)
         .max(20),
+    ...PrintInputShape,
+    ...UnencryptedLayoutShape,
+    ...DiagnosticInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -133,7 +149,7 @@ export async function addAttachment(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, blocks, footerText, attachments, outputMode, outputPath } = parsed.data;
+    const { title, blocks, footerText, attachments, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
 
     const docBlocks: DocumentBlock[] =
         blocks !== undefined && blocks.length > 0
@@ -148,6 +164,10 @@ export async function addAttachment(rawInput: unknown): Promise<OutputResult> {
         ...(a.description !== undefined ? { description: a.description } : {}),
     }));
 
+    const docMetadata = toDocumentMetadata(metadata);
+    const fontEntries = await latinFontEntries(embedFonts);
+    const collector = collectDiagnostics(strict);
+
     let bytes: Uint8Array;
     try {
         bytes = buildDocumentPDFBytes(
@@ -155,13 +175,29 @@ export async function addAttachment(rawInput: unknown): Promise<OutputResult> {
                 title,
                 blocks: docBlocks,
                 ...(footerText !== undefined ? { footerText } : {}),
+                ...(docMetadata !== undefined ? { metadata: docMetadata } : {}),
+                ...(fontEntries.length > 0 ? { fontEntries } : {}),
             },
-            { tagged: 'pdfa3b', attachments: pdfAttachments },
+            {
+                tagged: 'pdfa3b',
+                attachments: pdfAttachments,
+                ...toPrintLayout({ print, outputIntent, creationDate }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug }),
+                ...collector.layout,
+            },
         );
     } catch (err) {
+        // PDF/A conformance and print-production failures keep their stable codes;
+        // any other engine throw is an attachment build failure, as before.
+        const mapped = mapBuildError(err, ADD_ATTACHMENT_NAME);
+        if (mapped.code === 'PDF_A_COMPLIANCE_VIOLATION' || mapped.code === 'PRINT_ERROR') throw mapped;
         const message = err instanceof Error ? err.message : String(err);
         throw new ToolError('ATTACHMENT_BUILD_FAILED', message);
     }
 
-    return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
+    return withDiagnostics(
+        await emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) }),
+        collector,
+        includeDiagnostics,
+    );
 }

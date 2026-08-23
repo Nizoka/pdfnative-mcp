@@ -10,7 +10,8 @@
  *     and with `scripts/verify-issue.mjs`).
  *
  * CRITICAL: nothing here — and nothing anywhere in the server — can submit a
- * GitHub issue, comment, PR, or make any outbound network call. The agent is a
+ * GitHub issue, comment, PR, or make any outbound network call on its own (the
+ * only egress is to operator-configured TSA / OCSP / CRL endpoints). The agent is a
  * DRAFTSMAN; the human is the only gate.
  */
 
@@ -76,7 +77,8 @@ export const IDENTITY_REMINDER =
 /** The human-in-the-loop gate statement embedded in every compliance report. */
 export const HUMAN_GATE =
     'DRAFT ONLY. The pdfnative-mcp server never opens, edits, or submits GitHub ' +
-    'issues, comments, PRs, or releases, and makes no outbound network call. A human ' +
+    'issues, comments, PRs, or releases, and makes no outbound network call by default ' +
+    '(its only possible egress is to operator-configured TSA / OCSP / CRL endpoints). A human ' +
     'MUST explicitly review this draft and submit it themselves.';
 
 /**
@@ -95,7 +97,7 @@ NON-NEGOTIABLE RULES
   5. Human-in-the-loop gate — produce a LOCAL draft only; a human reviews and submits.
   6. Identity integrity — remind the user the issue publishes under their GitHub identity.
 
-THE SERVER ITSELF makes no outbound network call and cannot write to GitHub.
+THE SERVER ITSELF cannot write to GitHub and makes no outbound network call by default — its only possible egress is to the RFC 3161 / OCSP / CRL endpoints the operator configured (PDFNATIVE_MCP_TSA_URL / PDFNATIVE_MCP_REVOCATION), never to a URL from a tool argument.
 Use the draft_governance_issue tool to produce a compliant local draft + compliance report,
 then present both to the user and stop. The user is the only gate.`;
 
@@ -112,4 +114,4 @@ export const DRAFT_ISSUE_WORKFLOW = `Human-In-The-Loop issue workflow for pdfnat
 6. Present the returned draft markdown AND the compliance report to the user.
 7. STOP. The user reviews, then manually opens the issue on GitHub under their own identity.
 
-The agent never submits. The server never touches the network.`;
+The agent never submits. The server never touches GitHub and never touches the network except for operator-configured TSA / OCSP / CRL endpoints.`;

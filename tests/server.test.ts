@@ -2,7 +2,18 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { createServer, ensureCompressionReady, __serverMetadata, __serverInstructions } from '../src/server.js';
+import { callToolDirect, createServer, ensureCompressionReady, __serverMetadata, __serverInstructions, SERVER_CACHE_HINTS } from '../src/server.js';
+import { connectLegacy, McpRpcError } from './_mcp-harness.js';
+
+/** One-shot JSON-RPC request through the in-memory transport (legacy era). */
+async function rpc<T = Record<string, unknown>>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+    const client = await connectLegacy();
+    try {
+        return await client.request<T>(method, params);
+    } finally {
+        await client.close();
+    }
+}
 
 const OUTPUT_ENV = 'PDFNATIVE_MCP_OUTPUT_DIR';
 
@@ -14,7 +25,7 @@ describe('server', () => {
 
     it('exposes stable metadata', () => {
         expect(__serverMetadata.name).toBe('pdfnative-mcp');
-        expect(__serverMetadata.version).toBe('1.5.0');
+        expect(__serverMetadata.version).toBe('1.6.0');
     });
 
     it('advertises a human-readable title and description in serverInfo (MCP Implementation)', () => {
@@ -23,11 +34,13 @@ describe('server', () => {
         expect(typeof __serverMetadata.title).toBe('string');
         expect(__serverMetadata.title.length).toBeGreaterThan(0);
         expect(__serverMetadata.description).toMatch(/MCP server/i);
-        expect(__serverMetadata.description).toMatch(/24 tools/);
+        expect(__serverMetadata.description).toMatch(/28 tools/);
     });
 
     it('SERVER_INSTRUCTIONS advertises decision tree and pitfalls for AI clients', () => {
-        expect(__serverInstructions).toMatch(/pdfnative.*v1\.6/);
+        expect(__serverInstructions).toMatch(/pdfnative.*v1\.7/);
+        expect(__serverInstructions).toContain('MCP 2026-07-28');
+        expect(__serverInstructions).toContain('NETWORK POLICY');
         expect(__serverInstructions).toContain('DECISION TREE');
         expect(__serverInstructions).toContain('COMMON PITFALLS');
         // Cite each tool by name in the decision tree.
@@ -38,43 +51,36 @@ describe('server', () => {
             'extract_attachments', 'merge_pdfs', 'split_pdf', 'extract_pages',
             'annotate_pdf', 'draft_governance_issue',
             'read_form_fields', 'fill_form', 'add_chart', 'encrypt_pdf', 'decrypt_pdf',
+            'update_metadata', 'add_ltv', 'timestamp_pdf',
         ]) {
             expect(__serverInstructions).toContain(t);
         }
     });
 
     it('exposes MCP prompts for the AI-governance contract and issue workflow', async () => {
-        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
-
-        const listPrompts = server._requestHandlers.get('prompts/list');
-        expect(listPrompts).toBeDefined();
-        const promptList = (await listPrompts!({ method: 'prompts/list', params: {} })) as {
+        const promptList = (await rpc('prompts/list')) as {
             prompts: Array<{ name: string; title?: string; description?: string }>;
         };
         const promptNames = promptList.prompts.map((p) => p.name).sort();
-        expect(promptNames).toEqual(['draft_issue_workflow', 'governance_contract']);
-
-        const getPrompt = server._requestHandlers.get('prompts/get');
-        expect(getPrompt).toBeDefined();
-        const got = (await getPrompt!({
-            method: 'prompts/get',
-            params: { name: 'governance_contract' },
-        })) as { messages: Array<{ role: string; content: { type: string; text: string } }> };
+        expect(promptNames).toEqual(['draft_issue_workflow', 'governance_contract', 'pades_ladder', 'pdfa_valid', 'print_ready', 'reproducible_output']);
+        // Recipe prompts are self-contained text: every one names the tools it drives.
+        for (const [name, tool] of [['pades_ladder', 'add_ltv'], ['print_ready', 'outputIntent'], ['reproducible_output', 'creationDate'], ['pdfa_valid', 'embedFonts']] as const) {
+            const recipe = (await rpc('prompts/get', { name })) as { messages: Array<{ content: { text: string } }> };
+            expect(recipe.messages[0]?.content.text).toContain(tool);
+        }
+        const got = (await rpc('prompts/get', { name: 'governance_contract' })) as { messages: Array<{ role: string; content: { type: string; text: string } }> };
         expect(got.messages[0]?.role).toBe('user');
         expect(got.messages[0]?.content.text).toMatch(/DRAFTSMAN/);
 
         // Unknown prompt names are rejected.
         await expect(
-            getPrompt!({ method: 'prompts/get', params: { name: 'nope' } }),
-        ).rejects.toThrow();
+            rpc('prompts/get', { name: 'nope' }),
+        ).rejects.toBeInstanceOf(McpRpcError);
     });
 
     it('lists all tools', async () => {
-        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
-        const listHandler = server._requestHandlers.get('tools/list');
-        expect(listHandler).toBeDefined();
 
-        const response = (await listHandler!({ method: 'tools/list', params: {} })) as {
+        const response = (await rpc('tools/list')) as {
             tools: Array<{ name: string; _meta?: { apiVersion?: string; examples?: unknown[] } }>;
         };
 
@@ -85,6 +91,7 @@ describe('server', () => {
             'add_chart',
             'add_form',
             'add_international_text',
+            'add_ltv',
             'add_table',
             'annotate_pdf',
             'decrypt_pdf',
@@ -96,19 +103,22 @@ describe('server', () => {
             'extract_text',
             'fill_form',
             'generate_basic_pdf',
+            'inspect_layout',
             'inspect_pdf',
             'merge_pdfs',
             'prepare_signature_placeholder',
             'read_form_fields',
             'sign_pdf',
             'split_pdf',
+            'timestamp_pdf',
+            'update_metadata',
             'validate_pdf',
             'verify_pdf',
         ]);
 
         // Every tool advertises _meta.apiVersion and at least one example.
         for (const t of response.tools) {
-            expect(t._meta?.apiVersion).toBe('1.5.0');
+            expect(t._meta?.apiVersion).toBe('1.6.0');
             expect(Array.isArray(t._meta?.examples)).toBe(true);
             expect((t._meta?.examples ?? []).length).toBeGreaterThan(0);
         }
@@ -120,9 +130,7 @@ describe('server', () => {
         // avoiding constructs whose meaning changed across drafts ($ref/$defs/definitions,
         // draft-04 boolean exclusiveMinimum/Maximum, draft-07 dependencies). This guard
         // fails if any tool reintroduces a dialect-sensitive keyword.
-        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
-        const listHandler = server._requestHandlers.get('tools/list');
-        const response = (await listHandler!({ method: 'tools/list', params: {} })) as {
+        const response = (await rpc('tools/list')) as {
             tools: Array<{ name: string; inputSchema: Record<string, unknown>; outputSchema?: Record<string, unknown> }>;
         };
 
@@ -149,34 +157,22 @@ describe('server', () => {
         }
     });
 
-    it('returns an MCP tool error for unknown tools', async () => {
-        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
-        const callHandler = server._requestHandlers.get('tools/call');
-        expect(callHandler).toBeDefined();
-
-        const response = (await callHandler!({
-            method: 'tools/call',
-            params: { name: 'nope', arguments: {} },
-        })) as { isError?: boolean; content: Array<{ text: string }> };
-
-        expect(response.isError).toBe(true);
-        expect(response.content[0]?.text).toContain('Unknown tool: nope');
+    it('rejects unknown tools with JSON-RPC -32602 on the wire (callToolDirect keeps the isError form for in-process callers)', async () => {
+        await expect(rpc('tools/call', { name: 'nope', arguments: {} })).rejects.toMatchObject({ code: -32602, message: expect.stringContaining('Unknown tool: nope') });
+        const direct = await callToolDirect('nope', {});
+        expect(direct.isError).toBe(true);
     });
 
     it('returns success payload for a valid base64 tool call', async () => {
-        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
-        const callHandler = server._requestHandlers.get('tools/call');
 
-        const response = (await callHandler!({
-            method: 'tools/call',
-            params: {
+        const response = (await rpc('tools/call', {
                 name: 'generate_basic_pdf',
                 arguments: {
                     title: 'Smoke',
                     blocks: [{ type: 'paragraph', text: 'hello' }],
                 },
             },
-        })) as {
+        )) as {
             isError?: boolean;
             content: Array<{ type: string; text?: string; resource?: { blob?: string; mimeType?: string } }>;
             structuredContent?: { mode?: string; base64?: string; sizeBytes?: number };
@@ -199,12 +195,7 @@ describe('server', () => {
         const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfnative-mcp-server-file-'));
         process.env[OUTPUT_ENV] = sandboxDir;
 
-        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
-        const callHandler = server._requestHandlers.get('tools/call');
-
-        const response = (await callHandler!({
-            method: 'tools/call',
-            params: {
+        const response = (await rpc('tools/call', {
                 name: 'generate_basic_pdf',
                 arguments: {
                     title: 'File',
@@ -213,7 +204,7 @@ describe('server', () => {
                     outputPath: 'from-server/file.pdf',
                 },
             },
-        })) as {
+        )) as {
             isError?: boolean;
             content: Array<{ text?: string }>;
             structuredContent?: { mode?: string; filePath?: string };
@@ -228,31 +219,23 @@ describe('server', () => {
     });
 
     it('surfaces tool validation failures as isError responses', async () => {
-        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
-        const callHandler = server._requestHandlers.get('tools/call');
 
-        const response = (await callHandler!({
-            method: 'tools/call',
-            params: {
+        const response = (await rpc('tools/call', {
                 name: 'generate_basic_pdf',
                 arguments: {
                     title: '',
                     blocks: [],
                 },
             },
-        })) as { isError?: boolean; content: Array<{ text: string }> };
+        )) as { isError?: boolean; content: Array<{ text: string }> };
 
         expect(response.isError).toBe(true);
         expect(response.content[0]?.text).toContain('VALIDATION_ERROR');
     });
 
     it('surfaces non-ToolError failures as generic isError responses', async () => {
-        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
-        const callHandler = server._requestHandlers.get('tools/call');
 
-        const response = (await callHandler!({
-            method: 'tools/call',
-            params: {
+        const response = (await rpc('tools/call', {
                 name: 'sign_pdf',
                 arguments: {
                     pdfBase64: 'AQID',
@@ -261,7 +244,7 @@ describe('server', () => {
                     rsaKeyPkcs1DerBase64: 'AQID',
                 },
             },
-        })) as { isError?: boolean; content: Array<{ text: string }> };
+        )) as { isError?: boolean; content: Array<{ text: string }> };
 
         expect(response.isError).toBe(true);
         // In v1.0.0 sign_pdf intercepts PDF-parse failures (the malformed
@@ -272,39 +255,40 @@ describe('server', () => {
     });
 
     it('dispatches inspect_pdf and returns structuredContent from buildInspectResult', async () => {
-        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
-        const callHandler = server._requestHandlers.get('tools/call');
         const samplePdf = await (await import('../src/tools/generate-basic-pdf.js')).generateBasicPdf({
             title: 'Smoke',
             blocks: [{ type: 'paragraph', text: 'inspect me' }],
         });
-        const response = (await callHandler!({
-            method: 'tools/call',
-            params: {
+        const response = (await rpc('tools/call', {
                 name: 'inspect_pdf',
                 arguments: { pdfBase64: samplePdf.base64 },
             },
-        })) as { isError?: boolean; content: Array<{ text?: string }>; structuredContent?: Record<string, unknown> };
+        )) as { isError?: boolean; content: Array<{ text?: string }>; structuredContent?: Record<string, unknown> };
         expect(response.isError).not.toBe(true);
         expect(response.structuredContent?.['pageCount']).toBeGreaterThanOrEqual(1);
     });
 
     it('advertises the MCP resources capability with list, read and templates handlers', async () => {
-        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
-        for (const method of ['resources/list', 'resources/read', 'resources/templates/list']) {
-            expect(server._requestHandlers.get(method), `${method} handler`).toBeDefined();
-        }
         // With no sandbox configured, listing is empty (stateless, safe default).
         delete process.env[OUTPUT_ENV];
-        const listResources = server._requestHandlers.get('resources/list')!;
-        const res = (await listResources({ method: 'resources/list', params: {} })) as { resources: unknown[] };
+        const res = await rpc<{ resources: unknown[] }>('resources/list');
         expect(res.resources).toEqual([]);
+        const templates = await rpc<{ resourceTemplates: unknown[] }>('resources/templates/list');
+        expect(Array.isArray(templates.resourceTemplates)).toBe(true);
+        // Spec 2026-07-28: resource-not-found is -32602 (Invalid params) on every revision.
+        await expect(rpc('resources/read', { uri: 'pdfnative://output/nope.pdf' })).rejects.toMatchObject({ code: -32602 });
+    });
+
+    it('lists tools in a deterministic order and constructs with valid cache hints', async () => {
+        const a = (await rpc<{ tools: Array<{ name: string }> }>('tools/list')).tools.map((t) => t.name);
+        const b = (await rpc<{ tools: Array<{ name: string }> }>('tools/list')).tools.map((t) => t.name);
+        expect(a).toEqual(b);
+        expect(SERVER_CACHE_HINTS['tools/list'].cacheScope).toBe('public');
+        expect(() => createServer()).not.toThrow();
     });
 
     it('includes outputSchema for every tool', async () => {
-        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
-        const listHandler = server._requestHandlers.get('tools/list');
-        const response = (await listHandler!({ method: 'tools/list', params: {} })) as {
+        const response = (await rpc('tools/list')) as {
             tools: Array<{ name: string; outputSchema?: unknown }>
         };
         for (const tool of response.tools) {
@@ -322,9 +306,7 @@ describe('token-frugal projection (verbosity / fields)', () => {
     type CallResponse = { isError?: boolean; structuredContent?: Record<string, unknown> };
 
     async function call(name: string, args: Record<string, unknown>): Promise<CallResponse> {
-        const server = createServer() as unknown as { _requestHandlers: Map<string, (req: unknown) => Promise<unknown>> };
-        const callHandler = server._requestHandlers.get('tools/call');
-        return (await callHandler!({ method: 'tools/call', params: { name, arguments: args } })) as CallResponse;
+        return (await rpc('tools/call', { name, arguments: args })) as CallResponse;
     }
 
     async function samplePdf(): Promise<string> {

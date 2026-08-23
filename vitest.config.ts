@@ -17,16 +17,14 @@ export default defineConfig({
                 'src/index.ts',
             ],
             thresholds: {
-                // v1.0.0 baseline. Phase 4 (verify_pdf) and Phase 5 (new tools)
-                // intentionally add substantial defensive error-handling that is
-                // exercised by integration tests but not all branches are unit-
-                // testable without contrived ASN.1 fuzzing. Encrypted-PDF fixtures
-                // (Phase 6) and conformance fixtures (Phase 8) will lift these
-                // back to >=92% lines / >=80% branches.
-                statements: 88,
-                branches: 75,
-                functions: 85,
-                lines: 90,
+                // v1.6.0 measured on the final branch: 93.06 / 84.68 / 98.59 / 95.09 (statements /
+                // branches / functions / lines). Thresholds sit 4–9 points below the measured
+                // values so a regression fails CI while ordinary churn does not.
+                // Never lower these; raise them when a release lifts coverage.
+                statements: 89,
+                branches: 80,
+                functions: 90,
+                lines: 91,
             },
         },
     },

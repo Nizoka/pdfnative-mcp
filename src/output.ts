@@ -115,6 +115,10 @@ export interface OutputResult {
     filePath?: string;
     /** Base64-encoded PDF (when `mode === 'base64'`). */
     base64?: string;
+    /** PDF/A conformance diagnostics (only when the caller opted in via `includeDiagnostics`). */
+    diagnostics?: ReadonlyArray<{ readonly code: string; readonly message: string; readonly severity: 'warning' }>;
+    /** Tool-specific summary echoed into `structuredContent.summary` (e.g. LTV material counts). */
+    summary?: Readonly<Record<string, unknown>>;
 }
 
 /** One PDF part of a {@link MultiOutputResult}. */

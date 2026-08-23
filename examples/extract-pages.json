@@ -1,5 +1,5 @@
 {
-  "description": "Extract an arbitrary subset of pages into a SINGLE new PDF (pdfnative v1.4 page-tree API). extract_pages keeps the given 0-based page indices in order and returns one self-contained PDF (signatures/AcroForm dropped; URI links kept unless dropAnnotations=true). Encrypted sources are rejected (ENCRYPTED_SOURCE). Use split_pdf instead when you need several output PDFs (one per range).",
+  "description": "Extract an arbitrary subset of pages into a SINGLE new PDF (pdfnative v1.4 page-tree API). extract_pages keeps the given 0-based page indices in order and returns one self-contained PDF (signatures/AcroForm dropped; URI links kept unless dropAnnotations=true). Encrypted sources open with `password` (PASSWORD_REQUIRED / PASSWORD_INVALID otherwise); pass `encrypt` to re-secure the output. Use split_pdf instead when you need several output PDFs (one per range).",
   "steps": [
     {
       "tool": "generate_basic_pdf",

@@ -13,7 +13,7 @@ import { z } from 'zod';
 export const NORMALIZE_ENUM = ['NFC', 'NFD', 'NFKC', 'NFKD'] as const;
 
 export const NORMALIZE_FIELD_DESCRIPTION =
-    "Optional Unicode normalization applied to all rendered text before shaping. 'NFC' (recommended) composes base + combining marks into precomposed code points for better glyph coverage; 'NFD'/'NFKC'/'NFKD' are also accepted. Omit for byte-stable output (no normalization).";
+    "Unicode normalization before shaping ('NFC' recommended for glyph coverage; NFD/NFKC/NFKD accepted). Omit = none.";
 
 /** Zod validator for the optional `normalize` input. */
 export const NormalizeSchema = z.enum(NORMALIZE_ENUM);

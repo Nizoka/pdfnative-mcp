@@ -19,6 +19,7 @@ import { z } from 'zod';
 
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { decodePdfBase64 } from '../base64.js';
 import { mapPageTreeError } from '../pagetree.js';
 import { ENCRYPT_INPUT_SCHEMA, EncryptSchema, PASSWORD_INPUT_SCHEMA, PasswordSchema, toEncryptionOptions } from '../encryption.js';
 
@@ -43,7 +44,7 @@ export const ENCRYPT_PDF_INPUT_SCHEMA = {
         userPassword: ENCRYPT_INPUT_SCHEMA.properties.userPassword,
         algorithm: ENCRYPT_INPUT_SCHEMA.properties.algorithm,
         permissions: ENCRYPT_INPUT_SCHEMA.properties.permissions,
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
         outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf." },
     },
 } as const;
@@ -56,12 +57,7 @@ const InputSchema = EncryptSchema.extend({
 });
 
 function decodeBase64(value: string): Uint8Array {
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-        /* v8 ignore next 3 */
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', 'pdfBase64 is not valid base64.');
-    }
+    return decodePdfBase64(value, 'pdfBase64');
 }
 
 export async function encryptPdf(rawInput: unknown): Promise<OutputResult> {

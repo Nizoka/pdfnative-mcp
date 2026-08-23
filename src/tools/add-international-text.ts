@@ -32,6 +32,13 @@ import {
     ViewerPreferencesSchema,
     toViewerPreferences,
 } from '../doc-features.js';
+import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
+import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, assertLayoutPdfACompatible, toLayoutOptions } from '../layout.js';
+import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, mapBuildError, withDiagnostics } from '../diagnostics.js';
+
+// This tool always embeds the Noto fonts it renders with, so `embedFonts` is not exposed.
+const { strict: STRICT_PROPERTY, includeDiagnostics: INCLUDE_DIAGNOSTICS_PROPERTY } = DIAGNOSTIC_INPUT_PROPERTIES;
+const { strict: StrictShape, includeDiagnostics: IncludeDiagnosticsShape } = DiagnosticInputShape;
 
 export const ADD_INTERNATIONAL_TEXT_NAME = 'add_international_text';
 
@@ -99,7 +106,8 @@ export const ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA = {
         lang: {
             description:
                 "Language / script identifier. Either a single code (e.g. 'ar'), a comma-separated list ('ar,emoji'), or an array (['ar','emoji']). Multiple codes enable multi-font run splitting (script + emoji + Latin fallback).",
-            oneOf: [
+            // anyOf (not oneOf): a single code also satisfies the comma-separated string branch.
+            anyOf: [
                 { type: 'string', enum: [...SUPPORTED_LANGS] },
                 {
                     type: 'array',
@@ -120,17 +128,21 @@ export const ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA = {
         pdfA: {
             type: 'string',
             enum: [...PDF_A_ENUM],
-            description: "Optional PDF/A conformance level. When set, Tagged PDF + sRGB OutputIntent + XMP metadata are emitted; the 'latin' Noto Sans fallback is auto-registered for non-WinAnsi Latin (ISO 19005-1 \u00a76.3.4). See docs/guides/PDFA.md for the full authoring guide.",
+            description: 'PDF/A level (Tagged PDF + sRGB OutputIntent + XMP). Fonts are embedded here, so the claim is valid as-is. See docs/guides/PDFA.md.',
         },
         normalize: {
             type: 'string',
             enum: [...NORMALIZE_ENUM],
             description:
-                "Unicode normalization form applied before shaping. Defaults to 'NFC' (recommended for international scripts: composes decomposed sequences for the widest glyph coverage). Override with 'NFD'/'NFKC'/'NFKD' only for specialised needs.",
+                "Unicode normalization before shaping. Default 'NFC' (widest glyph coverage); NFD/NFKC/NFKD or false for special needs.",
         },
         viewerPreferences: VIEWER_PREFERENCES_INPUT_SCHEMA,
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
-        outputPath: { type: 'string' },
+        ...PRINT_INPUT_PROPERTIES,
+        ...LAYOUT_INPUT_PROPERTIES,
+        strict: STRICT_PROPERTY,
+        includeDiagnostics: INCLUDE_DIAGNOSTICS_PROPERTY,
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
+        outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf (no absolute paths, no '..')." },
     },
     required: ['title', 'lang', 'paragraphs'],
 } as const;
@@ -141,13 +153,17 @@ const LangInput = z.union([
     z.string().min(2).max(80),
 ]);
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     title: z.string().min(1).max(200),
     lang: LangInput,
     paragraphs: z.array(z.string().min(1).max(50000)).min(1).max(1000),
     pdfA: PdfASchema.optional(),
     normalize: NormalizeSchema.optional(),
     viewerPreferences: ViewerPreferencesSchema.optional(),
+    ...PrintInputShape,
+    ...LayoutInputShape,
+    strict: StrictShape,
+    includeDiagnostics: IncludeDiagnosticsShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -180,7 +196,9 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, lang, paragraphs, pdfA, normalize, viewerPreferences, outputMode, outputPath } = parsed.data;
+    const { title, lang, paragraphs, pdfA, normalize, viewerPreferences, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt, strict, includeDiagnostics, outputMode, outputPath } = parsed.data;
+    assertPrintPdfACompatible(print, pdfA);
+    assertLayoutPdfACompatible({ encrypt }, pdfA);
 
     const langs = normaliseLangs(lang);
     // Auto-register Noto Sans Latin fallback under PDF/A so non-WinAnsi Latin (smart
@@ -207,13 +225,27 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
         throw new ToolError('VALIDATION_ERROR', 'paragraphs must contain at least one non-empty line of text.');
     }
 
-    const bytes = buildDocumentPDFBytes(
-        { title, blocks, fontEntries },
-        {
-            normalize: normalize ?? 'NFC',
-            ...(pdfA !== undefined ? { tagged: pdfA } : {}),
-            ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
-        },
+    const docMetadata = toDocumentMetadata(metadata);
+    const collector = collectDiagnostics(strict);
+    let bytes: Uint8Array;
+    try {
+        bytes = buildDocumentPDFBytes(
+            { title, blocks, fontEntries, ...(docMetadata !== undefined ? { metadata: docMetadata } : {}) },
+            {
+                normalize: normalize ?? 'NFC',
+                ...(pdfA !== undefined ? { tagged: pdfA } : {}),
+                ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
+                ...toPrintLayout({ print, outputIntent, creationDate }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt }),
+                ...collector.layout,
+            },
+        );
+    } catch (err) {
+        throw mapBuildError(err, ADD_INTERNATIONAL_TEXT_NAME);
+    }
+    return withDiagnostics(
+        await emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) }),
+        collector,
+        includeDiagnostics,
     );
-    return emitPdf(bytes, { mode: outputMode, ...(outputPath !== undefined ? { outputPath } : {}) });
 }

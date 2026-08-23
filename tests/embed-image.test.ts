@@ -87,3 +87,28 @@ describe('embed_image', () => {
         await expect(embedImage({ imageBase64: MINIMAL_JPEG_BASE64 })).rejects.toThrow(ToolError);
     });
 });
+
+describe('embed_image print + diagnostics inputs (v1.6.0)', () => {
+    const IMG = { title: 'Img', imageBase64: MINIMAL_JPEG_BASE64, mimeType: 'image/jpeg' } as const;
+
+    it('embedFonts + pdfA + includeDiagnostics yields a valid PDF with no font diagnostic', async () => {
+        const result = await embedImage({ ...IMG, caption: 'A caption', embedFonts: true, pdfA: 'pdfa2b', includeDiagnostics: true });
+        assertValidPdf(result.base64!);
+        expect(result.diagnostics!.map((d) => d.code)).not.toContain('PDFA_NO_FONT_ENTRIES');
+    });
+
+    it('strict + pdfA without embedFonts keeps the PDF_A_COMPLIANCE_VIOLATION code (not VALIDATION_ERROR)', async () => {
+        await expect(embedImage({ ...IMG, pdfA: 'pdfa2b', strict: true })).rejects.toMatchObject({ code: 'PDF_A_COMPLIANCE_VIOLATION' });
+    });
+
+    it('print bleed + metadata reach the output', async () => {
+        const result = await embedImage({ ...IMG, print: { bleed: 8.5 }, metadata: { author: 'A' } });
+        const text = Buffer.from(result.base64!, 'base64').toString('latin1');
+        expect(text).toContain('/TrimBox');
+        expect(text).toContain('/Author (A)');
+    });
+
+    it('marks without a TrimBox surfaces as PRINT_ERROR', async () => {
+        await expect(embedImage({ ...IMG, print: { marks: true } })).rejects.toMatchObject({ code: 'PRINT_ERROR' });
+    });
+});

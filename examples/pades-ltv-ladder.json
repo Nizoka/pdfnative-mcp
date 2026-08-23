@@ -1,0 +1,40 @@
+{
+  "description": "PAdES long-term-validation ladder (pdfnative 1.7): B-B (sign_pdf profile=pades) -> B-T (timestamp=true, RFC 3161 token from the OPERATOR-configured TSA: PDFNATIVE_MCP_TSA_URL) -> B-LT (add_ltv: /DSS + /VRI through the operator revocation provider: PDFNATIVE_MCP_REVOCATION=ocsp,crl + PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS) -> B-LTA (timestamp_pdf: /DocTimeStamp). Without that configuration the network steps fail fast with TSA_NOT_CONFIGURED / REVOCATION_NOT_CONFIGURED and the server makes no network call. Finish with verify_pdf ltv=true to read back the achieved level. Each rung is an incremental revision; earlier signatures stay valid.",
+  "steps": [
+    {
+      "tool": "prepare_signature_placeholder",
+      "arguments": {
+        "title": "Archive contract",
+        "signerName": "Alice Example",
+        "reason": "Approved for archival",
+        "subFilter": "ETSI.CAdES.detached",
+        "reserveTimestamp": true,
+        "blocks": [{ "type": "paragraph", "text": "Long-term validated agreement." }]
+      }
+    },
+    {
+      "tool": "sign_pdf",
+      "arguments": {
+        "pdfBase64": "<base64 from step 1>",
+        "algorithm": "rsa-sha256",
+        "profile": "pades",
+        "timestamp": true,
+        "certDerBase64": "<signer cert DER, base64>",
+        "certChainDerBase64": ["<intermediate CA DER, base64>"],
+        "rsaKeyPkcs1DerBase64": "<RSA private key PKCS#1 DER, base64>"
+      }
+    },
+    {
+      "tool": "add_ltv",
+      "arguments": { "pdfBase64": "<base64 from step 2>", "mode": "online" }
+    },
+    {
+      "tool": "timestamp_pdf",
+      "arguments": { "pdfBase64": "<base64 from step 3>" }
+    },
+    {
+      "tool": "verify_pdf",
+      "arguments": { "pdfBase64": "<base64 from step 4>", "ltv": true, "trustedRootsDerBase64": ["<root CA DER, base64>"] }
+    }
+  ]
+}

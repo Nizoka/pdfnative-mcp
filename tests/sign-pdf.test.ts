@@ -18,6 +18,8 @@ vi.mock('pdfnative', () => ({
     parseRsaPrivateKey: parseRsaPrivateKeyMock,
     signPdfBytes: signPdfBytesMock,
     addSignaturePlaceholder: addSignaturePlaceholderMock,
+    signPdfBytesWithTimestamp: vi.fn(async () => new Uint8Array([0x25, 0x50, 0x44, 0x46])),
+    estimateContentsSize: vi.fn(() => 16384),
     openPdf: openPdfMock,
     isRef: (v: unknown) => v !== null && typeof v === 'object' && 'num' in (v as object),
     isDict: (v: unknown) => v instanceof Map || (v !== null && typeof v === 'object' && 'get' in (v as object) && typeof (v as { get?: unknown }).get === 'function'),
@@ -56,8 +58,8 @@ describe('sign_pdf tool', () => {
         const result = await signPdf({
             pdfBase64: b64([1, 2, 3]),
             algorithm: 'rsa-sha256',
-            certDerBase64: b64([4, 5, 6]),
-            rsaKeyPkcs1DerBase64: b64([7, 8, 9]),
+            certDerBase64: b64([0x30, 0x01, 0x06]),
+            rsaKeyPkcs1DerBase64: b64([0x30, 0x01, 0x09]),
             signerName: 'Alice',
         });
 
@@ -78,7 +80,7 @@ describe('sign_pdf tool', () => {
         const result = await signPdf({
             pdfBase64: b64([1, 2, 3]),
             algorithm: 'ecdsa-sha256',
-            certDerBase64: b64([4, 5, 6]),
+            certDerBase64: b64([0x30, 0x01, 0x06]),
             ecPrivateScalarHex: '1'.repeat(64),
         });
 
@@ -98,7 +100,7 @@ describe('sign_pdf tool', () => {
             signPdf({
                 pdfBase64: b64([1, 2, 3]),
                 algorithm: 'rsa-sha256',
-                certDerBase64: b64([4, 5, 6]),
+                certDerBase64: b64([0x30, 0x01, 0x06]),
             }),
         ).rejects.toThrow('rsaKeyPkcs1DerBase64 is required');
     });
@@ -110,7 +112,7 @@ describe('sign_pdf tool', () => {
             signPdf({
                 pdfBase64: b64([1, 2, 3]),
                 algorithm: 'ecdsa-sha256',
-                certDerBase64: b64([4, 5, 6]),
+                certDerBase64: b64([0x30, 0x01, 0x06]),
             }),
         ).rejects.toThrow('ecPrivateScalarHex or ecPrivateKeyDerBase64 is required');
     });
@@ -125,8 +127,8 @@ describe('sign_pdf tool', () => {
             signPdf({
                 pdfBase64: b64([1, 2, 3]),
                 algorithm: 'rsa-sha256',
-                certDerBase64: b64([4, 5, 6]),
-                rsaKeyPkcs1DerBase64: b64([7, 8, 9]),
+                certDerBase64: b64([0x30, 0x01, 0x06]),
+                rsaKeyPkcs1DerBase64: b64([0x30, 0x01, 0x09]),
             }),
         ).rejects.toThrow('Failed to sign PDF: bad signature state');
     });
@@ -136,8 +138,8 @@ describe('sign_pdf tool', () => {
         await signPdf({
             pdfBase64: b64([1, 2, 3]),
             algorithm: 'rsa-sha256',
-            certDerBase64: b64([4, 5, 6]),
-            rsaKeyPkcs1DerBase64: b64([7, 8, 9]),
+            certDerBase64: b64([0x30, 0x01, 0x06]),
+            rsaKeyPkcs1DerBase64: b64([0x30, 0x01, 0x09]),
             signerName: 'Bob',
             reason: 'Reviewed and approved',
             location: 'Berlin, DE',
@@ -159,8 +161,8 @@ describe('sign_pdf tool', () => {
         await signPdf({
             pdfBase64: b64([1, 2, 3]),
             algorithm: 'rsa-sha256',
-            certDerBase64: b64([4, 5, 6]),
-            rsaKeyPkcs1DerBase64: b64([7, 8, 9]),
+            certDerBase64: b64([0x30, 0x01, 0x06]),
+            rsaKeyPkcs1DerBase64: b64([0x30, 0x01, 0x09]),
         });
         expect(addSignaturePlaceholderMock).toHaveBeenCalledTimes(1);
         expect(signPdfBytesMock).toHaveBeenCalledTimes(1);
@@ -175,11 +177,11 @@ describe('sign_pdf tool', () => {
             signPdf({
                 pdfBase64: b64([1, 2, 3]),
                 algorithm: 'rsa-sha256',
-                certDerBase64: b64([4, 5, 6]),
-                rsaKeyPkcs1DerBase64: b64([7, 8, 9]),
+                certDerBase64: b64([0x30, 0x01, 0x06]),
+                rsaKeyPkcs1DerBase64: b64([0x30, 0x01, 0x09]),
                 autoInjectPlaceholder: false,
             }),
-        ).rejects.toThrow(/MISSING_PLACEHOLDER|no \/Sig placeholder/);
+        ).rejects.toMatchObject({ code: 'MISSING_PLACEHOLDER', message: expect.stringContaining('no /Sig placeholder') as string });
         expect(addSignaturePlaceholderMock).not.toHaveBeenCalled();
     });
 
@@ -189,9 +191,9 @@ describe('sign_pdf tool', () => {
             signPdf({
                 pdfBase64: b64([1, 2, 3]),
                 algorithm: 'ecdsa-sha256',
-                certDerBase64: b64([4, 5, 6]),
+                certDerBase64: b64([0x30, 0x01, 0x06]),
                 ecPrivateScalarHex: '1'.repeat(64),
-                ecPrivateKeyDerBase64: b64([7, 8, 9]),
+                ecPrivateKeyDerBase64: b64([0x30, 0x01, 0x09]),
             }),
         ).rejects.toThrow('mutually exclusive');
     });

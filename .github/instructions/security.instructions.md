@@ -15,10 +15,18 @@ applyTo: "src/output.ts,src/tools/sign-pdf.ts,src/server.ts"
 
 ## Signing input handling
 - Treat cert/key fields as sensitive input.
-- Validate base64/hex strictly before use.
+- Validate base64/hex strictly before use — decode through `src/base64.ts` (DER expected; PEM is rejected with a `VALIDATION_ERROR` + openssl remedy).
 - Provide clear validation errors without leaking sensitive payload content.
+- Never log or echo passwords, key/cert material, `PDFNATIVE_MCP_TSA_AUTH` or `PDFNATIVE_MCP_HTTP_TOKEN`.
+
+## Network and HTTP
+- The only egress path is `src/network.ts` (operator-configured TSA / OCSP / CRL endpoints behind the SSRF guard); a tool argument never supplies a URL.
+- HTTP mode (`PDFNATIVE_MCP_PORT`) binds loopback and checks Host/Origin (the Origin port must equal the server port — `src/http.ts`); `PDFNATIVE_MCP_HTTP_TOKEN` (`src/auth.ts`, ≥ 16 chars, constant-time compare, RFC 6750 challenge) is the only authentication — recommend it, and document that without it any local process can reach the endpoint.
+- `PDFNATIVE_MCP_MAX_INFLATE_BYTES` (`src/inflate-cap.ts`) is read once at boot and applied to the engine's zip-bomb cap; an invalid value must refuse to start. Tool arguments can never change it.
+- Images go through `src/image.ts` (magic bytes + PNG IHDR checks, 24 MiB per-call budget); `embed_image.imageBase64` has no length bound (1.5.0 contract) — do not add one.
 
 ## Dependency and CI security
+- Exactly three runtime dependencies (pdfnative, `@modelcontextprotocol/server`, zod); adding one is a governance blocker.
 - npm publish via OIDC Trusted Publishing only.
 - Keep lockfile committed and audit in CI.
 - Run CodeQL and Scorecard workflows.

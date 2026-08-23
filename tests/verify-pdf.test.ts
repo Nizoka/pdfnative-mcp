@@ -19,6 +19,7 @@ import { verifyPdf } from '../src/tools/verify-pdf.js';
 import { ToolError } from '../src/errors.js';
 
 import { buildRsaSelfSignedCert, buildEcdsaSelfSignedCert } from './_cert-fixtures.js';
+import { fullLadder, MOCK_TSA_GEN_TIME } from './_ltv-fixtures.js';
 
 function pdfWithPlaceholder(): Uint8Array {
     const base = buildDocumentPDFBytes({
@@ -138,8 +139,11 @@ describe('verify_pdf', () => {
         mutated[hexStart + 4] = mutated[hexStart + 4] === 0x41 ? 0x42 : 0x41;
         const result = await verifyPdf({ pdfBase64: toB64(mutated) });
         expect(result.allValid).toBe(false);
-        // Either CMS parse fails or signature-value verification fails — both are acceptable.
-        expect(result.signatures[0]!.errors.length).toBeGreaterThan(0);
+        // The flipped nibble lands in the outer SEQUENCE length of the CMS ContentInfo,
+        // so the failure is always a CMS parse error (never a signature-value mismatch).
+        expect(result.signatures[0]!.errors).toHaveLength(1);
+        expect(result.signatures[0]!.errors[0]).toMatch(/^ContentInfo: ASN\.1: value extends beyond buffer/);
+        expect(result.signatures[0]!.integrity).toBe(false);
     });
 
     it('reports unverified chainTrust when supplied roots do not validate the signer', async () => {
@@ -157,5 +161,80 @@ describe('verify_pdf', () => {
         });
         expect(result.signatures[0]!.chainTrust).toBe('unverified');
         expect(result.signatures[0]!.errors.join('|')).toMatch(/trusted root/i);
+    });
+
+    it('default output carries subFilter but none of the ltv keys', async () => {
+        const { signerCert, rsaKey } = buildRsaSelfSignedCert();
+        const signed = signPdfBytes(pdfWithPlaceholder(), { algorithm: 'rsa-sha256', signerCert, rsaKey });
+        const result = await verifyPdf({ pdfBase64: toB64(signed) });
+        expect(Object.keys(result)).toEqual(['signatureCount', 'allValid', 'summary', 'signatures']);
+        expect(Object.keys(result.signatures[0]!)).toEqual([
+            'fieldName',
+            'subFilter',
+            'valid',
+            'integrity',
+            'algorithm',
+            'signerSubject',
+            'signingTime',
+            'reason',
+            'location',
+            'chainTrust',
+            'errors',
+        ]);
+        expect(result.signatures[0]!.subFilter).toBe('adbe.pkcs7.detached');
+        expect(result.signatures[0]!.isDocTimestamp).toBeUndefined();
+    });
+
+    it('verifies a /DocTimeStamp as an RFC 3161 token, so a B-LTA document reports allValid=true', async () => {
+        const base = buildDocumentPDFBytes({ title: 'LTA', blocks: [{ type: 'paragraph', text: 'archived' }] });
+        const { blta } = await fullLadder(base);
+        const result = await verifyPdf({ pdfBase64: toB64(blta) });
+        expect(result.signatureCount).toBe(2);
+        expect(result.allValid).toBe(true);
+        expect(result.summary).toBe('All 2 signature(s) valid.');
+        const ts = result.signatures.find((s) => s.isDocTimestamp === true);
+        expect(ts).toBeDefined();
+        expect(ts!.subFilter).toBe('ETSI.RFC3161');
+        expect(ts!.integrity).toBe(true);
+        expect(ts!.valid).toBe(true);
+        expect(ts!.algorithm).toBeNull();
+        expect(ts!.signerSubject).toBe('pdfnative Mock TSA');
+        expect(ts!.signingTime).toBe(MOCK_TSA_GEN_TIME.toISOString());
+        expect(ts!.errors).toEqual([]);
+        // Without ltv the document-level extras stay absent.
+        expect(result.dss).toBeUndefined();
+        expect(result.ltvLevel).toBeUndefined();
+    });
+
+    it('reports an unsigned /DocTimeStamp placeholder as invalid without throwing', async () => {
+        const base = buildDocumentPDFBytes({ title: 'TS placeholder', blocks: [{ type: 'paragraph', text: 'x' }] });
+        const placeheld = addSignaturePlaceholder(base, { docTimeStamp: true, placeholderBytes: 4096 });
+        const result = await verifyPdf({ pdfBase64: toB64(placeheld) });
+        expect(result.signatureCount).toBe(1);
+        expect(result.allValid).toBe(false);
+        const ts = result.signatures[0]!;
+        expect(ts.isDocTimestamp).toBe(true);
+        expect(ts.subFilter).toBe('ETSI.RFC3161');
+        expect(ts.integrity).toBe(false);
+        expect(ts.valid).toBe(false);
+        expect(ts.algorithm).toBeNull();
+        expect(ts.errors.length).toBeGreaterThan(0);
+    });
+
+    it('reports a tampered /DocTimeStamp revision with integrity=false and allValid=false', async () => {
+        const base = buildDocumentPDFBytes({ title: 'LTA', blocks: [{ type: 'paragraph', text: 'archived' }] });
+        const { blta } = await fullLadder(base);
+        const tampered = new Uint8Array(blta);
+        // The document timestamp covers the whole file except its own /Contents; flip a byte
+        // of the original revision that the first signature does not cover (its ByteRange gap).
+        const text = Buffer.from(blta).toString('latin1');
+        const hexStart = text.indexOf('/Contents <') + '/Contents <'.length;
+        tampered[hexStart + 2] = tampered[hexStart + 2] === 0x41 ? 0x42 : 0x41;
+        const result = await verifyPdf({ pdfBase64: toB64(tampered) });
+        const ts = result.signatures.find((s) => s.isDocTimestamp === true)!;
+        expect(ts.integrity).toBe(false);
+        expect(ts.valid).toBe(false);
+        expect(ts.errors.join('|')).toMatch(/messageImprint/);
+        expect(result.allValid).toBe(false);
     });
 });

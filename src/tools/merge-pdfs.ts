@@ -7,8 +7,8 @@
  * space, so the output is fully self-contained.
  *
  * Faithful-wrapper notes (pdfnative semantics, surfaced verbatim):
- *   - Encrypted sources are rejected (decrypt outside the server first) →
- *     `ENCRYPTED_SOURCE`.
+ *   - Encrypted sources open with `password` (pdfnative ≥ 1.6); a missing or
+ *     wrong password → `PASSWORD_REQUIRED` / `PASSWORD_INVALID`.
  *   - Any existing signatures and the `/AcroForm` are dropped — a page-tree
  *     edit necessarily invalidates `/ByteRange`. Self-contained URI `/Link`
  *     annotations are preserved unless `dropAnnotations` is set.
@@ -22,6 +22,7 @@ import { z } from 'zod';
 
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { decodePdfBase64 } from '../base64.js';
 import { mapPageTreeError } from '../pagetree.js';
 import {
     ENCRYPT_INPUT_SCHEMA,
@@ -64,12 +65,12 @@ export const MERGE_PDFS_INPUT_SCHEMA = {
             description:
                 'In-memory assembly guard (pdfnative maxOutputSize): the merge throws before materialising an object graph larger than this. Defaults to 268435456 (256 MiB). Note the emitted PDF is separately capped at 50 MiB by the output layer.',
         },
-        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64' },
-        outputPath: { type: 'string' },
+        outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
+        outputPath: { type: 'string', description: "Required when outputMode='file'. Relative path inside the sandbox; must end with .pdf (no absolute paths, no '..')." },
     },
 } as const;
 
-const InputSchema = z.object({
+const InputSchema = z.strictObject({
     pdfsBase64: z.array(z.string().min(4)).min(2).max(50),
     password: PasswordSchema.optional(),
     encrypt: EncryptSchema.optional(),
@@ -80,11 +81,7 @@ const InputSchema = z.object({
 });
 
 function decodeBase64(value: string, field: string): Uint8Array {
-    try {
-        return new Uint8Array(Buffer.from(value, 'base64'));
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', `${field} is not valid base64.`);
-    }
+    return decodePdfBase64(value, field);
 }
 
 export async function mergePdfsTool(rawInput: unknown): Promise<OutputResult> {

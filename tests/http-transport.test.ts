@@ -1,102 +1,88 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { AddressInfo } from 'node:net';
-import { createServer as createHttpServer, request as httpRequest, type Server as HttpServer } from 'node:http';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
-import { createServer } from '../src/server.js';
+import { ensureCompressionReady } from '../src/server.js';
+import { startHttpFixture, send, legacyInitBody, JSON_HEADERS, type HttpFixture } from './_http-fixture.js';
+import { connectLegacy } from './_mcp-harness.js';
+import { generateBasicPdf } from '../src/tools/generate-basic-pdf.js';
 
 /**
- * DNS-rebinding / Origin protection for the optional HTTP transport.
+ * Legacy-era (2025-xx) HTTP transport: DNS-rebinding / Origin protection and
+ * the stateless `initialize` fallback that today's hosts rely on.
  *
- * The CLI (src/cli.ts) configures the Streamable HTTP transport with
- * `enableDnsRebindingProtection` + `allowedHosts`/`allowedOrigins` pinned to the
- * loopback authority. These tests reproduce that wiring and assert the transport
- * answers 403 to a foreign Host/Origin while accepting the loopback authority —
- * matching MCP's Security Best Practices (403 on invalid Origin).
+ * The fixture reproduces src/cli.ts's wiring (node:http → src/http.ts →
+ * createMcpHandler with `legacy: 'stateless'`). Host and Origin are pinned to
+ * the loopback authority; any foreign value is answered with 403, matching
+ * MCP's Security Best Practices.
  */
-describe('HTTP transport DNS-rebinding protection', () => {
-    let httpServer: HttpServer | undefined;
+describe('HTTP transport — legacy 2025-era clients', () => {
+    let fx: HttpFixture;
 
-    afterEach(async () => {
-        if (httpServer !== undefined) {
-            await new Promise<void>((resolve) => httpServer!.close(() => resolve()));
-            httpServer = undefined;
-        }
+    beforeAll(async () => {
+        await ensureCompressionReady();
+        fx = await startHttpFixture();
+    });
+    afterAll(async () => {
+        await fx.close();
     });
 
-    /** Start the MCP HTTP transport with the loopback authority (incl. port) pinned. */
-    async function startServer(): Promise<number> {
-        const mcp = createServer();
-        httpServer = createHttpServer();
-        await new Promise<void>((resolve) => httpServer!.listen(0, '127.0.0.1', () => resolve()));
-        const port = (httpServer!.address() as AddressInfo).port;
-
-        // Mirror src/cli.ts: pin Host/Origin to the loopback authority including the port.
-        const transport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: undefined,
-            enableDnsRebindingProtection: true,
-            allowedHosts: [`127.0.0.1:${port}`, `localhost:${port}`],
-            allowedOrigins: [`http://127.0.0.1:${port}`, `http://localhost:${port}`],
-        });
-        await mcp.connect(transport);
-
-        httpServer.on('request', (req, res) => {
-            if (req.url === '/mcp') {
-                void transport.handleRequest(req, res);
-            } else {
-                res.writeHead(404).end();
-            }
-        });
-        return port;
-    }
-
-    const initBody = JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'initialize',
-        params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } },
-    });
-
-    /** POST /mcp with a precise set of headers; resolves to the HTTP status code. */
-    function post(port: number, headers: Record<string, string>): Promise<number> {
-        return new Promise<number>((resolve, reject) => {
-            const req = httpRequest(
-                {
-                    host: '127.0.0.1',
-                    port,
-                    path: '/mcp',
-                    method: 'POST',
-                    headers: {
-                        'content-type': 'application/json',
-                        accept: 'application/json, text/event-stream',
-                        'content-length': Buffer.byteLength(initBody),
-                        ...headers,
-                    },
-                },
-                (res) => {
-                    res.resume();
-                    res.on('end', () => resolve(res.statusCode ?? 0));
-                },
-            );
-            req.on('error', reject);
-            req.end(initBody);
-        });
-    }
+    const initBody = legacyInitBody();
 
     it('rejects a foreign Host header with 403', async () => {
-        const port = await startServer();
-        expect(await post(port, { host: 'evil.example.com' })).toBe(403);
+        const r = await send(fx.port, { headers: { ...JSON_HEADERS, host: 'evil.example.com' }, body: initBody });
+        expect(r.status).toBe(403);
     });
 
     it('rejects a foreign Origin header with 403', async () => {
-        const port = await startServer();
-        expect(await post(port, { host: `127.0.0.1:${port}`, origin: 'http://evil.example.com' })).toBe(403);
+        const r = await send(fx.port, {
+            headers: { ...JSON_HEADERS, host: `127.0.0.1:${fx.port}`, origin: 'http://evil.example.com' },
+            body: initBody,
+        });
+        expect(r.status).toBe(403);
     });
 
-    it('accepts the loopback Host/Origin', async () => {
-        const port = await startServer();
-        const status = await post(port, { host: `127.0.0.1:${port}`, origin: `http://127.0.0.1:${port}` });
-        expect(status).not.toBe(403);
-        expect(status).toBeLessThan(400);
+    it('accepts the loopback Host/Origin and negotiates the legacy protocol version', async () => {
+        const r = await send(fx.port, {
+            headers: { ...JSON_HEADERS, host: `127.0.0.1:${fx.port}`, origin: `http://127.0.0.1:${fx.port}` },
+            body: initBody,
+        });
+        expect(r.status).toBeLessThan(400);
+        const result = r.json?.['result'] as Record<string, unknown> | undefined;
+        expect(result?.['protocolVersion']).toBe('2025-06-18');
+        expect((result?.['serverInfo'] as { name?: string } | undefined)?.name).toBe('pdfnative-mcp');
+        expect(typeof result?.['instructions']).toBe('string');
+        // Legacy results never carry 2026-07-28 wire fields.
+        expect(result?.['resultType']).toBeUndefined();
+    });
+
+    it('serves tools/list and tools/call statelessly (no session) with results identical to the in-memory path', async () => {
+        const list = await send(fx.port, {
+            headers: JSON_HEADERS,
+            body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+        });
+        expect(list.status).toBe(200);
+        const tools = (list.json?.['result'] as { tools: Array<{ name: string }> }).tools;
+        expect(tools.length).toBeGreaterThanOrEqual(24);
+
+        const sample = await generateBasicPdf({ title: 'HTTP', blocks: [{ type: 'paragraph', text: 'over http' }] });
+        const args = { pdfBase64: sample.base64, verbosity: 'summary' };
+        const call = await send(fx.port, {
+            headers: JSON_HEADERS,
+            body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'inspect_pdf', arguments: args } }),
+        });
+        expect(call.status).toBe(200);
+        const overHttp = call.json?.['result'] as { structuredContent?: unknown; isError?: boolean };
+        expect(overHttp.isError).not.toBe(true);
+
+        const client = await connectLegacy();
+        const inMemory = await client.callTool<{ structuredContent?: unknown }>('inspect_pdf', args);
+        await client.close();
+        expect(overHttp.structuredContent).toEqual(inMemory.structuredContent);
+    });
+
+    it('answers 405 to GET/DELETE (stateless serving), 404 off /mcp and 415 on a wrong content-type', async () => {
+        expect((await send(fx.port, { method: 'GET', headers: { accept: 'text/event-stream' } })).status).toBe(405);
+        expect((await send(fx.port, { method: 'DELETE', headers: {} })).status).toBe(405);
+        expect((await send(fx.port, { path: '/other', headers: JSON_HEADERS, body: initBody })).status).toBe(404);
+        expect((await send(fx.port, { headers: { 'content-type': 'text/plain', accept: 'application/json, text/event-stream' }, body: initBody })).status).toBe(415);
     });
 });

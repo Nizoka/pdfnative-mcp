@@ -5,30 +5,57 @@
 
 ## Overview
 
-MCP server bridging pdfnative (v1.6.x) to AI clients over stdio. 24 tools.
+MCP server bridging pdfnative (v1.7.x) to AI clients over stdio or Streamable
+HTTP, on the MCP TypeScript SDK v2 (`@modelcontextprotocol/server`, MCP
+2026-07-28 with automatic 2025-era fallback). 28 tools, 6 prompts. Current release
+1.6.0. Three runtime dependencies (pdfnative, the MCP SDK, zod) — never add one.
 Quality bar: production-grade OSS (strict TypeScript, strong validation, secure
-file IO, deterministic releases).
+file IO, no egress except operator-configured TSA / OCSP / CRL endpoints,
+deterministic releases).
 
 ## Architecture (one line each)
 
-- src/cli.ts — stdio / Streamable HTTP entry point.
-- src/server.ts — tool registry (+ MCP annotations) + request handlers + SERVER_INSTRUCTIONS; resources & prompts capabilities.
-- src/tools/* — one file per tool (JSON schema `as const` + parallel Zod + handler).
-- src/encryption.ts — shared password/encrypt schema + decrypt error mapper (pdfnative 1.6).
-- src/chart.ts — shared ChartBlock schema + mapper (add_chart and the generate_basic_pdf chart block).
+- src/cli.ts — stdio (`serveStdio`) / Streamable HTTP (`createMcpHandler`) entry point.
+- src/http.ts — Node http ↔ Web Request/Response bridge + Host/Origin loopback guard.
+- src/auth.ts — opt-in HTTP bearer token (`PDFNATIVE_MCP_HTTP_TOKEN`, constant-time compare, 401 + WWW-Authenticate).
+- src/base64.ts — base64 boundary helpers (data: URI tolerated, PEM-vs-DER and double-encoding hints).
+- src/server.ts — tool registry (+ MCP annotations) + request handlers on the low-level `Server` + SERVER_INSTRUCTIONS + SERVER_CACHE_HINTS; resources & prompts capabilities.
+- src/tools/* — one file per tool (JSON schema `as const` + parallel Zod + handler); inspect-layout.ts (28th tool) reuses the generate_basic_pdf block schema + layout fragment.
+- src/network.ts — the only egress path: operator-configured TSA / OCSP / CRL providers + SSRF guard; URLs never come from tool arguments.
+- src/blocks.ts — the 7 extended document blocks (table, image, link, toc, barcode, svg, formField) → 13 block kinds in total.
+- src/layout.ts — pageSize / margins / headerTemplate / footerTemplate / compress / debug / encrypt fragment (PdfLayoutOptions) shared by the nine document tools.
+- src/table.ts, src/barcode.ts, src/form.ts, src/image.ts — bodies shared by a dedicated tool and its inline block (form.ts maps `textarea` → `multilineText`; image.ts checks magic bytes + PNG IHDR, 24 MiB per-call budget; embed_image stays unbounded).
+- src/watermark.ts — text and/or image watermark + position; PDF/A-1b transparency guard.
+- src/inflate-cap.ts — PDFNATIVE_MCP_MAX_INFLATE_BYTES → engine decompression cap (read once at boot; invalid value refuses to start) + PDF_PARSE_FAILED mapping.
+- src/print.ts — shared print-production schema (boxes, bleed, marks, userUnit, outputIntent, metadata, creationDate).
+- src/diagnostics.ts — PDF/A diagnostics sink (`strict` / `includeDiagnostics` / `embedFonts`) + `mapBuildError`.
+- src/encryption.ts — shared password/encrypt schema + decrypt error mapper.
+- src/chart.ts — shared charts v2 schema + mapper (add_chart and the generate_basic_pdf chart block).
 - src/resources.ts — native MCP resources over the sandbox output dir (pdfnative://output/…).
 - src/text.ts — newline sanitizer (Safe PDF/A).
 - src/output.ts — output mode (base64 or sandboxed file write).
 - src/errors.ts — ToolError, SecurityError, GovernanceError.
-- tests/* — unit tests for tool behavior and sandbox security; tests/_encrypted-fixtures.ts builds encrypted PDFs in-process.
+- tests/* — unit tests for tool behavior and sandbox security; tests/_encrypted-fixtures.ts builds encrypted PDFs in-process; tests/catalogue-superset.test.ts keeps the live catalogue a superset of tests/_fixtures/tool-shape.v1.5.0.json (never regenerate that fixture).
 
 ## Core conventions
 
 - Strict TypeScript; no `any` (use `unknown` + narrowing).
-- Validate every tool input at the boundary with Zod; keep JSON schema and Zod aligned.
+- Validate every tool input at the boundary with Zod (`.strict()` — unknown keys are a
+  `VALIDATION_ERROR`); keep JSON schema and Zod aligned.
+- `tools/list` is structurally fingerprinted: after a deliberate schema change run
+  `node scripts/tool-shape.mjs --write` (refreshes `tests/_fixtures/tool-shape.json`,
+  asserted by `tests/catalogue-parity.test.ts`) and review under docs/API_STABILITY.md §5.
+- Unknown tool name on `tools/call` is a JSON-RPC `-32602` `[UNKNOWN_TOOL]` protocol error.
 - Never write outside PDFNATIVE_MCP_OUTPUT_DIR. For outputMode=file: reject absolute
   paths, path traversal, NUL bytes; enforce `.pdf`.
-- Never echo key/cert material in errors or logs.
+- Never echo key/cert material, passwords, PDFNATIVE_MCP_TSA_AUTH or
+  PDFNATIVE_MCP_HTTP_TOKEN in errors or logs.
+- Never add a network path outside src/network.ts; never accept a URL from a tool argument.
+- Operator env vars: PDFNATIVE_MCP_OUTPUT_DIR, PDFNATIVE_MCP_CACHE_DIR, PDFNATIVE_MCP_PORT,
+  PDFNATIVE_MCP_HTTP_TOKEN, PDFNATIVE_MCP_MAX_INFLATE_BYTES, PDFNATIVE_MCP_TSA_URL,
+  PDFNATIVE_MCP_TSA_AUTH, PDFNATIVE_MCP_REVOCATION, PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS,
+  PDFNATIVE_MCP_NETWORK_TIMEOUT_MS.
+- `npm run lint` is `eslint src --max-warnings 0` — warnings fail the gate. CI runs on Linux (Node 22 / 24) and Windows.
 
 ## Quality gate (all PRs)
 

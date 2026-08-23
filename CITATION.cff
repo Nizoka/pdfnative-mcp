@@ -9,19 +9,30 @@ repository-code: "https://github.com/Nizoka/pdfnative-mcp"
 url: "https://github.com/Nizoka/pdfnative-mcp"
 abstract: >-
   Model Context Protocol (MCP) server bridging the zero-dependency pdfnative
-  library to AI clients. Provides 13 production-grade tools for PDF generation,
-  PDF/A archival, PDF/UA structural validation, embedded barcodes, digital
-  signatures (PAdES with RSA/ECDSA), multi-script text, smart tables, interactive
-  forms, embedded files (Factur-X), signature verification, and PDF introspection.
+  library to AI clients. Provides 28 production-grade tools for PDF generation
+  (13 document block kinds, page layout options, a read-only pagination preview),
+  PDF/A archival with embedded fonts and conformance diagnostics, PDF/UA
+  structural validation, native vector charts, embedded barcodes, multi-script
+  text, smart tables, interactive forms (create, read, fill, flatten), embedded
+  files (Factur-X), digital signatures with the full PAdES long-term-validation
+  ladder (B-B to B-LTA: RFC 3161 timestamps, DSS, document timestamps) and
+  verification, print production (page boxes, bleed, printer's marks), document
+  metadata updates, encryption round-trip, page-tree operations, markup
+  annotations, Unicode text extraction, PDF introspection, and human-in-the-loop
+  governance issue drafting. Speaks MCP 2026-07-28 with automatic fallback for
+  2025-era clients and makes no outbound network call by default.
 license: MIT
-version: 1.1.0
-date-released: "2025-01-01"
+version: 1.6.0
+date-released: "2026-08-23"
 keywords:
   - mcp
   - model-context-protocol
   - pdf
   - pdf-a
   - pades
+  - ltv
+  - rfc3161
   - digital-signature
+  - print-production
   - factur-x
   - ai-tools

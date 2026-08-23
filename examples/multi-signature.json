@@ -1,0 +1,32 @@
+{
+  "description": "Two signatures on one document (pdfnative 1.7): the first sign_pdf call injects the 'Author' placeholder; the second adds a 'Reviewer' signature with allowMultiple=true (a fresh fieldName is mandatory). Each signature is an incremental revision, so the first one stays valid; verify_pdf reports both.",
+  "steps": [
+    {
+      "tool": "sign_pdf",
+      "arguments": {
+        "pdfBase64": "<any PDF base64>",
+        "algorithm": "rsa-sha256",
+        "fieldName": "Author",
+        "reason": "Authored",
+        "certDerBase64": "<author cert DER, base64>",
+        "rsaKeyPkcs1DerBase64": "<author RSA PKCS#1 DER, base64>"
+      }
+    },
+    {
+      "tool": "sign_pdf",
+      "arguments": {
+        "pdfBase64": "<base64 from step 1>",
+        "algorithm": "ecdsa-sha256",
+        "fieldName": "Reviewer",
+        "allowMultiple": true,
+        "reason": "Reviewed",
+        "certDerBase64": "<reviewer cert DER, base64>",
+        "ecPrivateKeyDerBase64": "<reviewer EC key PKCS#8 DER, base64>"
+      }
+    },
+    {
+      "tool": "verify_pdf",
+      "arguments": { "pdfBase64": "<base64 from step 2>" }
+    }
+  ]
+}

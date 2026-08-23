@@ -113,6 +113,14 @@ describe('repo governance artifacts', () => {
         expect(contract.policy['human_in_the_loop_mandatory']).toBe(true);
         expect(contract.policy['runtime_dependencies_allowed']).toBe(false);
         expect(contract.human_in_the_loop['role_of_agent']).toBe('draftsman');
+        // v1.6.0 network policy: no egress by default; only operator-configured PKI endpoints.
+        expect(contract.policy['outbound_network_allowed']).toBe(false);
+        const net = contract.policy['outbound_network'] as Record<string, unknown>;
+        expect(net['default']).toBe('none');
+        expect(net['operator_configured_endpoints']).toEqual(['rfc3161_tsa', 'ocsp', 'crl']);
+        expect(net['url_from_tool_arguments']).toBe('never');
+        expect(net['github']).toBe('never');
+        expect(net['telemetry']).toBe('never');
     });
 
     it('ships the AGENT_RULES.md protocol and a drafts staging area', async () => {

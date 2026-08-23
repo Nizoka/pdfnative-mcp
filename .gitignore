@@ -8,6 +8,7 @@ coverage/
 .vscode/
 .idea/
 out/
+test-output/
 *.tsbuildinfo
 
 # AI-governance issue drafts are local work-in-progress; never commit ad-hoc

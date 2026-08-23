@@ -1,0 +1,17 @@
+{
+  "description": "Charts v2 (pdfnative 1.7 via add_chart): a stacked bar chart with per-point data labels. Stacked kinds (stackedBar / stackedBarH) and area charts accumulate series; the engine validates cross-field rules (e.g. no log scale on stacked charts) and reports them as CHART_ERROR. Self-contained: runs end-to-end with no placeholders.",
+  "tool": "add_chart",
+  "arguments": {
+    "chartType": "stackedBar",
+    "title": "Revenue by segment (k€)",
+    "categories": ["Q1", "Q2", "Q3", "Q4"],
+    "series": [
+      { "label": "Services", "values": [80, 95, 90, 120] },
+      { "label": "Licences", "values": [40, 55, 60, 70] },
+      { "label": "Support", "values": [20, 25, 30, 35] }
+    ],
+    "dataLabels": { "decimals": 0 },
+    "axis": { "grid": true },
+    "legend": "bottom"
+  }
+}
