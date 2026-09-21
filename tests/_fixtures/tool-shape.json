@@ -7064,7 +7064,7 @@
     },
     "check": {
      "type": "array",
-     "maxItems": 9,
+     "maxItems": 10,
      "items": {
       "type": "string",
       "enum": [
@@ -7076,7 +7076,8 @@
        "dss",
        "docTimestamp",
        "trapped",
-       "annotations"
+       "annotations",
+       "pdfx"
       ]
      }
     },
@@ -7369,6 +7370,9 @@
       "False",
       "Unknown"
      ]
+    },
+    "pdfX": {
+     "type": "string"
     },
     "docTimestampCount": {
      "type": "integer",
@@ -8458,7 +8462,7 @@
  },
  {
   "name": "validate_pdf",
-  "title": "Validate PDF/UA structure",
+  "title": "Validate PDF structure (PDF/UA, PDF/X-4)",
   "annotations": {
    "readOnlyHint": true,
    "destructiveHint": false,
@@ -8472,6 +8476,14 @@
     "pdfBase64": {
      "type": "string",
      "minLength": 4
+    },
+    "standard": {
+     "type": "string",
+     "enum": [
+      "pdf-ua-1",
+      "pdf-x-4"
+     ],
+     "default": "pdf-ua-1"
     },
     "verbosity": {
      "type": "string",
@@ -8501,7 +8513,8 @@
     "standard": {
      "type": "string",
      "enum": [
-      "pdf-ua-1"
+      "pdf-ua-1",
+      "pdf-x-4"
      ]
     },
     "valid": {
@@ -8522,6 +8535,12 @@
     "summary": {
      "type": "string"
     },
+    "caveats": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
     "errorCount": {
      "type": "integer",
      "minimum": 0
@@ -8532,7 +8551,7 @@
     }
    }
   },
-  "exampleCount": 1
+  "exampleCount": 2
  },
  {
   "name": "extract_attachments",

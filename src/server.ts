@@ -639,9 +639,9 @@ const TOOLS: readonly ToolDefinition[] = [
     },
     {
         name: VALIDATE_PDF_NAME,
-        title: 'Validate PDF/UA structure',
+        title: 'Validate PDF structure (PDF/UA, PDF/X-4)',
         description:
-            "Read-only PDF/UA-1 (ISO 14289-1) structural gate for Tagged PDF: /MarkInfo /Marked, /StructTreeRoot (+ /ParentTree), XMP /Metadata, /Lang, per-page MCID uniqueness. Result { standard:'pdf-ua-1', valid, errors[], warnings[], summary }. Fast and structural only — NOT a reference validator (veraPDF): fonts, colour and rendering are not checked. Unparsable input → PDF_PARSE_FAILED. Generate tagged input with pdfA (e.g. 'pdfa2u') first.",
+            "Read-only structural gate; `standard` picks the rule set. 'pdf-ua-1' (default, ISO 14289-1) for Tagged PDF: /MarkInfo /Marked, /StructTreeRoot (+ /ParentTree), XMP /Metadata, /Lang, per-page MCID uniqueness — generate tagged input with pdfA (e.g. 'pdfa2u') first. 'pdf-x-4' (ISO 15930-7) for print exchange: /GTS_PDFX OutputIntent with a prtr ICC profile, TrimBox or ArtBox, every font embedded, no annotation / JavaScript / embedded file / transfer function — generate it with pdfx:'pdfx4'. Result { standard, valid, errors[], warnings[], summary } (+ caveats[] for PDF/X). Fast and structural only — NOT a reference validator or a certified preflight: fonts, colour and rendering are not checked (veraPDF for PDF/A and PDF/UA; callas pdfToolbox or Acrobat Preflight for PDF/X). Unparsable input → PDF_PARSE_FAILED.",
         inputSchema: VALIDATE_PDF_INPUT_SCHEMA,
         outputSchema: projectableOutputSchema(
             VALIDATE_PDF_OUTPUT_SCHEMA,
@@ -649,11 +649,12 @@ const TOOLS: readonly ToolDefinition[] = [
                 errorCount: { type: 'integer', minimum: 0, description: 'summary only: number of errors.' },
                 warningCount: { type: 'integer', minimum: 0, description: 'summary only: number of warnings.' },
             },
-            `Structured PDF/UA validation result.${PROJECTION_NOTE}`,
+            `Structured PDF/UA or PDF/X-4 validation result.${PROJECTION_NOTE}`,
         ),
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         examples: [
             { title: 'Validate a tagged PDF for PDF/UA structure', input: { pdfBase64: '<tagged-pdf-base64>' } },
+            { title: 'Check a print file for PDF/X-4 prerequisites', input: { pdfBase64: '<pdfx-pdf-base64>', standard: 'pdf-x-4', verbosity: 'summary' } },
         ],
         handler: validatePdf,
     },
@@ -953,6 +954,7 @@ function buildInspectResult(output: InspectPdfResult, toolName: string, input: u
         ...(output.docTimestampCount !== undefined ? { docTimestampCount: output.docTimestampCount } : {}),
         ...(output.annotationCount !== undefined ? { annotationCount: output.annotationCount } : {}),
         ...(output.trapped !== undefined ? { trapped: output.trapped } : {}),
+        ...(output.pdfX !== undefined ? { pdfX: output.pdfX } : {}),
         ...(output.checksPassed !== undefined ? { checksPassed: output.checksPassed } : {}),
     };
     return {
