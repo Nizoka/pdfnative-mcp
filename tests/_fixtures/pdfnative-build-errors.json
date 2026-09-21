@@ -1,0 +1,145 @@
+{
+  "$comment": "Copy of pdfnative docs/data/errors.json -> buildErrors, with the ${placeholders} substituted by sample values and the ToolError code this server maps each message to (src/diagnostics.ts mapBuildError). pdfnative does not ship docs/ in its npm tarball, so this fixture is refreshed by hand at every engine bump; tests/build-errors.test.ts asserts the mapping, that no known engine build error falls through to GENERATION_FAILED, and - where the sibling checkout exists - that the list is still the engine's.",
+  "engine": "1.8.0",
+  "source": "docs/data/errors.json#buildErrors",
+  "messages": [
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (resolvePdfXConfig)",
+      "since": "1.8.0",
+      "message": "layout.pdfx: unknown target 'pdfx1a' — use one of pdfx4",
+      "code": "VALIDATION_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (resolvePdfXConfig)",
+      "since": "1.8.0",
+      "message": "layout.pdfx and layout.tagged cannot be combined — pdfnative writes one conformance claim per file; drop one of them",
+      "code": "VALIDATION_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (resolvePdfXConfig)",
+      "since": "1.8.0",
+      "message": "PDF/X forbids encryption (ISO 15930-7) — drop layout.encryption or layout.pdfx",
+      "code": "VALIDATION_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (resolvePdfXConfig)",
+      "since": "1.8.0",
+      "message": "PDF/X-4 requires layout.outputIntent: the ICC profile of the printing condition, e.g. ISO Coated v2 or GRACoL from your printer. pdfnative ships no press profile",
+      "code": "VALIDATION_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (resolvePdfXConfig)",
+      "since": "1.8.0",
+      "message": "PDF/X-4 requires an output (printer) profile as layout.outputIntent — the supplied profile's class is 'mntr'",
+      "code": "VALIDATION_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (resolvePdfXConfig)",
+      "since": "1.8.0",
+      "message": "PDF/X requires the trapping state to be known — set metadata.trapped to 'True' or 'False', or omit it for 'False'",
+      "code": "VALIDATION_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (pdfxBoxes)",
+      "since": "1.8.0",
+      "message": "PDF/X pages carry a TrimBox or an ArtBox, not both — drop print.artBox, or print.trimBox and print.bleed",
+      "code": "VALIDATION_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (resolveOutputIntent)",
+      "since": "1.7.0",
+      "message": "outputIntent.iccProfile is too short to be an ICC profile (128-byte header required)",
+      "code": "PRINT_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (resolveOutputIntent)",
+      "since": "1.8.0",
+      "message": "outputIntent.iccProfile is not an ICC profile (no `acsp` signature at byte 36)",
+      "code": "PRINT_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (resolveOutputIntent)",
+      "since": "1.8.0",
+      "message": "outputIntent.iccProfile header declares 9968 bytes but 512 were supplied — the profile is truncated or corrupt",
+      "code": "PRINT_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (resolveOutputIntent)",
+      "since": "1.7.0",
+      "message": "outputIntent.iccProfile declares data colour space 'Lab' — an OutputIntent profile must describe RGB, CMYK or Gray",
+      "code": "PRINT_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (print geometry)",
+      "since": "1.7.0",
+      "message": "print.marks requires a TrimBox — set print.bleed or print.trimBox",
+      "code": "PRINT_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (print geometry)",
+      "since": "1.7.0",
+      "message": "print.bleed and print.trimBox are mutually exclusive — the shorthand derives the TrimBox",
+      "code": "PRINT_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes",
+      "since": "1.1.0",
+      "message": "PDF/A and encryption are mutually exclusive (ISO 19005-1 §6.3.2)",
+      "code": "PDF_A_COMPLIANCE_VIOLATION"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (buildEmbeddedFiles)",
+      "since": "1.1.0",
+      "message": "File attachments require tagged: 'pdfa3b' (PDF/A-3, ISO 19005-3)",
+      "code": "PDF_A_COMPLIANCE_VIOLATION"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (print geometry)",
+      "since": "1.7.0",
+      "message": "print.bleed must be a positive number of points",
+      "code": "PRINT_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (print geometry)",
+      "since": "1.7.0",
+      "message": "print.bleed leaves no trim area — it must be less than half the smaller page dimension",
+      "code": "PRINT_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (print geometry)",
+      "since": "1.7.0",
+      "message": "print.box must be [x0, y0, x1, y1] with x1 > x0 and y1 > y0",
+      "code": "PRINT_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (print geometry)",
+      "since": "1.7.0",
+      "message": "print.box must lie within the MediaBox [0 0 width height]",
+      "code": "PRINT_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (print geometry)",
+      "since": "1.7.0",
+      "message": "print.trimBox must lie within the BleedBox",
+      "code": "PRINT_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (print geometry)",
+      "since": "1.7.0",
+      "message": "print.userUnit must be between 1 and max",
+      "code": "PRINT_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (watermark)",
+      "since": "1.1.0",
+      "message": "Watermark transparency is not allowed with PDF/A-1b (ISO 19005-1 §6.4)",
+      "code": "PDF_A_COMPLIANCE_VIOLATION"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (print geometry)",
+      "since": "1.7.0",
+      "message": "print.userUnit requires PDF 1.6+ and is not allowed under PDF/A-1 (PDF 1.4) — use pdfa2b or later",
+      "code": "PDF_A_COMPLIANCE_VIOLATION"
+    }
+  ]
+}

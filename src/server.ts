@@ -27,6 +27,7 @@ import { ToolError } from './errors.js';
 import { getCached, setCached } from './cache.js';
 import { PDFNATIVE_MCP_VERSION } from './version.js';
 import { creationDateCacheTag } from './reproducible.js';
+import { throwIfInflateCapError } from './inflate-cap.js';
 import { listResources, listResourceTemplates, readResource, resourceLinkForPath } from './resources.js';
 import {
     GOVERNANCE_CONTRACT_SUMMARY,
@@ -1188,6 +1189,34 @@ function buildMultiSuccessResult(output: MultiOutputResult, toolName: string): C
     };
 }
 
+/** True when the call handed the server a PDF to read (`pdfBase64`, or the `pdfsBase64` list of merge_pdfs). */
+function takesPdfInput(input: unknown): boolean {
+    if (input === null || typeof input !== 'object') return false;
+    const args = input as { pdfBase64?: unknown; pdfsBase64?: unknown };
+    return typeof args.pdfBase64 === 'string' || Array.isArray(args.pdfsBase64);
+}
+
+/**
+ * Last line of defence for the tools that read a PDF. pdfnative parses lazily:
+ * `openPdf()` reads the cross-reference table and little else, so a damaged
+ * catalog, page tree or dictionary throws later — from whichever accessor
+ * touches it first, which may sit outside a handler's own try / catch. Every
+ * handler maps the failures it expects; whatever still escapes as a plain
+ * `Error` while a caller-supplied PDF is being processed is reported as
+ * `PDF_PARSE_FAILED` (or the inflate-cap message), never as an uncoded failure
+ * an agent cannot act on. Found by tests/engine-surface.fuzz.test.ts.
+ */
+function classifyUnexpected(err: unknown, input: unknown): unknown {
+    if (err instanceof ToolError || !takesPdfInput(input)) return err;
+    try {
+        throwIfInflateCapError(err);
+    } catch (capped) {
+        return capped;
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    return new ToolError('PDF_PARSE_FAILED', `The PDF could not be processed: ${message}. The file is damaged, truncated or not a PDF — pass the raw PDF bytes as base64 (exactly once).`);
+}
+
 function buildErrorResult(err: unknown, toolName: string): CallToolResult {
     if (err instanceof ToolError) {
         return {
@@ -1363,7 +1392,7 @@ export async function callToolDirect(name: string, args: unknown): Promise<CallT
         }
         return dispatchOutput(output, name, input);
     } catch (err) {
-        return buildErrorResult(err, name);
+        return buildErrorResult(classifyUnexpected(err, args), name);
     }
 }
 

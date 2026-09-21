@@ -154,7 +154,8 @@ describe('typography — pagination keys', () => {
     });
 
     it('inspect_layout and generate_basic_pdf agree on the page count under every pagination setting', async () => {
-        for (const typography of [{ splitParagraphs: true }, { splitParagraphs: true, orphans: 4, widows: 4 }, { keepHeadingsWithNext: true }]) {
+        // The last setting is the 1.8.0 fix: keepHeadingsWithNext and splitParagraphs together.
+        for (const typography of [{ splitParagraphs: true }, { splitParagraphs: true, orphans: 4, widows: 4 }, { keepHeadingsWithNext: true }, { splitParagraphs: true, keepHeadingsWithNext: { minLines: 3 } }]) {
             const input = { title: 'Typography', blocks: [...tall, { type: 'heading', text: 'Tail', level: 2 }, ...FILLER], typography };
             const layout = await inspectLayout(input);
             expect(layout.totalPages, JSON.stringify(typography)).toBe(pageCount(await generateBasicPdf({ ...input, creationDate: PINNED })));

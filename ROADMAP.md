@@ -142,7 +142,7 @@ _v1.6.0 is the active release. `redact_pdf` stays **deferred** by design (overla
 - [ ] **veraPDF blocking in CI** — drop `continue-on-error` from `.github/workflows/verapdf.yml` once the `paths:` filter caveat is resolved; the corpus, canaries and `VERAPDF_REQUIRED=1` are already in place.
 - [ ] **`add_form` + PDF/A: embed the AcroForm `/DR` font** — upstream pdfnative fix so `/AcroForm /DR /Helv` is no longer an unembedded Type1 font (ISO 19005-2 rule 6.2.11.4.1); tracked by the `form-pdfa2b.pdf` negative canary and the `PDFA_UNEMBEDDED_FORM_FONT` diagnostic; draft generated via `draft_governance_issue`, human-submitted. Flip the canary's expectation when it lands.
 - [ ] **`inspect_layout` `toc` height** — upstream `inspectDocumentLayout` measures a `toc` block as 0 pt (`estimateBlockHeight` called without the headings in `pdf-layout-inspect.ts`); drop the caveat from the tool description and the pinned test when fixed.
-- [ ] **`extractText` under the inflate cap** — upstream surfaces per-page decode failures instead of returning empty text, so `extract_text` can raise `PDF_PARSE_FAILED` like `extract_attachments` does.
+- [ ] **`extractText` under the inflate cap** — upstream surfaces per-page decode failures instead of returning empty text, so `extract_text` can raise `PDF_PARSE_FAILED` like `extract_attachments` does. Still open in pdfnative 1.8.0; pinned by `tests/upstream-limits.test.ts`.
 - [ ] **Offline `/VRI` composition upstream** — delegate `add_ltv mode: 'offline'` to a pdfnative helper once one exists (no change to inputs, outputs or error codes).
 
 ---
@@ -159,7 +159,10 @@ content-*removal* API, and implementing one on raw primitives would contradict
 this project's faithful, thin-wrapper philosophy.
 
 - [ ] **Tool `redact_pdf`** — **deferred by design.** pdfnative can overlay annotations and flatten forms, but not *remove* page content; an overlay-only "redaction" would leave the original bytes intact and create false security, which fails this project's honesty bar. Blocked on an upstream true content-removal API (tracked as a `draft_governance_issue` feature request).
-- [ ] **`verify_pdf` native ECDSA verify** — replace the local P-256 verifier once pdfnative exports `ecdsaVerifyHash` (still internal-only in 1.7.0).
+- [ ] **`verify_pdf` native ECDSA verify** — replace the local P-256 verifier once pdfnative exports `ecdsaVerifyHash` (still internal-only in 1.8.0; pinned by `tests/upstream-limits.test.ts`).
+- [ ] **`extract_text`: logical-order text extraction on untagged output** — pdfnative's `extractText()` walks the content stream, so right-to-left runs (Arabic, Hebrew) and pre-base glyphs (Thai, Devanagari, Bengali, Sinhala, Tai Tham) come back in visual order and a few stacked clusters (Khmer, Myanmar) as U+FFFD; Yoruba / Igbo combining marks land after the next glyph. Rendering is unaffected. **Workaround today:** generate with `pdfA` — tagged output carries `/ActualText`, which `extractText()` 1.8.0 honours, and all eleven scripts then round-trip exactly. Pinned one by one with `it.fails` in `tests/scripts-27.test.ts`.
+- [ ] **Tai Tham under PDF/A-2u** — one Tai Tham glyph shaped by the Universal Shaping Engine has no ToUnicode entry, so a `pdfa2u` claim fails veraPDF (ISO 19005-2 §6.2.11.7.2) while the engine raises no diagnostic. `pdfa2b` conforms. Tracked by the `international-pdfa2u-taitham.pdf` negative canary of the corpus (it turns XPASS, fatal, the day the engine maps the glyph).
+- [ ] **`annotate_pdf` link annotations** — pdfnative's `MarkupAnnotation` union has no `link` member; writing the `/Link` + `/URI` dictionary by hand would contradict the thin-wrapper rule. Deferred until the engine offers one (the `link` block of `generate_basic_pdf` covers new documents).
 - [ ] **Per-tool HTTP page-by-page streaming** — MCP 2026-07-28 still has no partial `structuredContent` envelope (results are `resultType: 'complete'` only), so large results stay single-shot; pdfnative already provides `streamMergedPdfs` / `streamSplitPdf` / `streamExtractPages`.
 
 ### Long-Term

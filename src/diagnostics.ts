@@ -161,6 +161,9 @@ export async function latinFontEntries(embedFonts: boolean | undefined, fontRef 
     return [{ fontData, fontRef, lang: LATIN_FONT_LANG }];
 }
 
+/** The prefix pdfnative puts on some of its own throws. */
+const ENGINE_PREFIX = 'pdfnative: ';
+
 /**
  * Map an engine throw raised during a build into a stable tool error code.
  * Engine messages are kept verbatim — they carry the remedy.
@@ -168,26 +171,32 @@ export async function latinFontEntries(embedFonts: boolean | undefined, fontRef 
 export function mapBuildError(err: unknown, toolName: string): ToolError {
     if (err instanceof ToolError) return err;
     const message = err instanceof Error ? err.message : String(err);
+    // The engine prefixes some of its throws with its own name; the class of an
+    // error must not depend on it.
+    const bare = message.startsWith(ENGINE_PREFIX) ? message.slice(ENGINE_PREFIX.length) : message;
     // Order matters: a PDF/X coherence message also mentions the OutputIntent
     // ("PDF/X-4 requires layout.outputIntent…"), so the PDF/X prefixes are tested
     // first. These are argument errors — assertPdfXCompatible() catches most of
     // them before the build; the ICC device-class one can only be seen here.
-    if (message.startsWith('layout.pdfx') || message.startsWith('PDF/X')) {
-        return new ToolError('VALIDATION_ERROR', message);
+    if (bare.startsWith('layout.pdfx') || bare.startsWith('PDF/X')) {
+        return new ToolError('VALIDATION_ERROR', bare);
     }
-    if (message.startsWith('typography.')) {
-        return new ToolError('VALIDATION_ERROR', message);
+    if (bare.startsWith('typography.')) {
+        return new ToolError('VALIDATION_ERROR', bare);
     }
     // Defence in depth: `strict` is classified by escalate() and no longer reaches
-    // the engine, but a bare engine throw about PDF/A keeps its stable code.
-    if (message.startsWith('pdfnative: ') && /PDF\/A|ISO 19005/i.test(message)) {
-        return new ToolError('PDF_A_COMPLIANCE_VIOLATION', message.slice('pdfnative: '.length));
+    // the engine, and the PDF/A conflicts are refused before the build
+    // (assertWatermarkPdfACompatible, assertPrintPdfACompatible, …) — but an engine
+    // throw about PDF/A keeps its stable code
+    // (tests/_fixtures/pdfnative-build-errors.json lists the engine's messages).
+    if (/PDF\/A|ISO 19005/i.test(bare)) {
+        return new ToolError('PDF_A_COMPLIANCE_VIOLATION', bare);
     }
-    if (message.startsWith('chart:')) {
-        return new ToolError('CHART_ERROR', message);
+    if (bare.startsWith('chart:')) {
+        return new ToolError('CHART_ERROR', bare);
     }
-    if (message.startsWith('print.') || message.startsWith('outputIntent.') || /OutputIntent|ICC profile/i.test(message)) {
-        return new ToolError('PRINT_ERROR', message);
+    if (bare.startsWith('print.') || bare.startsWith('outputIntent.') || /OutputIntent|ICC profile/i.test(bare)) {
+        return new ToolError('PRINT_ERROR', bare);
     }
     return new ToolError('GENERATION_FAILED', `${toolName}: ${message}`);
 }
