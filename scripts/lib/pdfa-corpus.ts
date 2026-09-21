@@ -1,44 +1,68 @@
 /**
- * pdfnative-mcp — PDF/A validation corpus generator
- * ==================================================
- * Drives the built MCP tool handlers (`dist/server.js`) to produce a small,
- * deterministic corpus of PDF/A-claiming documents under `test-output/pdfa/`
- * covering the PDF/A-relevant features listed in the CORPUS table below (it is
- * a representative sample, not an exhaustive feature matrix).
- * `scripts/validate-pdfa.mjs` then runs every file through the veraPDF
- * reference validator.
+ * pdfnative-mcp — the conformance corpus (PDF/A + PDF/X)
+ * ========================================================
+ * One table drives scripts/generate-pdfa-corpus.ts and the `corpus/` family
+ * of the sample generator; `derived.pdfaCorpus` in docs/assets/ecosystem.json
+ * is its length, `declared.pdfaSamples` and `declared.pdfxSamples` the number
+ * of claiming files per standard.
  *
- * Usage:  npm run build && npm run corpus:pdfa
- *         node scripts/generate-pdfa-corpus.mjs
- * Exit:   0 when every file was written, 1 when any tool call returned an error
- *         (the tool's error message is printed), 2 when dist/ is missing.
+ * Every entry names the tool that produces it (`tool` is the manifest
+ * record, `produce` performs the call through the built server's
+ * `tools/call` handler). Later entries may consume earlier outputs through
+ * `ctx.get()` (sign, attach, merge, extract reuse earlier renders), so the
+ * order matters and execution is sequential.
  *
- * Dependency-free: imports only the compiled server module and node built-ins.
- * Text-rendering tools pass `embedFonts: true` (pdfnative-mcp 1.6.0) so base-14
- * Helvetica text does not void the PDF/A claim; `add_international_text`
- * always embeds its Noto fonts and has no such flag.
+ * Reproducibility: `ctx.produce()` pins `creationDate` / `signingTime` /
+ * `modDate` to the instant in scripts/helpers/io.ts wherever the tool's live
+ * input schema declares them, so the corpus bytes are stable across machines
+ * and the manifest's sha256 column is diffable. The one exception is the
+ * signed entry: its throwaway RSA key is generated per run and never written
+ * to disk, so its bytes differ by design.
  *
- * Every entry carries `expectCompliant` in manifest.json. Most are `true`; the
- * negative canaries (`false`) are files that claim PDF/A but are KNOWN to be
- * non-conformant — the validator must see veraPDF reject them, otherwise the
+ * Text-rendering tools pass `embedFonts: true` so base-14 Helvetica text
+ * does not void the claim; `add_international_text` always embeds its Noto
+ * fonts and has no such flag.
+ *
+ * Negative canaries (`expectCompliant: false`) claim conformance but are
+ * KNOWN non-conformant — the validator must reject them, otherwise the
  * validator itself is broken ("accepts everything") and the run fails.
  */
 
-import { createSign, generateKeyPairSync } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { join } from 'node:path';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const OUT_DIR = join(ROOT, 'test-output', 'pdfa');
-const SERVER_MODULE = join(ROOT, 'dist', 'server.js');
+import { TEST_OUTPUT_DIR } from '../helpers/io.js';
+import { buildRsaSelfSignedCert } from './corpus-cert.js';
+import { buildMinimalRgbIccProfile } from './synthetic-icc.js';
 
-if (!existsSync(SERVER_MODULE)) {
-    process.stderr.write('dist/server.js not found — run `npm run build` first.\n');
-    process.exit(2);
+export const OUT_DIR = join(TEST_OUTPUT_DIR, 'pdfa');
+
+export type Claim = 'pdfa' | 'pdfx' | 'none';
+
+export interface CorpusContext {
+    /** Base64 bytes of an earlier entry, by file name. Throws when it has not been produced yet. */
+    readonly get: (file: string) => string;
+    /** Call a tool on the built server with pinned instants; returns base64 PDF bytes. */
+    readonly produce: (tool: string, args: Readonly<Record<string, unknown>>) => Promise<string>;
 }
 
-const { callToolDirect, ensureCompressionReady } = await import(pathToFileURL(SERVER_MODULE).href);
+export interface CorpusEntry {
+    readonly file: string;
+    /** The MCP tool whose output the file is. */
+    readonly tool: string;
+    /** Which standard the output claims in its XMP. Default 'pdfa'. */
+    readonly claims?: Claim;
+    /** Older spelling of `claims: 'none'`, kept for the page-tree entries. */
+    readonly expectPdfAClaim?: boolean;
+    /** Default true; false marks a negative canary. Ignored when the file makes no claim. */
+    readonly expectCompliant?: boolean;
+    readonly produce: (ctx: CorpusContext) => Promise<string>;
+}
+
+/** The standard an entry claims, with `expectPdfAClaim: false` folded in. */
+export function claimOf(entry: CorpusEntry): Claim {
+    if (entry.claims !== undefined) return entry.claims;
+    return entry.expectPdfAClaim === false ? 'none' : 'pdfa';
+}
 
 /** Minimal valid 1×1 JPEG (same bytes as tests/embed-image.test.ts). */
 const MINIMAL_JPEG_BASE64 =
@@ -53,146 +77,10 @@ const ATTACHMENT_XML_BASE64 = Buffer.from(
 
 const EMBED = { embedFonts: true };
 
-// ── Self-signed RSA test certificate (node:crypto + a tiny DER encoder) ──
-// Mirrors tests/_cert-fixtures.ts without importing test code: a throwaway
-// RSA-2048 key signs a v1 certificate with CN=Corpus Signer. Generated per run,
-// never written to disk or printed.
-
-function derLength(n) {
-    if (n < 0x80) return [n];
-    const bytes = [];
-    for (let v = n; v > 0; v >>>= 8) bytes.unshift(v & 0xff);
-    return [0x80 | bytes.length, ...bytes];
-}
-function der(tag, ...parts) {
-    const body = Buffer.concat(parts.map((p) => Buffer.from(p)));
-    return Buffer.concat([Buffer.from([tag, ...derLength(body.length)]), body]);
-}
-const derSeq = (...parts) => der(0x30, ...parts);
-const derSet = (...parts) => der(0x31, ...parts);
-function derInt(buf) {
-    const b = Buffer.from(buf);
-    return der(0x02, b[0] & 0x80 ? Buffer.concat([Buffer.from([0]), b]) : b);
-}
-function derOid(dotted) {
-    const p = dotted.split('.').map(Number);
-    const out = [p[0] * 40 + p[1]];
-    for (const v0 of p.slice(2)) {
-        let v = v0;
-        const stack = [v & 0x7f];
-        for (v >>>= 7; v > 0; v >>>= 7) stack.push((v & 0x7f) | 0x80);
-        out.push(...stack.reverse());
-    }
-    return der(0x06, Buffer.from(out));
-}
-const derNull = Buffer.from([0x05, 0x00]);
-const derBitString = (bytes) => der(0x03, Buffer.from([0]), bytes);
-function derUtcTime(date) {
-    const s = date.toISOString().replace(/[-:T]/g, '').slice(2, 14) + 'Z';
-    return der(0x17, Buffer.from(s, 'ascii'));
-}
-
-function buildRsaSelfSignedCert(cn = 'Corpus Signer') {
-    const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-    const jwk = privateKey.export({ format: 'jwk' });
-    const rsaPub = derSeq(derInt(Buffer.from(jwk.n, 'base64url')), derInt(Buffer.from(jwk.e, 'base64url')));
-    const spki = derSeq(derSeq(derOid('1.2.840.113549.1.1.1'), derNull), derBitString(rsaPub));
-    const sigAlg = derSeq(derOid('1.2.840.113549.1.1.11'), derNull);
-    const name = derSeq(derSet(derSeq(derOid('2.5.4.3'), der(0x0c, Buffer.from(cn, 'utf8')))));
-    const validity = derSeq(derUtcTime(new Date(Date.now() - 60_000)), derUtcTime(new Date(Date.now() + 365 * 86_400_000)));
-    const tbs = derSeq(derInt(Buffer.from([1])), sigAlg, name, validity, name, spki);
-    const sig = createSign('sha256').update(tbs).sign(privateKey);
-    const certDer = derSeq(tbs, sigAlg, derBitString(sig));
-    return {
-        certDerBase64: certDer.toString('base64'),
-        rsaKeyPkcs1DerBase64: privateKey.export({ format: 'der', type: 'pkcs1' }).toString('base64'),
-    };
-}
-
-// ── Minimal valid RGB ICC v2 profile (custom OutputIntent entry) ──────
-// Structurally the same display-class matrix/TRC profile pdfnative emits for
-// its built-in sRGB intent (9 tags: desc, wtpt, cprt, rXYZ/gXYZ/bXYZ, rTRC/
-// gTRC/bTRC), with a distinct description so the corpus file is recognisably
-// a caller-supplied intent. veraPDF parses the ICC header and tag table
-// (ISO 19005 6.2.2 / 6.2.3), so a bare 128-byte header would not do.
-
-function buildMinimalRgbIccProfile(description = 'Corpus RGB') {
-    const tags = [];
-    const typeTag = (sig, body) => Buffer.concat([Buffer.from(sig, 'ascii'), Buffer.alloc(4), body]);
-    const s15 = (v) => {
-        const b = Buffer.alloc(4);
-        b.writeInt32BE(Math.round(v * 65536));
-        return b;
-    };
-    const xyz = (x, y, z) => typeTag('XYZ ', Buffer.concat([s15(x), s15(y), s15(z)]));
-    // desc: ascii count + ascii (NUL-terminated) + unicode code/count (8) +
-    // scriptcode code/count (3) + 67-byte scriptcode field.
-    const descBody = Buffer.alloc(4 + description.length + 1 + 8 + 3 + 67);
-    descBody.writeUInt32BE(description.length + 1, 0);
-    descBody.write(description, 4, 'ascii');
-    tags.push(['desc', typeTag('desc', descBody)]);
-    tags.push(['wtpt', xyz(0.9642, 1.0, 0.8249)]);
-    tags.push(['cprt', typeTag('text', Buffer.from('No Copyright\0', 'ascii'))]);
-    tags.push(['rXYZ', xyz(0.4361, 0.2225, 0.0139)]);
-    tags.push(['gXYZ', xyz(0.3851, 0.7169, 0.0971)]);
-    tags.push(['bXYZ', xyz(0.1431, 0.0606, 0.7141)]);
-    const curv = Buffer.alloc(4 + 2); // count = 1 → single u8Fixed8 gamma value
-    curv.writeUInt32BE(1, 0);
-    curv.writeUInt16BE(563, 4); // gamma 2.2 as u8Fixed8
-    const trc = typeTag('curv', curv);
-    for (const sig of ['rTRC', 'gTRC', 'bTRC']) tags.push([sig, trc]);
-
-    const table = Buffer.alloc(4 + tags.length * 12);
-    table.writeUInt32BE(tags.length, 0);
-    let offset = 128 + table.length;
-    const bodies = [];
-    tags.forEach(([sig, body], i) => {
-        const padded = Buffer.concat([body, Buffer.alloc((4 - (body.length % 4)) % 4)]);
-        table.write(sig, 4 + i * 12, 'ascii');
-        table.writeUInt32BE(offset, 8 + i * 12);
-        table.writeUInt32BE(body.length, 12 + i * 12);
-        bodies.push(padded);
-        offset += padded.length;
-    });
-    const header = Buffer.alloc(128);
-    header.writeUInt32BE(offset, 0); // profile size
-    header.writeUInt8(2, 8); // version 2.1.0
-    header.writeUInt8(0x10, 9);
-    header.write('mntr', 12, 'ascii'); // display device class
-    header.write('RGB ', 16, 'ascii'); // data colour space
-    header.write('XYZ ', 20, 'ascii'); // PCS
-    header.writeUInt16BE(2025, 24); // creation year
-    header.writeUInt16BE(1, 26);
-    header.writeUInt16BE(1, 28);
-    header.write('acsp', 36, 'ascii');
-    header.write('MSFT', 40, 'ascii');
-    header.writeUInt32BE(63190, 68); // illuminant D50
-    header.writeUInt32BE(65536, 72);
-    header.writeUInt32BE(54061, 76);
-    return Buffer.concat([header, table, ...bodies]).toString('base64');
-}
-
-/**
- * Call a tool and return the PDF bytes (base64) from the embedded resource
- * content block. Throws with the tool's error text when `isError` is set.
- */
-async function producePdf(name, args) {
-    const result = await callToolDirect(name, args);
-    if (result.isError === true) {
-        const text = result.content?.[0]?.type === 'text' ? result.content[0].text : 'unknown error';
-        throw new Error(`${name}: ${text}`);
-    }
-    const block = (result.content ?? []).find((c) => c.type === 'resource' && typeof c.resource?.blob === 'string');
-    if (block === undefined || block.resource.blob.length === 0) {
-        throw new Error(`${name}: no embedded PDF resource in the tool result.`);
-    }
-    return block.resource.blob;
-}
-
 const PARAGRAPHS = [
     'pdfnative-mcp renders this corpus through the same tool handlers an MCP client would call.',
     'Each file claims a PDF/A conformance level in its XMP packet and is validated by veraPDF.',
-];
+] as const;
 
 /**
  * Corpus definition: `file` is the output name, `produce` returns base64 PDF
@@ -204,12 +92,12 @@ const PARAGRAPHS = [
  * the corpus so the validator's coverage canary asserts that fact in both
  * directions (a claim appearing or disappearing is a behaviour change).
  */
-const CORPUS = [
+export const CORPUS: readonly CorpusEntry[] = [
     {
         file: 'basic-pdfa1b.pdf',
         tool: 'generate_basic_pdf',
-        produce: () =>
-            producePdf('generate_basic_pdf', {
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
                 title: 'Corpus — PDF/A-1b plain',
                 pdfA: 'pdfa1b',
                 blocks: [
@@ -222,8 +110,8 @@ const CORPUS = [
     {
         file: 'basic-pdfa2b-outline-labels-list.pdf',
         tool: 'generate_basic_pdf',
-        produce: () =>
-            producePdf('generate_basic_pdf', {
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
                 title: 'Corpus — PDF/A-2b outline, page labels, nested list',
                 pdfA: 'pdfa2b',
                 outline: 'auto',
@@ -252,8 +140,8 @@ const CORPUS = [
     {
         file: 'basic-pdfa2u-text.pdf',
         tool: 'generate_basic_pdf',
-        produce: () =>
-            producePdf('generate_basic_pdf', {
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
                 title: 'Corpus — PDF/A-2u headings and paragraphs',
                 pdfA: 'pdfa2u',
                 blocks: [
@@ -268,8 +156,8 @@ const CORPUS = [
     {
         file: 'basic-pdfa2b-watermark.pdf',
         tool: 'generate_basic_pdf',
-        produce: () =>
-            producePdf('generate_basic_pdf', {
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
                 title: 'Corpus — PDF/A-2b watermark',
                 pdfA: 'pdfa2b',
                 watermark: { text: 'DRAFT', opacity: 1 },
@@ -283,8 +171,8 @@ const CORPUS = [
     {
         file: 'basic-pdfa2b-chart-bar.pdf',
         tool: 'generate_basic_pdf',
-        produce: () =>
-            producePdf('generate_basic_pdf', {
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
                 title: 'Corpus — PDF/A-2b bar chart block',
                 pdfA: 'pdfa2b',
                 blocks: [
@@ -307,8 +195,8 @@ const CORPUS = [
     {
         file: 'basic-pdfa2b-chart-stackedbar.pdf',
         tool: 'generate_basic_pdf',
-        produce: () =>
-            producePdf('generate_basic_pdf', {
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
                 title: 'Corpus — PDF/A-2b stacked bar chart block',
                 pdfA: 'pdfa2b',
                 blocks: [
@@ -331,8 +219,8 @@ const CORPUS = [
     {
         file: 'basic-pdfa2b-print-metadata.pdf',
         tool: 'generate_basic_pdf',
-        produce: () =>
-            producePdf('generate_basic_pdf', {
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
                 title: 'Corpus — PDF/A-2b bleed, printer marks, metadata',
                 pdfA: 'pdfa2b',
                 print: { bleed: 8.5, marks: true },
@@ -347,8 +235,8 @@ const CORPUS = [
     {
         file: 'table-pdfa2b.pdf',
         tool: 'add_table',
-        produce: () =>
-            producePdf('add_table', {
+        produce: (ctx) =>
+            ctx.produce('add_table', {
                 title: 'Corpus — PDF/A-2b table',
                 pdfA: 'pdfa2b',
                 headers: ['Item', 'Qty', 'Price'],
@@ -364,8 +252,8 @@ const CORPUS = [
     {
         file: 'chart-pdfa2b-scatter.pdf',
         tool: 'add_chart',
-        produce: () =>
-            producePdf('add_chart', {
+        produce: (ctx) =>
+            ctx.produce('add_chart', {
                 title: 'Corpus — PDF/A-2b scatter chart',
                 pdfA: 'pdfa2b',
                 chartType: 'scatter',
@@ -380,8 +268,8 @@ const CORPUS = [
     {
         file: 'international-pdfa2u.pdf',
         tool: 'add_international_text',
-        produce: () =>
-            producePdf('add_international_text', {
+        produce: (ctx) =>
+            ctx.produce('add_international_text', {
                 title: 'Corpus — PDF/A-2u Arabic and Latin',
                 pdfA: 'pdfa2u',
                 lang: ['ar', 'latin'],
@@ -391,8 +279,8 @@ const CORPUS = [
     {
         file: 'barcode-pdfa2b-qr.pdf',
         tool: 'add_barcode',
-        produce: () =>
-            producePdf('add_barcode', {
+        produce: (ctx) =>
+            ctx.produce('add_barcode', {
                 title: 'Corpus — PDF/A-2b QR code',
                 pdfA: 'pdfa2b',
                 format: 'qr',
@@ -404,8 +292,8 @@ const CORPUS = [
     {
         file: 'image-pdfa2b-jpeg.pdf',
         tool: 'embed_image',
-        produce: () =>
-            producePdf('embed_image', {
+        produce: (ctx) =>
+            ctx.produce('embed_image', {
                 title: 'Corpus — PDF/A-2b embedded JPEG',
                 pdfA: 'pdfa2b',
                 imageBase64: MINIMAL_JPEG_BASE64,
@@ -419,8 +307,8 @@ const CORPUS = [
     {
         file: 'attachment-pdfa3b-xml.pdf',
         tool: 'add_attachment',
-        produce: () =>
-            producePdf('add_attachment', {
+        produce: (ctx) =>
+            ctx.produce('add_attachment', {
                 title: 'Corpus — PDF/A-3b XML attachment',
                 blocks: [
                     { type: 'heading', text: 'Invoice INV-0001', level: 1 },
@@ -444,8 +332,8 @@ const CORPUS = [
         // Every non-form block kind in one document: toc, table, link, barcode,
         // svg (paths + <text>), image (RGB JPEG) and chart. All pure vector or
         // RGB raster, so the PDF/A-2b claim must hold with embedded fonts.
-        produce: () =>
-            producePdf('generate_basic_pdf', {
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
                 title: 'Corpus — composite blocks under PDF/A-2b',
                 pdfA: 'pdfa2b',
                 blocks: [
@@ -468,8 +356,8 @@ const CORPUS = [
         // Layout options under PDF/A-2b: Letter page, custom margins, running
         // header/footer templates and FlateDecode streams (compress). The XMP
         // packet must stay uncompressed for the claim to be discoverable.
-        produce: () =>
-            producePdf('generate_basic_pdf', {
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
                 title: 'Corpus — Letter, templates, compressed streams',
                 pdfA: 'pdfa2b',
                 pageSize: 'Letter',
@@ -492,8 +380,8 @@ const CORPUS = [
         // (fatal) the day the engine embeds /DR fonts, forcing this flag to
         // be flipped to `true` deliberately.
         expectCompliant: false,
-        produce: () =>
-            producePdf('add_form', {
+        produce: (ctx) =>
+            ctx.produce('add_form', {
                 title: 'Corpus — PDF/A-2b AcroForm',
                 pdfA: 'pdfa2b',
                 fields: [
@@ -514,8 +402,8 @@ const CORPUS = [
         // signature dictionary rules). This file MUST fail validation; if it
         // ever passes, the validator is not validating.
         expectCompliant: false,
-        produce: () =>
-            producePdf('prepare_signature_placeholder', {
+        produce: (ctx) =>
+            ctx.produce('prepare_signature_placeholder', {
                 title: 'Corpus — PDF/A-2b unsigned placeholder',
                 pdfA: 'pdfa2b',
                 signerName: 'Corpus Signer',
@@ -533,7 +421,7 @@ const CORPUS = [
         // same bytes with a throwaway self-signed RSA certificate. The
         // incremental update must keep the PDF/A-2b claim and conform.
         produce: (ctx) =>
-            producePdf('sign_pdf', {
+            ctx.produce('sign_pdf', {
                 pdfBase64: ctx.get('placeholder-pdfa2b-unsigned.pdf'),
                 algorithm: 'rsa-sha256',
                 profile: 'pades',
@@ -543,8 +431,8 @@ const CORPUS = [
     {
         file: 'basic-pdfa1b-watermark.pdf',
         tool: 'generate_basic_pdf',
-        produce: () =>
-            producePdf('generate_basic_pdf', {
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
                 title: 'Corpus — PDF/A-1b watermark',
                 pdfA: 'pdfa1b',
                 watermark: { text: 'ARCHIVE', opacity: 1 },
@@ -558,8 +446,8 @@ const CORPUS = [
     {
         file: 'international-pdfa2u-emoji-math.pdf',
         tool: 'add_international_text',
-        produce: () =>
-            producePdf('add_international_text', {
+        produce: (ctx) =>
+            ctx.produce('add_international_text', {
                 title: 'Corpus — PDF/A-2u Latin, emoji and math',
                 pdfA: 'pdfa2u',
                 lang: ['latin', 'emoji', 'math'],
@@ -569,8 +457,8 @@ const CORPUS = [
     {
         file: 'basic-pdfa2b-custom-outputintent.pdf',
         tool: 'generate_basic_pdf',
-        produce: () =>
-            producePdf('generate_basic_pdf', {
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
                 title: 'Corpus — PDF/A-2b caller-supplied OutputIntent',
                 pdfA: 'pdfa2b',
                 outputIntent: {
@@ -578,7 +466,7 @@ const CORPUS = [
                     outputConditionIdentifier: 'Corpus RGB',
                     registryName: 'http://www.color.org',
                     outputCondition: 'Corpus display RGB',
-                    info: 'Minimal matrix/TRC RGB profile built by scripts/generate-pdfa-corpus.mjs',
+                    info: 'Minimal matrix/TRC RGB profile built by scripts/lib/synthetic-icc.ts',
                 },
                 blocks: [
                     { type: 'heading', text: 'Custom OutputIntent', level: 1 },
@@ -592,7 +480,7 @@ const CORPUS = [
         tool: 'add_attachment',
         // PDF/A-3b with a PDF (not XML) payload: /AFRelationship + MIME subtype.
         produce: (ctx) =>
-            producePdf('add_attachment', {
+            ctx.produce('add_attachment', {
                 title: 'Corpus — PDF/A-3b PDF attachment',
                 blocks: [
                     { type: 'heading', text: 'Bundle', level: 1 },
@@ -616,7 +504,7 @@ const CORPUS = [
         // Rewrites /Info and the XMP packet of a claiming file; the claim must
         // survive and the synchronised metadata must still conform (6.6.2).
         produce: (ctx) =>
-            producePdf('update_metadata', {
+            ctx.produce('update_metadata', {
                 pdfBase64: ctx.get('basic-pdfa2u-text.pdf'),
                 title: 'Corpus — metadata rewritten',
                 author: 'Corpus Author',
@@ -632,8 +520,8 @@ const CORPUS = [
         // but violates ISO 19005-2 6.2.11.4.1 (fonts must be embedded).
         // veraPDF MUST reject it.
         expectCompliant: false,
-        produce: () =>
-            producePdf('generate_basic_pdf', {
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
                 title: 'Corpus — PDF/A-2b without embedded fonts (negative canary)',
                 pdfA: 'pdfa2b',
                 blocks: [{ type: 'paragraph', text: 'Helvetica is referenced, not embedded.' }],
@@ -644,13 +532,13 @@ const CORPUS = [
         tool: 'merge_pdfs',
         expectPdfAClaim: false,
         produce: async (ctx) => {
-            const second = await producePdf('generate_basic_pdf', {
+            const second = await ctx.produce('generate_basic_pdf', {
                 title: 'Corpus — merge source B',
                 pdfA: 'pdfa2b',
                 blocks: [{ type: 'paragraph', text: 'Second source document.' }],
                 ...EMBED,
             });
-            return producePdf('merge_pdfs', { pdfsBase64: [ctx.get('basic-pdfa2b-watermark.pdf'), second] });
+            return ctx.produce('merge_pdfs', { pdfsBase64: [ctx.get('basic-pdfa2b-watermark.pdf'), second] });
         },
     },
     {
@@ -658,51 +546,6 @@ const CORPUS = [
         tool: 'extract_pages',
         expectPdfAClaim: false,
         produce: (ctx) =>
-            producePdf('extract_pages', { pdfBase64: ctx.get('basic-pdfa2b-outline-labels-list.pdf'), pages: [1] }),
+            ctx.produce('extract_pages', { pdfBase64: ctx.get('basic-pdfa2b-outline-labels-list.pdf'), pages: [1] }),
     },
 ];
-
-async function main() {
-    await ensureCompressionReady();
-    mkdirSync(OUT_DIR, { recursive: true });
-    // Prune PDFs left over from an older corpus layout so the validator's
-    // "unlisted file" note only ever points at something unexpected.
-    const current = new Set(CORPUS.map((e) => e.file));
-    for (const stale of readdirSync(OUT_DIR).filter((f) => f.endsWith('.pdf') && !current.has(f))) {
-        rmSync(join(OUT_DIR, stale));
-        process.stdout.write(`  pruned ${stale}\n`);
-    }
-
-    const ctx = new Map();
-    const manifest = [];
-    let totalBytes = 0;
-
-    for (const entry of CORPUS) {
-        let base64;
-        try {
-            base64 = await entry.produce(ctx);
-        } catch (err) {
-            process.stderr.write(`FAIL  ${entry.file}\n      ${err instanceof Error ? err.message : String(err)}\n`);
-            return 1;
-        }
-        ctx.set(entry.file, base64);
-        const bytes = Buffer.from(base64, 'base64');
-        writeFileSync(join(OUT_DIR, entry.file), bytes);
-        totalBytes += bytes.byteLength;
-        const expectPdfAClaim = entry.expectPdfAClaim !== false;
-        // A file that makes no claim is never validated, so it has no compliance expectation.
-        const expectCompliant = expectPdfAClaim && entry.expectCompliant !== false;
-        manifest.push({ file: entry.file, tool: entry.tool, bytes: bytes.byteLength, expectPdfAClaim, expectCompliant });
-        const note = !expectPdfAClaim ? ', no PDF/A claim expected' : !expectCompliant ? ', NEGATIVE canary — must fail veraPDF' : '';
-        process.stdout.write(`  wrote  ${entry.file.padEnd(44)} ${String(bytes.byteLength).padStart(8)} B  (${entry.tool}${note})\n`);
-    }
-
-    const negatives = manifest.filter((m) => m.expectPdfAClaim && !m.expectCompliant).length;
-    writeFileSync(join(OUT_DIR, 'manifest.json'), `${JSON.stringify({ generatedBy: 'scripts/generate-pdfa-corpus.mjs', files: manifest }, null, 2)}\n`);
-    process.stdout.write(
-        `\nPDF/A corpus: ${manifest.length} file(s), ${totalBytes} bytes, ${negatives} negative canar${negatives === 1 ? 'y' : 'ies'} → test-output/pdfa/ (manifest.json written)\n`,
-    );
-    return 0;
-}
-
-process.exit(await main());

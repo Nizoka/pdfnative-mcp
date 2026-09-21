@@ -5,16 +5,22 @@ coverage/
 *.log
 .env
 .env.local
-.vscode/
+.vscode/*
+!.vscode/settings.json
 .idea/
 out/
 test-output/
 *.tsbuildinfo
+
+# Claude Code: machine-local overrides and release-audit ledgers stay local.
+.claude/settings.local.json
+.audit/
 
 # AI-governance issue drafts are local work-in-progress; never commit ad-hoc
 # tool output. Curated release artifacts (pr-*.md / issue-*.md) and the
 # staging-area README stay tracked.
 .github/drafts/*
 !.github/drafts/README.md
+!.github/drafts/TEMPLATE.md
 !.github/drafts/pr-*.md
 !.github/drafts/issue-*.md

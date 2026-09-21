@@ -111,16 +111,27 @@
         "clean": "node -e \"import('node:fs').then(m=>m.rmSync('dist',{recursive:true,force:true}))\"",
         "lint": "eslint src --max-warnings 0",
         "typecheck": "tsc --noEmit",
-        "typecheck:all": "npm run typecheck",
+        "typecheck:scripts": "tsc --noEmit -p tsconfig.scripts.json",
+        "typecheck:all": "npm run typecheck && npm run typecheck:scripts",
         "test": "vitest run",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",
+        "test:generate": "npx tsx scripts/generate-samples.ts",
         "examples:check": "vitest run tests/examples.test.ts",
+        "gate": "npx tsx scripts/gate.ts",
+        "gate:fast": "npx tsx scripts/gate.ts --fast",
+        "verify:samples": "npx tsx scripts/verify-samples.ts",
+        "verify:docs": "npx tsx scripts/verify-docs.ts",
+        "verify:tool-shape": "npx tsx scripts/tool-shape.ts --check",
         "verify:issue": "node scripts/verify-issue.mjs",
-        "corpus:pdfa": "node scripts/generate-pdfa-corpus.mjs",
-        "validate:pdfa": "npm run build && npm run corpus:pdfa && node scripts/validate-pdfa.mjs",
-        "prepare": "npm run build",
-        "prepublishOnly": "npm run clean && npm run lint && npm run typecheck && npm run build && npm run test"
+        "corpus:pdfa": "npx tsx scripts/generate-pdfa-corpus.ts",
+        "validate:pdfa": "npx tsx scripts/validate-pdfa.ts",
+        "validate:pdfx": "npx tsx scripts/validate-pdfx.ts",
+        "agents:rules": "npx tsx scripts/build-claude-rules.ts",
+        "release:prepare": "npx tsx scripts/release-prepare.ts",
+        "hooks:install": "node scripts/install-git-hooks.mjs",
+        "hooks:uninstall": "node scripts/install-git-hooks.mjs --uninstall",
+        "prepublishOnly": "npm run build"
     },
     "dependencies": {
         "@modelcontextprotocol/server": "^2.0.0",
@@ -130,11 +141,16 @@
     "devDependencies": {
         "@eslint/js": "^9.18.0",
         "@types/node": "^22.10.5",
-        "@vitest/coverage-v8": "^4.1.5",
+        "@vitest/coverage-v8": "^4.1.11",
         "eslint": "^9.18.0",
+        "tsx": "^4.22.4",
         "typescript": "^5.7.3",
         "typescript-eslint": "^8.20.0",
-        "vitest": "^4.1.5"
+        "vitest": "^4.1.11"
+    },
+    "packageManager": "npm@10.9.2",
+    "overrides": {
+        "js-yaml": "4.3.2"
     },
     "publishConfig": {
         "access": "public",
