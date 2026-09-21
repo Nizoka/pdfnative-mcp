@@ -1,0 +1,25 @@
+{
+  "description": "The five scripts added by pdfnative 1.8 (add_international_text v1.7.0): Lao (`lo`, dedicated shaper), Tai Tham / Lanna (`nod`) and Cham (`cjm`) through the Universal Shaping Engine, New Tai Lue (`khb`) and Tai Le (`tdd`) — 27 scripts in all. `lang` is an array so each run is routed to the font that covers it, with `latin` for the labels. Fonts are always embedded by this tool, so the PDF/A-2u claim holds under `strict: true`; tagged output also carries /ActualText, which is what lets extract_text return these scripts in logical order. Self-contained: runs end-to-end with no placeholders.",
+  "tool": "add_international_text",
+  "arguments": {
+    "title": "Scripts of mainland South-East Asia",
+    "lang": [
+      "lo",
+      "nod",
+      "khb",
+      "tdd",
+      "cjm",
+      "latin"
+    ],
+    "pdfA": "pdfa2u",
+    "strict": true,
+    "creationDate": "2026-01-01T00:00:00Z",
+    "paragraphs": [
+      "Lao — ສະບາຍດີຊາວໂລກ",
+      "Tai Tham (Lanna) — ᨣᩤᩴᨾᩮᩬᩥᨦ",
+      "New Tai Lue — ᦎᦷᦑᦺᦟᦹᧉ",
+      "Tai Le — ᥖᥭᥰ ᥖᥬᥲ ᥑᥨᥒᥰ",
+      "Cham — ꨀꨇꩉ ꨌꩌ"
+    ]
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "description": "Colour control strip (pdfnative 1.8 via generate_basic_pdf v1.7.0): `print.marks.colourBars` adds the C M Y K solids, their overprints and the 75 / 50 / 25 % tints in the bleed, beside the crop and registration marks. It is off by default — existing `marks` output is unchanged — and needs room: a bleed of about 5 mm (14.17 pt); the strip is skipped silently when it would not fit. Pass `{ tints: false }` for solids only or `{ size: 8 }` for smaller patches. Self-contained: runs end-to-end with no placeholders.",
+  "tool": "generate_basic_pdf",
+  "arguments": {
+    "title": "Press sheet",
+    "creationDate": "2026-01-01T00:00:00Z",
+    "print": {
+      "bleed": 14.17,
+      "marks": {
+        "crop": true,
+        "registration": true,
+        "colourBars": {
+          "tints": true,
+          "size": 12
+        }
+      }
+    },
+    "metadata": {
+      "trapped": "False",
+      "subject": "Colour control strip"
+    },
+    "blocks": [
+      {
+        "type": "heading",
+        "text": "Press sheet",
+        "level": 1
+      },
+      {
+        "type": "paragraph",
+        "text": "The strip in the bleed lets the press operator check ink density and tone reproduction at a glance."
+      }
+    ]
+  }
+}

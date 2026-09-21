@@ -1,0 +1,44 @@
+{
+  "description": "PDF/X-4 print exchange file (ISO 15930-7, pdfnative 1.8 via generate_basic_pdf v1.7.0), for a one-colour (black) job. `pdfx: \"pdfx4\"` writes the PDF 1.6 header, the PDF/X-4 XMP identification, a /GTS_PDFX OutputIntent, a TrimBox and /Trapped. It REQUIRES `outputIntent` with the printer's ICC profile (device class 'prtr') and `embedFonts: true`; `strict: true` fails the call on any PDFX_* diagnostic instead of writing a non-conformant file. The profile inlined here is a SYNTHETIC 408-byte Gray profile that characterises no press — it exists so this example runs with no placeholders; a real job uses the profile your printer names (no press profile is bundled). Exclusive with `pdfA` and `encrypt`; link and formField blocks would be reported as PDFX_ANNOTATIONS. Check the result with validate_pdf { standard: 'pdf-x-4' }: a valid verdict means the structural prerequisites hold, not that the file passed a certified preflight.",
+  "tool": "generate_basic_pdf",
+  "arguments": {
+    "title": "Programme — one-colour job",
+    "pdfx": "pdfx4",
+    "embedFonts": true,
+    "strict": true,
+    "creationDate": "2026-01-01T00:00:00Z",
+    "outputIntent": {
+      "iccProfileBase64": "AAABmAAAAAACEAAAcHJ0ckdSQVlYWVogB+oAAQABAAAAAAAAYWNzcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPbWAAEAAAAA0y0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEZGVzYwAAALQAAACZY3BydAAAAVAAAAAhd3RwdAAAAXQAAAAUa1RSQwAAAYgAAAAOZGVzYwAAAAAAAAA/cGRmbmF0aXZlIHN5bnRoZXRpYyBHcmF5IChzYW1wbGVzIG9ubHksIG5vdCBhIHByZXNzIGNvbmRpdGlvbikAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAdGV4dAAAAABObyBjb3B5cmlnaHQsIHVzZSBmcmVlbHkAAAAAWFlaIAAAAAAAAPbWAAEAAAAA0y1jdXJ2AAAAAAAAAAECMwAA",
+      "outputConditionIdentifier": "Synthetic Gray (pdfnative test profile)",
+      "info": "Synthetic profile for examples only — not a press condition."
+    },
+    "metadata": {
+      "trapped": "False",
+      "author": "Prepress"
+    },
+    "print": {
+      "bleed": 8.5,
+      "marks": true
+    },
+    "blocks": [
+      {
+        "type": "heading",
+        "text": "Evening programme",
+        "level": 1
+      },
+      {
+        "type": "paragraph",
+        "text": "Set in embedded Noto Sans, trimmed to the TrimBox, exchanged as PDF/X-4."
+      },
+      {
+        "type": "list",
+        "style": "numbered",
+        "items": [
+          "Overture",
+          "Interval",
+          "Finale"
+        ]
+      }
+    ]
+  }
+}

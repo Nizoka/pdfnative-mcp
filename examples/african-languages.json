@@ -1,0 +1,20 @@
+{
+  "description": "Hausa, Yoruba, Igbo and Swahili (add_international_text v1.7.0 on pdfnative 1.8): these languages are written in Latin with combining marks — Yoruba ẹ́ ọ̀, Igbo ị́ — which the bundled Noto Sans module now anchors (latin-marks shaper). `ha`, `yo`, `ig` and `sw` are ALIASES of `latin`: no extra font is loaded, the aliases de-duplicate against each other, and the bytes are those of `lang: 'latin'`. Decomposed (NFD) input is fine: text is NFC-normalised by default. Self-contained: runs end-to-end with no placeholders.",
+  "tool": "add_international_text",
+  "arguments": {
+    "title": "Four languages, one Latin module",
+    "lang": [
+      "yo",
+      "ig",
+      "ha",
+      "sw"
+    ],
+    "creationDate": "2026-01-01T00:00:00Z",
+    "paragraphs": [
+      "Yorùbá — Ẹ káàárọ̀, ọ̀rẹ́ mi. Báwo ni?",
+      "Igbo — Ị́bọ̀ọ́lá chi, kedụ ka ị mere?",
+      "Hausa — Ina kwana? Ƙasar Hausa da ɗan Adam.",
+      "Kiswahili — Habari ya asubuhi, rafiki yangu."
+    ]
+  }
+}

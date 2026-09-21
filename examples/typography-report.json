@@ -1,0 +1,89 @@
+{
+  "description": "Book-quality report (pdfnative 1.8 typography via generate_basic_pdf v1.7.0). `typography.splitParagraphs` lets paragraphs break across pages at a line boundary with `orphans` / `widows` of 3, `keepHeadingsWithNext` never strands a heading at the foot of a page, paragraphs are `align: \"justify\"` with `opticalMargins`, and `kerning` + `fontFeatures: [\"onum\", \"smcp\"]` apply to the embedded Noto Sans (`embedFonts: true` is what makes them effective). The second heading shows the per-block `keepWithNext`, the lead-in paragraph stays with the table that follows it. No hyphenation dictionary is installed on the server: the long compound carries soft hyphens (U+00AD). Self-contained: runs end-to-end with no placeholders. Preview the pagination with inspect_layout and the same `typography`.",
+  "tool": "generate_basic_pdf",
+  "arguments": {
+    "title": "On Typography",
+    "embedFonts": true,
+    "creationDate": "2026-01-01T00:00:00Z",
+    "typography": {
+      "splitParagraphs": true,
+      "orphans": 3,
+      "widows": 3,
+      "keepHeadingsWithNext": {
+        "minLines": 3
+      },
+      "opticalMargins": true,
+      "kerning": true,
+      "fontFeatures": [
+        "onum",
+        "smcp"
+      ],
+      "hyphenationLanguage": "en-GB"
+    },
+    "blocks": [
+      {
+        "type": "heading",
+        "text": "Why it matters",
+        "level": 1
+      },
+      {
+        "type": "paragraph",
+        "text": "Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains. Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains. Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains. Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains. Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains.",
+        "align": "justify"
+      },
+      {
+        "type": "paragraph",
+        "text": "Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains. Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains. Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains. Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains. Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains. Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains.",
+        "align": "justify"
+      },
+      {
+        "type": "heading",
+        "text": "Figures in running text",
+        "level": 2,
+        "keepWithNext": true
+      },
+      {
+        "type": "paragraph",
+        "text": "In 1984 the press printed 12 650 copies; by 2026 it had reached 3 481 902. Old-style figures sit quietly in the line, the way lower-case letters do.",
+        "align": "justify"
+      },
+      {
+        "type": "paragraph",
+        "text": "A Donau­dampf­schiff­fahrts­gesell­schaft is a long word; its soft hyphens give the line a place to break. Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains. Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains. Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains. Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains.",
+        "align": "justify",
+        "splittable": true
+      },
+      {
+        "type": "paragraph",
+        "text": "The table below summarises the settings used on this page.",
+        "keepWithNext": true
+      },
+      {
+        "type": "table",
+        "headers": [
+          "Setting",
+          "Value"
+        ],
+        "rows": [
+          [
+            "splitParagraphs",
+            "true"
+          ],
+          [
+            "orphans / widows",
+            "3 / 3"
+          ],
+          [
+            "fontFeatures",
+            "onum, smcp"
+          ],
+          [
+            "kerning",
+            "true"
+          ]
+        ],
+        "zebra": true
+      }
+    ]
+  }
+}
