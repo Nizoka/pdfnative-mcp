@@ -100,7 +100,7 @@ export const PRINT_INPUT_PROPERTIES = {
         type: 'string',
         format: 'date-time',
         description:
-            'ISO-8601 instant for /CreationDate (+ XMP). Pin it for byte-identical output across calls (same host TZ); omitted = wall clock, so every call differs.',
+            'ISO-8601 instant for /CreationDate (+ XMP, the trailer /ID and the {date} placeholder), written in UTC. Pin it for byte-identical output across calls and hosts; omitted = wall clock, so every call differs.',
     },
 } as const;
 

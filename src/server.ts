@@ -813,7 +813,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: UPDATE_METADATA_NAME,
         title: 'Update document metadata',
         description:
-            'Rewrite /Info (title, author, subject, keywords) of an EXISTING PDF as an incremental update; XMP stays in sync on PDF/A documents; /ModDate is refreshed (pin `modDate` for reproducible bytes on the same host TZ). Earlier revisions and signatures stay byte-identical — the new revision is unsigned (sign_pdf / timestamp_pdf again if needed). Encrypted sources → ENCRYPTED_SOURCE. For metadata at generation time use the `metadata` option of the document tools.',
+            'Rewrite /Info (title, author, subject, keywords) of an EXISTING PDF as an incremental update; XMP stays in sync on PDF/A documents; /ModDate is refreshed (pin `modDate` for reproducible bytes). Earlier revisions and signatures stay byte-identical — the new revision is unsigned (sign_pdf / timestamp_pdf again if needed). Encrypted sources → ENCRYPTED_SOURCE. For metadata at generation time use the `metadata` option of the document tools.',
         inputSchema: UPDATE_METADATA_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -854,7 +854,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: INSPECT_LAYOUT_NAME,
         title: 'Inspect document layout (dry run)',
         description:
-            "Pagination preview WITHOUT generating a PDF: page count and where every block lands (page, x, top, width, height in points). Same `blocks` as generate_basic_pdf plus every input that moves a block (title, footerText, pdfA, normalize, embedFonts, pageSize, margins, headerTemplate, footerTemplate): pass what you will give generate_basic_pdf and the page count matches. Known engine gap: a 'toc' block is measured as 0 pt here (its real height depends on the headings), so documents with a toc may paginate one page later. Read-only, deterministic. Token-frugal: verbosity:'summary', fields:['totalPages'].",
+            "Pagination preview WITHOUT generating a PDF: page count and where every block lands (page, x, top, width, height in points). Same `blocks` as generate_basic_pdf plus every input that moves a block (title, footerText, pdfA, normalize, embedFonts, pageSize, margins, headerTemplate, footerTemplate): pass what you will give generate_basic_pdf and the page count matches — the dry run shares the pagination planner of the builder, toc blocks included. Read-only, deterministic. Token-frugal: verbosity:'summary', fields:['totalPages'].",
         inputSchema: INSPECT_LAYOUT_INPUT_SCHEMA,
         outputSchema: projectableOutputSchema(
             INSPECT_LAYOUT_OUTPUT_SCHEMA,
@@ -905,10 +905,10 @@ COMMON PITFALLS:
   • outputMode:'file' needs PDFNATIVE_MCP_OUTPUT_DIR on the host (SECURITY_VIOLATION otherwise); paths are relative, .pdf, no '..'. With the opt-in response cache a hit carries _meta.cached:true (earlier bytes, same inputs — including an earlier {date} placeholder).
   • Barcode data is the raw payload (never URL-encode); ecLevel applies to qr only; ean13 needs 12–13 digits.
   • Layout options on every document tool: pageSize (A4 default, Letter, Legal, A3, Tabloid), margins (all four), headerTemplate / footerTemplate with {page} {pages} {title} {date} (footerTemplate replaces the default footer, so footerText is then ignored), compress:true (FlateDecode streams, smaller file, different bytes), debug:true (guide rectangles).
-  • generate_basic_pdf 'svg' blocks support paths, basic shapes and <text> only — no transform, <g>, gradients or CSS (silently ignored); 'image' blocks are capped at 24 MiB decoded per call; 'formField' blocks under pdfA inherit PDFA_UNEMBEDDED_FORM_FONT.
+  • generate_basic_pdf 'svg' blocks support paths, basic shapes and <text> only — no transform, <g>, gradients or CSS (silently ignored); 'image' blocks are capped at 24 MiB decoded per call; 'formField' blocks under pdfA need embedFonts:true (PDFA_UNEMBEDDED_FORM_FONT otherwise).
   • Watermarks take text and/or an image (JPEG/PNG, default opacity 0.10) and a position (background | foreground); opacity < 1 is rejected under pdfa1b.
 
-REPRODUCIBILITY: outputs differ on every call because /CreationDate (and /ID) follow the wall clock. For byte-identical output pass creationDate (document tools), signingTime (sign_pdf / prepare_signature_placeholder) and modDate (update_metadata) as fixed ISO-8601 instants — identical on the same host time zone. Timestamps (TSA tokens) are inherently fresh, and the {date} placeholder of header/footer templates is the build-day wall clock (not creationDate) — avoid it when you need stable bytes.
+REPRODUCIBILITY: outputs differ on every call because /CreationDate (and /ID) follow the wall clock. For byte-identical output pass creationDate (document tools), signingTime (sign_pdf / prepare_signature_placeholder) and modDate (update_metadata) as fixed ISO-8601 instants — every date is written in UTC, so the bytes are identical on every host whatever its time zone. The {date} placeholder of header/footer templates follows creationDate. Timestamps (TSA tokens), encryption (fresh keys / IVs) and ECDSA signatures are never reproducible.
 
 TOKEN-FRUGAL READS & RESOURCES: read tools accept verbosity:'summary' and fields:[…]. Generated PDFs arrive as an embedded resource block (not duplicated in structuredContent); in file mode the result carries a resource_link and the file is listed under resources/list as pdfnative://output/<path>. Prompts: governance_contract, draft_issue_workflow, pades_ladder, print_ready, reproducible_output, pdfa_valid. Docs: docs/AI_GUIDE.md, docs/guides/*.md.`;
 
@@ -1210,9 +1210,9 @@ const PRINT_READY_RECIPE = `Print-ready output with any document tool (generate_
 • Page boxes and /UserUnit survive merge_pdfs / split_pdf / extract_pages; XMP and PDF/A claims do not.`;
 
 const REPRODUCIBLE_OUTPUT_RECIPE = `Byte-identical output across calls:
-• Document tools: pin creationDate:'2026-01-15T09:00:00Z' (ISO-8601). /CreationDate, XMP dates and the /ID are then derived from the inputs only. Two calls with identical inputs return identical base64 (same host time zone — the engine serialises the instant in local time).
+• Document tools: pin creationDate:'2026-01-15T09:00:00Z' (ISO-8601). /CreationDate, XMP dates and the /ID are then derived from the inputs only. Two calls with identical inputs return identical base64 on any host: every date is serialised in UTC (+00'00'), whatever the server's time zone.
 • prepare_signature_placeholder: also pin signingTime (the /Sig /M entry is frozen at placeholder time). sign_pdf: pin signingTime; the CMS signature is deterministic for RSA, but ECDSA signatures are randomised by design and RFC 3161 timestamps (timestamp:true, timestamp_pdf) are always fresh.
-• Header/footer templates: the {date} placeholder is the build-day wall clock — omit it for stable bytes.
+• Header/footer templates: the {date} placeholder is the UTC date of creationDate, so a dated footer stays reproducible once creationDate is pinned (unpinned, it is the build day).
 • update_metadata: pin modDate. encrypt_pdf / decrypt_pdf: never reproducible (fresh IV / salt) and never cached.
 • Proof: call twice and compare structuredContent.sizeBytes and the resource blob, or hash the bytes on the host. With PDFNATIVE_MCP_CACHE_DIR set, a repeated call may be served from cache (_meta.cached:true) — the bytes are the earlier render.`;
 
@@ -1221,7 +1221,7 @@ const PDFA_VALID_RECIPE = `A PDF/A claim that a reference validator (veraPDF) ac
 2. ALWAYS pass embedFonts:true on Latin document tools — without it text is rendered through the unembedded base-14 Helvetica and the claim fails ISO 19005 §6.2.11.4.1 (PDFA_NO_FONT_ENTRIES). add_international_text always embeds its fonts.
 3. Use strict:true to make the call fail (PDF_A_COMPLIANCE_VIOLATION) instead of producing a non-conformant file, or includeDiagnostics:true to read the engine diagnostics in structuredContent.diagnostics.
 4. Avoid watermark opacity < 1 under pdfa1b; keep encryption off (mutually exclusive with PDF/A); prefer a custom outputIntent only with an RGB ICC profile.
-5. Under a PDF/A claim a CMYK JPEG reports PDFA_DEVICE_CMYK_IMAGE (the OutputIntent is sRGB) and any form field reports PDFA_UNEMBEDDED_FORM_FONT — keep images RGB and flatten or drop pdfA for forms.
+5. Under a PDF/A claim a CMYK JPEG reports PDFA_DEVICE_CMYK_IMAGE (the OutputIntent is sRGB) — keep images RGB. Forms (add_form, formField blocks) are archival with embedFonts:true: the field font is embedded too; without it they report PDFA_UNEMBEDDED_FORM_FONT.
 6. inspect_pdf reports the CLAIM (pdfA:'2B'), not its validity; validate_pdf checks PDF/UA structure, not PDF/A. An unsigned signature placeholder (prepare_signature_placeholder) is not yet conformant — it becomes conformant once signed with sign_pdf profile:'pades'.
 7. merge_pdfs / split_pdf / extract_pages drop the XMP packet: re-declare PDF/A on the generating tools, not after carving.`;
 

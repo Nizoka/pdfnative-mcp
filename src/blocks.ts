@@ -129,7 +129,7 @@ export const EXTENDED_BLOCK_SCHEMAS = [
         type: 'object',
         additionalProperties: false,
         required: ['type', 'fieldType', 'name'],
-        description: 'Inline AcroForm field — same body as an add_form field. Under a PDF/A claim the widget appearance font is not embedded (PDFA_UNEMBEDDED_FORM_FONT; strict:true fails the call).',
+        description: 'Inline AcroForm field — same body as an add_form field. Under a PDF/A claim pass embedFonts:true so the field font is embedded too (PDFA_UNEMBEDDED_FORM_FONT otherwise; strict:true then fails the call).',
         properties: {
             type: { const: 'formField' },
             ...FORM_FIELD_PROPERTIES,

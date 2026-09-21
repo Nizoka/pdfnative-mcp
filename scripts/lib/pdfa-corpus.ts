@@ -82,6 +82,19 @@ const PARAGRAPHS = [
     'Each file claims a PDF/A conformance level in its XMP packet and is validated by veraPDF.',
 ] as const;
 
+/** One AcroForm, rendered with and without embedded fonts (positive entry + negative canary). */
+const PDFA_FORM = {
+    title: 'Corpus — PDF/A-2b AcroForm',
+    pdfA: 'pdfa2b',
+    fields: [
+        { fieldType: 'text', name: 'fullName', label: 'Full name', value: 'Ada Lovelace' },
+        { fieldType: 'checkbox', name: 'agree', label: 'I agree', checked: true },
+        { fieldType: 'dropdown', name: 'country', label: 'Country', options: ['FR', 'DE', 'UK'], value: 'FR' },
+        { fieldType: 'radio', name: 'size', label: 'Size', options: ['S', 'M', 'L'] },
+    ],
+    footerText: 'Form fields under PDF/A-2b (appearance streams, no JavaScript).',
+} as const;
+
 /**
  * Corpus definition: `file` is the output name, `produce` returns base64 PDF
  * bytes. Composite entries (merge / extract) reuse earlier outputs via `ctx`.
@@ -372,27 +385,22 @@ export const CORPUS: readonly CorpusEntry[] = [
     {
         file: 'form-pdfa2b.pdf',
         tool: 'add_form',
-        // KNOWN FAILURE (pdfnative 1.7.0): the AcroForm /DR default-appearance
-        // font (/Helv → non-embedded Type1 Helvetica, used by the widget /DA
-        // strings) is emitted by the engine regardless of `embedFonts`, so
-        // veraPDF reports ISO 19005-2 6.2.11.4.1. Page text IS embedded. Kept
-        // as a tracked expectation rather than dropped: the run turns XPASS
-        // (fatal) the day the engine embeds /DR fonts, forcing this flag to
-        // be flipped to `true` deliberately.
+        // A negative canary until pdfnative 1.8.0: the AcroForm /DR
+        // default-appearance font was an unembedded Type1 /Helv whatever
+        // `embedFonts` said (ISO 19005-2 6.2.11.4.1). The engine now embeds the
+        // registered Latin font in /DR, so an interactive form can be archival;
+        // the run went XPASS on the bump and the flag was flipped deliberately.
+        produce: (ctx) => ctx.produce('add_form', { ...PDFA_FORM, ...EMBED }),
+    },
+    {
+        file: 'form-pdfa2b-no-embedfonts.pdf',
+        tool: 'add_form',
+        // Negative canary: the same form without `embedFonts`. Page text and
+        // the /DR font both fall back to unembedded base-14 Helvetica
+        // (diagnostics PDFA_NO_FONT_ENTRIES + PDFA_UNEMBEDDED_FORM_FONT), so
+        // veraPDF MUST reject it.
         expectCompliant: false,
-        produce: (ctx) =>
-            ctx.produce('add_form', {
-                title: 'Corpus — PDF/A-2b AcroForm',
-                pdfA: 'pdfa2b',
-                fields: [
-                    { fieldType: 'text', name: 'fullName', label: 'Full name', value: 'Ada Lovelace' },
-                    { fieldType: 'checkbox', name: 'agree', label: 'I agree', checked: true },
-                    { fieldType: 'dropdown', name: 'country', label: 'Country', options: ['FR', 'DE', 'UK'], value: 'FR' },
-                    { fieldType: 'radio', name: 'size', label: 'Size', options: ['S', 'M', 'L'] },
-                ],
-                footerText: 'Form fields under PDF/A-2b (appearance streams, no JavaScript).',
-                ...EMBED,
-            }),
+        produce: (ctx) => ctx.produce('add_form', { ...PDFA_FORM, title: 'Corpus — PDF/A-2b AcroForm without embedded fonts (negative canary)' }),
     },
     {
         file: 'placeholder-pdfa2b-unsigned.pdf',

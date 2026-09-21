@@ -3,9 +3,10 @@
  * every document-producing tool. Pinned ⇒ two calls with identical inputs
  * return identical bytes; absent ⇒ the engine's wall-clock default applies and
  * the output is unchanged from before the option existed (byte-identity is
- * asserted by normalising only the date-bearing fields). The engine serialises
- * the instant in the host's local timezone, so reproducibility holds for the
- * same host TZ (documented in AGENTS.md).
+ * asserted by normalising only the date-bearing fields). pdfnative >= 1.8
+ * serialises every instant in UTC (`+00'00'`), so a pinned call is byte-identical
+ * on every host, whatever its time zone (documented in docs/AGENT_CONTRACT.md;
+ * tests/reproducible-build.test.ts proves it across two zones on the built server).
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 
@@ -74,7 +75,9 @@ describe('creationDate — shared fragment', () => {
     it('rejects non ISO-8601 values with VALIDATION_ERROR and accepts timezone offsets', async () => {
         await expect(generateBasicPdf({ ...DOCUMENT_TOOLS[0]![2], creationDate: '15/01/2026' })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
         const out = await generateBasicPdf({ ...DOCUMENT_TOOLS[0]![2], creationDate: '2026-01-15T10:00:00+01:00' });
-        expect(Buffer.from(out.base64!, 'base64').toString('latin1')).toMatch(/\/CreationDate\s*\(D:20260115/);
+        // 10:00 at +01:00 is the PINNED instant: the engine writes it in UTC, whatever offset it was given in.
+        expect(Buffer.from(out.base64!, 'base64').toString('latin1')).toMatch(/\/CreationDate\s*\(D:20260115090000\+00'00'\)/);
+        expect(out.base64).toBe((await generateBasicPdf({ ...DOCUMENT_TOOLS[0]![2], creationDate: PINNED })).base64);
     });
 });
 
@@ -85,7 +88,7 @@ describe('creationDate — reproducibility on every document tool', () => {
             const b = await handler({ ...input, creationDate: PINNED });
             expect(a.base64).toBeDefined();
             expect(a.base64).toBe(b.base64);
-            expect(Buffer.from(a.base64!, 'base64').toString('latin1')).toMatch(/\/CreationDate\s*\(D:20260115/);
+            expect(Buffer.from(a.base64!, 'base64').toString('latin1')).toMatch(/\/CreationDate\s*\(D:20260115090000\+00'00'\)/);
 
             const plain = await handler(input);
             expect(normalise(plain.base64!)).toBe(normalise(a.base64!));

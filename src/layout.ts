@@ -9,12 +9,13 @@
  * default, so default outputs stay byte-identical (pdfnative applies its A4 /
  * default-margin / uncompressed defaults only when the keys are absent).
  *
- * Engine facts (pdfnative 1.7.0):
+ * Engine facts (pdfnative 1.8.0):
  *   - `PAGE_SIZES` presets live in `src/core/pdf-layout.ts`; A4 is the default.
  *   - `footerTemplate` *replaces* the default footer (`{ left: footerText,
  *     right: '{page}/{pages}' }`) entirely — `footerText` is then ignored.
- *   - `{date}` is the engine's wall-clock date (YYYY-MM-DD, host TZ), not
- *     `creationDate`; it is therefore not reproducible across days.
+ *   - `{date}` is the UTC calendar date (YYYY-MM-DD) of the document instant:
+ *     `creationDate` when pinned (or the operator pin), the wall clock
+ *     otherwise — so a templated footer is reproducible once the date is pinned.
  *   - `compress` needs `initNodeCompression()` (done once at server boot via
  *     `ensureCompressionReady()`); XMP streams stay uncompressed under PDF/A.
  *   - `debug` is honoured by the document backend only; the overlay is plain
@@ -44,7 +45,7 @@ const MARGIN_SCHEMA = { type: 'number', minimum: 0, maximum: 200 } as const;
 const TEMPLATE_TEXT_SCHEMA = {
     type: 'string',
     maxLength: 200,
-    description: 'Placeholders: {page} {pages} {title} {date} (build-day wall clock, not creationDate).',
+    description: 'Placeholders: {page} {pages} {title} {date} (UTC date of creationDate when pinned, else of the build).',
 } as const;
 
 const TEMPLATE_SCHEMA = (zone: 'top' | 'bottom') =>

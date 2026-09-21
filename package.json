@@ -135,7 +135,7 @@
     },
     "dependencies": {
         "@modelcontextprotocol/server": "^2.0.0",
-        "pdfnative": "^1.7.0",
+        "pdfnative": "^1.8.0",
         "zod": "^4.2.0"
     },
     "devDependencies": {

@@ -162,15 +162,24 @@ describe('layout fragment — behaviour', () => {
         expect(headerOnly).toContain('1/2');
     });
 
-    it('{date} is the engine wall-clock date (YYYY-MM-DD) and is NOT tied to creationDate', async () => {
-        // Sample the clock on both sides of the build so a local-midnight boundary cannot flake.
-        const ymd = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    it('{date} follows a pinned creationDate, in UTC (pdfnative 1.8.0) — a templated footer is reproducible', async () => {
+        const doc = { ...TWO_PAGE_DOC, footerTemplate: { left: 'Built {date}' }, creationDate: '2021-06-01T00:00:00Z' };
+        const pdf = latin1(await generateBasicPdf(doc));
+        expect(pdf).toContain('Built 2021-06-01');
+        // 23:30 at UTC-02:00 is already the next day in UTC: the placeholder is the UTC calendar date.
+        const late = latin1(await generateBasicPdf({ ...doc, creationDate: '2021-06-01T23:30:00-02:00' }));
+        expect(late).toContain('Built 2021-06-02');
+        expect((await generateBasicPdf(doc)).base64).toBe((await generateBasicPdf(doc)).base64);
+    });
+
+    it('{date} without creationDate is the wall-clock UTC date', async () => {
+        // Sample the clock on both sides of the build so a UTC-midnight boundary cannot flake.
+        const ymd = (d: Date): string => d.toISOString().slice(0, 10);
         const before = ymd(new Date());
-        const pdf = latin1(await generateBasicPdf({ ...TWO_PAGE_DOC, footerTemplate: { left: 'Built {date}' }, creationDate: '2021-06-01T00:00:00Z' }));
+        // TWO_PAGE_DOC pins creationDate; this one must not.
+        const pdf = latin1(await generateBasicPdf({ title: TWO_PAGE_DOC.title, blocks: TWO_PAGE_DOC.blocks, footerTemplate: { left: 'Built {date}' } }));
         const after = ymd(new Date());
         expect(pdf.includes(`Built ${before}`) || pdf.includes(`Built ${after}`)).toBe(true);
-        // Pinned creationDate (2021) does not feed the placeholder.
-        expect(pdf).not.toContain('Built 2021-06-01');
     });
 
     it('compress:true Flate-encodes page content and shrinks the file; compress omitted ⇒ bytes unchanged', async () => {

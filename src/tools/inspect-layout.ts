@@ -13,8 +13,9 @@
  *     (tagged mode, Unicode normalisation, Noto Sans metrics vs Helvetica)
  *   - `pageSize`, `margins`, `headerTemplate`, `footerTemplate`  change the content box
  * Print boxes, watermarks, metadata, compression and encryption never move a
- * block, so they are deliberately not part of the schema. Known engine gap: a
- * `toc` block is measured as 0 pt (pinned in tests/inspect-layout.test.ts).
+ * block, so they are deliberately not part of the schema. The dry run and the
+ * builder share one pagination planner (pdfnative >= 1.8), so every block kind —
+ * `toc` included — is measured exactly as it is laid out.
  */
 import { inspectDocumentLayout, type LayoutInspection } from 'pdfnative';
 import { z } from 'zod';
