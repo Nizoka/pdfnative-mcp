@@ -605,6 +605,7 @@ export const CORPUS: readonly CorpusEntry[] = [
                 blocks: [
                     { type: 'heading', text: 'Fine typography', level: 1 },
                     ...Array.from({ length: 4 }, () => ({ type: 'paragraph', text: LONG_TEXT.repeat(5).trim(), align: 'justify' })),
+                    // demo-language: fr (punctuationSpacing 'fr' is a French convention)
                     { type: 'heading', text: 'Espaces insécables', level: 2 },
                     { type: 'paragraph', text: 'Vraiment ? Oui ! Le colis pèse 12 kg et coûte 150 € ; voici : « un exemple ».', align: 'justify' },
                 ],

@@ -2,7 +2,7 @@
 # pdfnative-mcp — opt-in pre-push hook.
 #
 # Installed with `npm run hooks:install`; removed with `npm run hooks:uninstall`.
-# Runs the fast gate profile (typecheck:all, lint, test, verify:docs) before
+# Runs the fast gate profile (typecheck:all, lint, test, server-json, verify:docs) before
 # anything leaves the machine. CI runs the full profile afterwards.
 
 if ! npm run gate:fast; then
