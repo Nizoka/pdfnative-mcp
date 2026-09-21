@@ -36,7 +36,7 @@ pdfnative-mcp is the official Model Context Protocol server of the pdfnative eng
 | Profile | Command | Runs |
 |---|---|---|
 | Fast — before every commit | `npm run gate:fast` | typecheck:all, lint, test, server-json, verify:docs |
-| CI — the default | `npm run gate` | typecheck:all, lint, build, dist-check, dist-probe, smoke, verify:tool-shape, server-json, test:generate, test:coverage, verify:docs, verify:samples, corpus:pdfa, validate:pdfx — build and samples precede the tests |
+| CI — the default | `npm run gate` | fast minus `test`, plus build, dist-check, dist-probe, smoke, verify:tool-shape, test:generate, test:coverage, verify:samples, corpus:pdfa, validate:pdfx — build and samples precede the tests |
 | Publish — release branches | `npx tsx scripts/gate.ts --publish --require-all` | everything, incl. validate:pdfa (veraPDF; `--require-all` fails on a skip) |
 
 PowerShell swallows a bare `--`, so pass flags by calling the script: `npx tsx scripts/gate.ts --fast`, `--only <step>`, `--json`.
@@ -49,7 +49,7 @@ One suite: `npx vitest run tests/<name>.test.ts` (dot reporter). Drive the **bui
 | `src/cli.ts`, `src/http.ts`, `src/auth.ts` | Entry and transports: stdio by default, Streamable HTTP when `PDFNATIVE_MCP_PORT` is set (loopback guard, opt-in bearer token); boot-time knobs | `mcp-server.instructions.md` |
 | `src/server.ts` | `TOOLS` registry (annotations, `_meta.examples`), request handlers, `dispatchOutput`, `classifyUnexpected`, instructions, prompts, resources, cache hints, `TOOL_API_VERSION` | `mcp-server.instructions.md` |
 | `src/tools/` | One file per tool: JSON Schema `as const`, the parallel Zod schema, the handler | `mcp-server.instructions.md` |
-| `src/*.ts` | Shared fragments: `layout`, `typography`, `color`, `print`, `pdfx`, `pdfa`, `diagnostics`, `blocks`, `table`, `chart`, `barcode`, `form`, `image`, `watermark`, `encryption`, `reproducible`, `inflate-cap`, `network`, `output`, `base64`, `projection` | `security.instructions.md` |
+| `src/*.ts` | Shared fragments: `layout`, `typography`, `color`, `print`, `pdfx`, `pdfa`, `diagnostics`, `blocks`, `table`, `chart`, `image`, `encryption`, `reproducible`, `network`, `output`, `base64` | `security.instructions.md` |
 | `scripts/` | gate, sample generator, baseline, conformance corpus + validators (`helpers/`, `lib/`), tool-shape, verify-docs, release-prepare | `testing.instructions.md` |
 | `tests/` | vitest, one `*.test.ts` per tool or module; `_`-prefixed shared fixtures; `_fixtures/` (tool shape, baseline, engine-surface matrix); `tools/` (repository tooling) | `testing.instructions.md` |
 | `examples/` | Executable `tools/call` sequences, run live by `npm run examples:check` and rendered into the sample baseline | `testing.instructions.md` |
@@ -95,7 +95,7 @@ A tool succeeds with `content` + `structuredContent` (validating against its `ou
 
 ## Counts and versions
 
-28 tools, 7 prompts, 13 block kinds, 47 error codes, 27 Unicode scripts, 43 examples, 96 samples in the baseline, 41 corpus files.
+28 tools, 7 prompts, 13 block kinds, 47 error codes, 27 Unicode scripts, 43 examples, 1624 tests, 96 samples in the baseline, 41 corpus files.
 `docs/assets/ecosystem.json` is the source of every count and version quoted in the docs; run `npm run verify:docs` after touching any of them.
 Coverage thresholds live once in `vitest.config.ts` and are enforced by the gate. Engine: pdfnative 1.8.0 (`^1.8.0`); Node ≥ 22.
 

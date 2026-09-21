@@ -80,20 +80,25 @@ AcroForms — a template made by `add_form`, or any third-party fillable PDF.
 ## Creating templates with `add_form` — PDF/A and reproducibility
 
 - `add_form` shares the document-tool options: `pdfA`, `embedFonts`, `strict`,
-  `print`, `metadata`, `outputIntent`, an opt-in `creationDate` (ISO-8601) and the
-  layout options (`pageSize`, `margins`, `headerTemplate` / `footerTemplate`,
-  `compress`, `debug`, `encrypt`). Pin `creationDate` to get byte-identical templates
-  from identical inputs on the same host time zone; omitted, every call differs by the
-  wall clock (`encrypt` output is randomised regardless, and never cached).
-- **Known limitation:** `add_form` (or a `formField` block) + `pdfA` + `embedFonts: true`
-  still fails PDF/A-2b under veraPDF — the wrapper reports it as the
-  `PDFA_UNEMBEDDED_FORM_FONT` diagnostic (`includeDiagnostics: true`; `strict: true`
-  fails the call). The page text uses the embedded Noto Sans, but the
-  AcroForm default resources (`/AcroForm /DR /Helv`) reference the base-14
-  Helvetica as an unembedded Type1 font (ISO 19005-2 rule 6.2.11.4.1). This is an
-  engine-side gap tracked by the `form-pdfa2b.pdf` negative canary in the veraPDF
-  corpus; `inspect_pdf` will still report the claim. Do not rely on a PDF/A claim
-  on a form until the upstream fix lands — see [PDFA.md](PDFA.md#known-limitations-engine-gaps-documented-honestly).
+  `print`, `metadata`, `outputIntent`, `typography`, an opt-in `creationDate`
+  (ISO-8601) and the layout options (`pageSize`, `margins`, `headerTemplate` /
+  `footerTemplate`, `compress`, `debug`, `encrypt`). It has no `pdfx` input: form
+  fields are annotations, which PDF/X does not allow on the printed area. Pin
+  `creationDate` to get byte-identical templates from identical inputs on every host
+  and in every time zone (dates are written in UTC — see
+  [REPRODUCIBLE.md](REPRODUCIBLE.md)); omitted, every call differs by the wall clock
+  (`encrypt` output is randomised regardless, and never cached).
+- **An archival form needs `embedFonts: true`.** Since pdfnative 1.8.0 (upstream fix
+  #74) `add_form` (or a `formField` block) + `pdfA` + `embedFonts: true` **validates**
+  under veraPDF: the AcroForm default-resources font (`/AcroForm /DR`) is now the
+  embedded Noto Sans, like the page text. It is the `form-pdfa2b.pdf` entry of the
+  veraPDF corpus — a negative canary until v1.6.0, an expected pass now.
+  **Without** `embedFonts: true` both the page text and the field font fall back to the
+  unembedded base-14 Helvetica (ISO 19005-2 rule 6.2.11.4.1): the wrapper reports
+  `PDFA_NO_FONT_ENTRIES` and `PDFA_UNEMBEDDED_FORM_FONT` (`includeDiagnostics: true`;
+  `strict: true` fails the call with `PDF_A_COMPLIANCE_VIOLATION`), and `inspect_pdf`
+  still reports the claim, which is void. See
+  [PDFA.md](PDFA.md#known-limitations-engine-gaps-documented-honestly).
 
 ## Non-WinAnsi text
 

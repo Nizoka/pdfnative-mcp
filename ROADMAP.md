@@ -55,7 +55,7 @@ Priorities may shift based on community feedback and sponsorship.
 
 ### v1.1.0 — pdfnative 1.3 alignment + AI-friendliness
 
-- [x] **pdfnative v1.3.0** — dependency bump `^1.2.0` → `^1.3.0` (additive, no breaking changes).
+- [x] **pdfnative v1.3.0** — dependency bump `^1.2.0` → `^1.3.0` (additive, no breaking changes). <!-- verify-docs:allow version-token -->
 - [x] **Tool `validate_pdf`** — read-only PDF/UA (ISO 14289-1) structural conformance check wrapping pdfnative's `validatePdfUA()`. 13th tool.
 - [x] **Six new scripts** — `add_international_text` reaches **24 scripts**: Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic.
 - [x] **COLRv1 colour emoji** — native colour emoji via the `emoji` lang code, with monochrome fallback.
@@ -76,7 +76,7 @@ Priorities may shift based on community feedback and sponsorship.
 
 ### v1.3.0 — page-tree tools, pdfnative 1.4 features, constant-time signing
 
-- [x] **pdfnative v1.4.0** — dependency bump `^1.3.0` → `^1.4.0` (additive, no breaking changes).
+- [x] **pdfnative v1.4.0** — dependency bump `^1.3.0` → `^1.4.0` (additive, no breaking changes). <!-- verify-docs:allow version-token -->
 - [x] **Tool `merge_pdfs`** — concatenate 2–50 PDFs into one via pdfnative's page-tree API; rejects encrypted sources. **15th tool.**
 - [x] **Tool `split_pdf`** — split one PDF into one document per page range (multi-output `{ count, totalSizeBytes, parts[] }`). **16th tool.**
 - [x] **Tool `extract_pages`** — pull an arbitrary page subset into a single PDF. **17th tool.**
@@ -87,7 +87,7 @@ Priorities may shift based on community feedback and sponsorship.
 
 ### v1.4.0 — AI governance + HITL, annotations, pdfnative 1.5
 
-- [x] **pdfnative v1.5.0** — dependency bump `^1.4.0` → `^1.5.0` (additive, no breaking changes).
+- [x] **pdfnative v1.5.0** — dependency bump `^1.4.0` → `^1.5.0` (additive, no breaking changes). <!-- verify-docs:allow version-token -->
 - [x] **Tool `annotate_pdf`** — overlay markup annotations (highlight, note, underline, strikeout, squiggly, square, circle, line, freetext) on an existing PDF via incremental update. Visual review layer, **not** a redaction. **18th tool.**
 - [x] **Tool `draft_governance_issue`** — draft a governance-compliant GitHub issue **locally** (draft `.md` + machine-readable compliance report) for human review; never submits, no outbound network; rejects contract breaches with `GOVERNANCE_VIOLATION`. **19th tool.**
 - [x] **AI governance + human-in-the-loop** — the agent is a *draftsman, never an autonomous submitter*; contract files under `.github/` (`ai-governance.json`, `AGENT_RULES.md`), a `verify:issue` CLI gate, and the `docs/guides/AI_GOVERNANCE.md` guide.
@@ -97,7 +97,7 @@ Priorities may shift based on community feedback and sponsorship.
 
 ### v1.5.0 — charts, forms, encryption round-trip, MCP resources, pdfnative 1.6
 
-- [x] **pdfnative v1.6.0** — dependency bump `^1.5.0` → `^1.6.0` (additive, no breaking changes).
+- [x] **pdfnative v1.6.0** — dependency bump `^1.5.0` → `^1.6.0` (additive, no breaking changes). <!-- verify-docs:allow version-token -->
 - [x] **Tool `add_chart`** — native vector charts (bar / barH / line / pie / donut) via pdfnative 1.6's `ChartBlock`; also available as a `chart` block in `generate_basic_pdf`. **20th tool.**
 - [x] **Tool `read_form_fields`** — read-only enumeration of an existing AcroForm's field tree. **21st tool.**
 - [x] **Tool `fill_form`** — fill / flatten an existing AcroForm (counterpart to `add_form`). **22nd tool.**
@@ -111,7 +111,7 @@ Priorities may shift based on community feedback and sponsorship.
 
 ### v1.6.0 — full engine coverage, PAdES LTV ladder, print production, charts v2, MCP 2026-07-28, pdfnative 1.7
 
-- [x] **pdfnative v1.7.0** — dependency bump `^1.6.0` → `^1.7.0` (additive; engine byte changes documented in the release notes).
+- [x] **pdfnative v1.7.0** — dependency bump `^1.6.0` → `^1.7.0` (additive; engine byte changes documented in the release notes). <!-- verify-docs:allow version-token -->
 - [x] **Full document model** — `generate_basic_pdf` accepts all 13 `DocumentBlock` kinds (`table`, `image`, `link`, `toc`, `barcode`, `svg`, `formField` join `heading` / `paragraph` / `list` / `chart` / `pageBreak` / `spacer`), each sharing its body with the dedicated tool; layout options `pageSize` / `margins` / `headerTemplate` / `footerTemplate` / `compress` / `debug` on the nine document tools; build-time `encrypt` (keeps the AcroForm) on seven of them; image watermarks (`watermark.image`) on `generate_basic_pdf` / `add_table`; `add_form` `listbox` + `placeholder`; `embed_image` `align` / `alt`. Deliberately unexposed engine options are listed in `docs/KNOWLEDGE_BASE.md`.
 - [x] **Tool `inspect_layout`** — read-only pagination dry run over the same blocks and layout inputs (`totalPages`, per-block geometry, no PDF produced). **28th tool.** Engine gap: a `toc` block measures 0 pt.
 - [x] **`inspect_pdf annotations: true`** — page-annotation inventory + `annotationCount`, `check: 'annotations'`.
@@ -135,15 +135,26 @@ Priorities may shift based on community feedback and sponsorship.
 - [x] **Fix: `verify_pdf` on B-LTA documents** — `/DocTimeStamp` entries are verified as RFC 3161 tokens and count in `allValid` like any signature (a sound timestamp passes; a tampered or TSA-untrusted one fails) instead of always failing as a mis-parsed CMS signature.
 - [x] **Fix: `add_form` text areas** — `fieldType: 'textarea'` maps to the engine's `multilineText` (`/Ff 4096`); 1.5.0 passed the name through unmapped. Bytes change for that input only (API_STABILITY §5).
 
-_v1.6.0 is the active release. `redact_pdf` stays **deferred** by design (overlay/flatten ≠ content removal)._
+### v1.7.0 — fine typography, CMYK, PDF/X-4, 27 scripts, reproducible output, pdfnative 1.8
 
-### v1.7.0 — follow-ups
+- [x] **pdfnative v1.8.0** — dependency bump `^1.7.0` → `^1.8.0` (additive; engine byte changes — TrueType subsets, print marks, mark positioning — declared in the release notes). Still exactly three runtime dependencies.
+- [x] **Fine typography** — `typography` (12 keys, all off by default) on the nine document tools and on `inspect_layout`: `splitParagraphs` with `orphans` / `widows`, `keepHeadingsWithNext`, `unitBinding`, `bindShortWords`, `punctuationSpacing`, `opticalMargins`, `metrics: 'exact'`, `fontFeatures`, `kerning`, `hyphenationLanguage`; paragraph `align` / `keepWithNext` / `splittable`, heading `keepWithNext`. Stated limits: `kerning`, `fontFeatures` and the `'fr'` narrow no-break space need `embedFonts: true`; `tnum` / `lnum` change nothing on the bundled Noto Sans; no hyphenation dictionary is installed (soft hyphens are honoured).
+- [x] **CMYK colours** — a shared colour module (`src/color.ts`): every colour input keeps its 1.6.0 form and gains a CMYK operand string (components 0–1) and a CMYK percent tuple (components 0–100).
+- [x] **PDF/X-4** — `pdfx: 'pdfx4'` on six generation tools, CMYK and Gray `outputIntent` profiles beside RGB, `print.marks` colour bars, `validate_pdf standard: 'pdf-x-4'` (structural prerequisites with `caveats[]` — not a certified preflight; no press profile is bundled), `inspect_pdf` reports `pdfX` (check `'pdfx'`). Incoherent requests are refused as `VALIDATION_ERROR` before the build.
+- [x] **27 Unicode scripts** — `add_international_text` accepts `lo`, `nod`, `khb`, `tdd`, `cjm`; `ha`, `yo`, `ig`, `sw` are aliases of `latin`; emoji skin-tone modifiers render.
+- [x] **Reproducible output on every host** — every date is written in UTC; `{date}` follows the pinned instant; operator pins `PDFNATIVE_MCP_CREATION_DATE` and `SOURCE_DATE_EPOCH` (per-call `creationDate` wins; an invalid value refuses to start). Closes the 1.6.0 caveat "byte-identical on the same host time zone". Not covered, by design: `signingTime`, `modDate`, encryption, RFC 3161 tokens and revocation data, ECDSA signatures.
+- [x] **Diagnostics by code** — the nine engine diagnostic codes enumerated, each with an executed trigger; `strict` escalates by code (`PDFA_*` → `PDF_A_COMPLIANCE_VIOLATION`, `PDFX_*` → `PDF_X_COMPLIANCE_VIOLATION`, anything else → `DIAGNOSTIC_ESCALATED`) — 47 error codes. A seventh MCP prompt, `typography`.
+- [x] **veraPDF blocking in CI** — `continue-on-error` dropped from `.github/workflows/verapdf.yml`; the workflow stays path-filtered and therefore out of the required checks, and the publish gate re-runs it with `--require-all` (which replaces `VERAPDF_REQUIRED=1`). Corpus: 41 files (33 PDF/A, 6 PDF/X-4, 2 without a claim); veraPDF 1.30.2: 27 PASS, 6 expected failures; `npm run validate:pdfx` checks the PDF/X-4 entries in-process and never skips.
+- [x] **`add_form` + PDF/A: the AcroForm `/DR` font is embedded** — fixed upstream (pdfnative #74): `add_form` / a `formField` block with `pdfA` and `embedFonts: true` validates under veraPDF; the `form-pdfa2b.pdf` canary was flipped (the variant without `embedFonts` remains a negative canary).
+- [x] **`inspect_layout` `toc` height** — fixed upstream (pdfnative #75): the inspector and the build share one pagination planner, so a `toc` block reports its real height and the page count matches the built document.
+- [x] **One gate** — `npm run gate` (`scripts/gate.ts`; profiles `--fast` / CI / `--publish --require-all`) with `dist-probe`, `smoke` (the built server over stdio, stdout purity) and `server-json` steps; a 96-sample byte baseline driven through the built server (`npm run test:generate`, `npm run verify:samples`); an engine-surface traceability matrix, a build-error registry and a seeded fuzz suite.
+- [x] **Hardened CI and supply chain** — nine workflows; `harden-runner` on every job, `persist-credentials: false`, `npm ci --ignore-scripts`, one commit SHA per action; publication from a protected environment through npm Trusted Publishing with a CycloneDX SBOM and a build-provenance attestation; committed rulesets under `.github/rulesets/`.
+- [x] **Docs as code and agent files** — `docs/assets/ecosystem.json` is the source of every count and version, held by `npm run verify:docs` (24 rules); `AGENTS.md` is the repository rule file and the consumer contract lives in `docs/AGENT_CONTRACT.md`; shared Claude Code settings, a fail-closed guard hook, generated rules, the `release-audit` skill; `scripts/release-prepare.ts`.
+- [x] **Fix: 0–1 RGB triples** — `watermark.color` and the `annotate_pdf` colours rendered almost black (the engine reads a three-number tuple as 0–255); the shared colour module converts them. Bytes change only for inputs that rendered the wrong colour.
+- [x] **Fix: no uncoded failure on a damaged PDF** — one net at the `tools/call` boundary classifies any unexpected failure of a tool that takes PDF input as `PDF_PARSE_FAILED`; `mapBuildError` classifies on the bare engine message; `strict` keeps the diagnostic code.
 
-- [ ] **veraPDF blocking in CI** — drop `continue-on-error` from `.github/workflows/verapdf.yml` once the `paths:` filter caveat is resolved; the corpus, canaries and `VERAPDF_REQUIRED=1` are already in place.
-- [ ] **`add_form` + PDF/A: embed the AcroForm `/DR` font** — upstream pdfnative fix so `/AcroForm /DR /Helv` is no longer an unembedded Type1 font (ISO 19005-2 rule 6.2.11.4.1); tracked by the `form-pdfa2b.pdf` negative canary and the `PDFA_UNEMBEDDED_FORM_FONT` diagnostic; draft generated via `draft_governance_issue`, human-submitted. Flip the canary's expectation when it lands.
-- [ ] **`inspect_layout` `toc` height** — upstream `inspectDocumentLayout` measures a `toc` block as 0 pt (`estimateBlockHeight` called without the headings in `pdf-layout-inspect.ts`); drop the caveat from the tool description and the pinned test when fixed.
-- [ ] **`extractText` under the inflate cap** — upstream surfaces per-page decode failures instead of returning empty text, so `extract_text` can raise `PDF_PARSE_FAILED` like `extract_attachments` does. Still open in pdfnative 1.8.0; pinned by `tests/upstream-limits.test.ts`.
-- [ ] **Offline `/VRI` composition upstream** — delegate `add_ltv mode: 'offline'` to a pdfnative helper once one exists (no change to inputs, outputs or error codes).
+<!-- verify-docs:allow tool-parity -->
+_v1.7.0 is the active release. `redact_pdf` stays **deferred** by design (overlay/flatten ≠ content removal)._
 
 ---
 
@@ -160,10 +171,20 @@ this project's faithful, thin-wrapper philosophy.
 
 - [ ] **Tool `redact_pdf`** — **deferred by design.** pdfnative can overlay annotations and flatten forms, but not *remove* page content; an overlay-only "redaction" would leave the original bytes intact and create false security, which fails this project's honesty bar. Blocked on an upstream true content-removal API (tracked as a `draft_governance_issue` feature request).
 - [ ] **`verify_pdf` native ECDSA verify** — replace the local P-256 verifier once pdfnative exports `ecdsaVerifyHash` (still internal-only in 1.8.0; pinned by `tests/upstream-limits.test.ts`).
+- [ ] **`extractText` under the inflate cap** — upstream should surface per-page decode failures instead of returning empty text, so `extract_text` can raise `PDF_PARSE_FAILED` like `extract_attachments` does. Still open in pdfnative 1.8.0; pinned by `tests/upstream-limits.test.ts`.
+- [ ] **Offline `/VRI` composition upstream** — delegate `add_ltv mode: 'offline'` to a pdfnative helper once one exists (no change to inputs, outputs or error codes).
 - [ ] **`extract_text`: logical-order text extraction on untagged output** — pdfnative's `extractText()` walks the content stream, so right-to-left runs (Arabic, Hebrew) and pre-base glyphs (Thai, Devanagari, Bengali, Sinhala, Tai Tham) come back in visual order and a few stacked clusters (Khmer, Myanmar) as U+FFFD; Yoruba / Igbo combining marks land after the next glyph. Rendering is unaffected. **Workaround today:** generate with `pdfA` — tagged output carries `/ActualText`, which `extractText()` 1.8.0 honours, and all eleven scripts then round-trip exactly. Pinned one by one with `it.fails` in `tests/scripts-27.test.ts`.
 - [ ] **Tai Tham under PDF/A-2u** — one Tai Tham glyph shaped by the Universal Shaping Engine has no ToUnicode entry, so a `pdfa2u` claim fails veraPDF (ISO 19005-2 §6.2.11.7.2) while the engine raises no diagnostic. `pdfa2b` conforms. Tracked by the `international-pdfa2u-taitham.pdf` negative canary of the corpus (it turns XPASS, fatal, the day the engine maps the glyph).
 - [ ] **`annotate_pdf` link annotations** — pdfnative's `MarkupAnnotation` union has no `link` member; writing the `/Link` + `/URI` dictionary by hand would contradict the thin-wrapper rule. Deferred until the engine offers one (the `link` block of `generate_basic_pdf` covers new documents).
 - [ ] **Per-tool HTTP page-by-page streaming** — MCP 2026-07-28 still has no partial `structuredContent` envelope (results are `resultType: 'complete'` only), so large results stay single-shot; pdfnative already provides `streamMergedPdfs` / `streamSplitPdf` / `streamExtractPages`.
+
+### Next
+
+- [ ] **Custom fonts (`PDFNATIVE_MCP_FONT_DIR`)** — an operator-side font sandbox (read once at boot, declared in `server.json`, fonts validated before registration, never a path from a tool argument), designed with the same care as the output sandbox. Deferred from 1.7.0; the variable does not exist yet. <!-- verify-docs:allow env-var-parity -->
+- [ ] **`link` annotation in `annotate_pdf`** — as soon as the engine's `MarkupAnnotation` union gains a `link` member (see *Blocked upstream*).
+- [ ] **`windows` CI job as a required check** — it builds and tests on every pull request today but is not in `.github/rulesets/main.json`; add it once a release cycle has shown it stable.
+- [ ] **`harden-runner` from audit to block mode** — switch the Linux jobs to `egress-policy: block` with an allow-list once the audited egress is known (Windows runners support audit mode only).
+- [ ] **Automated MCP registry publication** — publishing `server.json` to the MCP registry is a manual maintainer step after the npm publication; move it into the publish workflow (the gate already validates `server.json` offline against the vendored schema).
 
 ### Long-Term
 

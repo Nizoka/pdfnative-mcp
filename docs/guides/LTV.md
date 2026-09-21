@@ -1,6 +1,6 @@
 # Long-term validation guide — the PAdES ladder (for AI agents and operators)
 
-This guide explains, in two pages, how pdfnative-mcp v1.6.0 (on pdfnative 1.7.0)
+This guide explains, in two pages, how pdfnative-mcp v1.7.0 (on pdfnative 1.8.0)
 exposes the **PAdES baseline levels** of ETSI EN 319 142-1 — B-B, B-T, B-LT and
 B-LTA — through four tools, what the **operator** must configure before any
 network step works, and what `verify_pdf ltv: true` does and does not prove.
@@ -247,10 +247,12 @@ material fetched at call time.
 ## Reproducibility
 
 A B-B signature with a pinned `signingTime` (on `sign_pdf`, or frozen earlier via
-`prepare_signature_placeholder signingTime`) is byte-identical across runs **on the
-same host time zone** — the engine serialises local time
-(`D:20260115100000+01'00'`), so pinned dates are deterministic per host, not portable
-across zones (set `TZ=UTC` if you need portability). RSA signatures are deterministic;
+`prepare_signature_placeholder signingTime`) is byte-identical across runs **on every
+host and in every time zone** — since pdfnative 1.8.0 the engine serialises every date
+in UTC (`D:20260115090000+00'00'`). `signingTime` is never covered by the creation-date
+pin (`creationDate`, `PDFNATIVE_MCP_CREATION_DATE`, `SOURCE_DATE_EPOCH`): the moment of
+signature has a meaning of its own, so pin it explicitly — see
+[REPRODUCIBLE.md](REPRODUCIBLE.md). RSA signatures are deterministic;
 ECDSA signatures are randomised by their nonce. Anything above B-B is never
 reproducible: TSA tokens (`sign_pdf timestamp: true`, `timestamp_pdf`) and online
 `add_ltv` embed material minted or fetched at call time.

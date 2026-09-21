@@ -9,7 +9,7 @@
 
 Every tool emits `_meta.apiVersion` in the `ListTools` response.
 
-Current value: **`1.6.0`** (stable, since pdfnative-mcp 1.6.0).
+Current value: **`1.7.0`** (stable, since pdfnative-mcp 1.7.0; `TOOL_API_VERSION` in `src/server.ts`).
 
 The tool API version is **independent of the npm release version**.
 Server releases that ship only documentation, refactoring, or non-breaking ergonomic improvements (richer descriptions, additional `_meta.examples`, new optional output fields) **do not** bump `_meta.apiVersion`.
@@ -17,7 +17,7 @@ Server releases that ship only documentation, refactoring, or non-breaking ergon
 A bump of `_meta.apiVersion` happens **only** in the cases listed in §3.
 
 > **MCP protocol alignment.** The tool API version above is orthogonal to the MCP
-> wire-protocol revision. Since pdfnative-mcp 1.6.0 the server runs on the MCP TypeScript
+> wire-protocol revision. Since pdfnative-mcp 1.6.0 the server runs on the MCP TypeScript <!-- verify-docs:allow version-token -->
 > SDK v2 (`@modelcontextprotocol/server` ^2.0.0) and speaks **MCP 2026-07-28** — stateless
 > serving, `server/discover`, `resultType`, `ttlMs` / `cacheScope` cache hints, the `_meta`
 > `serverInfo` envelope, `Mcp-Method` / `Mcp-Name` headers over HTTP — with automatic
@@ -57,7 +57,9 @@ A bump of `_meta.apiVersion` happens **only** in the cases listed in §3.
 > `$schema` keyword** by policy: MCP ≥ 2025-11-25 defaults to JSON Schema 2020-12, and some
 > hosts forward `inputSchema` verbatim to LLM function-calling APIs that reject unknown
 > keywords. Likewise there is no `$ref` / `$defs`, which is why the 13-kind block union is
-> repeated inline in `inspect_layout` and `tools/list` weighs ≈ 245 kB.
+> repeated inline in `inspect_layout` and `tools/list` weighs ≈ 305 kB (≈ 246 kB in 1.6.0: the
+> `typography` fragment and the widened colour schemas of 1.7.0 are inlined in every tool that
+> carries them).
 
 ---
 
@@ -72,7 +74,7 @@ A bump of `_meta.apiVersion` happens **only** in the cases listed in §3.
 | **Error codes** (`code` on `ToolError`) | Stable. Removing or renaming is a major bump. |
 | `_meta.examples` | **Not** covered. May change at any time (at most two per tool since 1.6.0; every one is executable against its `inputSchema`). |
 | `description` strings, `serverInfo.instructions`, prompt texts | **Not** covered. May be reworded at any time — the `tools/list` *wording* is outside the byte-identical charter; tool-result `structuredContent` defaults are inside it. |
-| `tools/list` **structure** (types, enums, bounds, defaults, `required`, `additionalProperties`, annotations, example count) | Covered, and enforced by two gates. *Drift:* `scripts/tool-shape.mjs` fingerprints the catalogue with every description string stripped and `tests/catalogue-parity.test.ts` compares it with `tests/_fixtures/tool-shape.json` — any structural change is a deliberate `--write` refresh reviewed under §3 / §5. *Compatibility:* `tests/catalogue-superset.test.ts` compares the live catalogue with the frozen **published 1.5.0** catalogue (`tests/_fixtures/tool-shape.v1.5.0.json`, never regenerated) and fails on any removal or narrowing — tool, input property, enum value, default, `required` added, `additionalProperties` tightened, or a numeric / length bound made stricter; the accepted 1.5.0 → 1.6.0 deltas (e.g. `watermark.required` dropped, read-tool `required` dropped, `lang` `oneOf` → `anyOf`) are enumerated in the test and must each still occur. |
+| `tools/list` **structure** (types, enums, bounds, defaults, `required`, `additionalProperties`, annotations, example count) | Covered, and enforced by two gates. *Drift:* `scripts/tool-shape.ts` fingerprints the built catalogue with every description string stripped; `tests/catalogue-parity.test.ts` and the gate step `npm run verify:tool-shape` compare it with `tests/_fixtures/tool-shape.json` — any structural change is a deliberate `npx tsx scripts/tool-shape.ts --write` refresh reviewed under §3 / §5. *Compatibility:* `tests/catalogue-superset.test.ts` compares the live catalogue with the frozen **published 1.5.0** catalogue (`tests/_fixtures/tool-shape.v1.5.0.json`, never regenerated) and fails on any removal or narrowing — tool, input property, enum value, default, `required` added, `additionalProperties` tightened, or a numeric / length bound made stricter; the accepted 1.5.0 → 1.6.0 deltas (e.g. `watermark.required` dropped, read-tool `required` dropped, `lang` `oneOf` → `anyOf`) are enumerated in the test and must each still occur. The 1.7.0 colour widening is accepted through one sound rule, held to the reviewed sites — see *Accepted deltas against the frozen 1.5.0 catalogue* in §5. |
 | Schema **`default`** values | Documented; changes are minor unless they alter generated output silently. |
 | Unknown input keys | Rejected with `VALIDATION_ERROR` at every nesting level (Zod `.strict()`), exactly as the published `additionalProperties: false` always declared. |
 
@@ -113,7 +115,7 @@ When a tool, field or error code is scheduled for removal:
 
 ## 5. Per-tool stability matrix
 
-All 28 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6.0'` and are considered **stable**:
+All 28 tools shipped through pdfnative-mcp 1.7.0 are at `_meta.apiVersion = '1.7.0'` and are considered **stable**:
 
 `generate_basic_pdf`, `add_barcode`, `add_international_text`, `add_table`, `add_form`,
 `embed_image`, `prepare_signature_placeholder`, `sign_pdf`, `verify_pdf`, `validate_pdf`,
@@ -121,6 +123,119 @@ All 28 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 `merge_pdfs`, `split_pdf`, `extract_pages`, `annotate_pdf`, `draft_governance_issue`,
 `read_form_fields`, `fill_form`, `add_chart`, `encrypt_pdf`, `decrypt_pdf`,
 `update_metadata`, `add_ltv`, `timestamp_pdf`, `inspect_layout`.
+
+> **v1.7.0 minor bump rationale:** no new tool — the catalogue stays at 28. `TOOL_API_VERSION`
+> moves `1.6.0` → `1.7.0` because existing tools gained **optional inputs**, **enum values** and two
+> **error codes** on pdfnative 1.8.0. Everything is additive per §3: every 1.6.0 input is still
+> accepted, every new input is off by default and nothing is emitted for an absent one, so default
+> output is byte-identical except where the engine corrected previously-wrong bytes (clause below).
+>
+> | Tool | 1.7.0 input / output changes |
+> | --- | --- |
+> | `generate_basic_pdf` | `typography`; `pdfx`; `blocks[]`: `paragraph.align` / `keepWithNext` / `splittable`, `heading.keepWithNext`; CMYK forms on `watermark.color`, `headerTemplate` / `footerTemplate` `color`, outline `color`, and in blocks on `link.color`, `svg.fill` / `svg.stroke`, chart `colors` / series `color`, table `cellBorders.color`; `print.marks.colourBars`; CMYK / Gray `outputIntent` |
+> | `inspect_layout` | `typography`; the same `blocks[]` additions (it shares the block schema); CMYK forms on `headerTemplate` / `footerTemplate` `color` |
+> | `add_table` | `typography`; `pdfx`; CMYK forms on `watermark.color`, `cellBorders.color`, template `color`; `print.marks.colourBars`; CMYK / Gray `outputIntent` |
+> | `add_chart` | `typography`; `pdfx`; CMYK forms on `colors` / series `color`, template `color`; `print.marks.colourBars`; CMYK / Gray `outputIntent` |
+> | `add_barcode`, `embed_image` | `typography`; `pdfx`; CMYK forms on template `color`; `print.marks.colourBars`; CMYK / Gray `outputIntent` |
+> | `add_international_text` | the same, plus `lang` enum values `lo`, `nod`, `khb`, `tdd`, `cjm` and the `latin` aliases `ha`, `yo`, `ig`, `sw` |
+> | `add_form`, `add_attachment`, `prepare_signature_placeholder` | `typography`; CMYK forms on template `color`; `print.marks.colourBars`; CMYK / Gray `outputIntent` (no `pdfx`) |
+> | `annotate_pdf` | `color` / `interiorColor` gain the CMYK percent tuple |
+> | `validate_pdf` | input `standard` (`pdf-ua-1`, the unchanged default, or `pdf-x-4`); output `standard` gains the value `pdf-x-4`, and `caveats[]` is present for `pdf-x-4` only |
+> | `inspect_pdf` | output `pdfX` (presence-gated: only when the XMP claims PDF/X); `check` value `pdfx` |
+> | `sign_pdf`, `verify_pdf`, `add_ltv`, `timestamp_pdf`, `update_metadata`, `merge_pdfs`, `split_pdf`, `extract_pages`, `extract_text`, `extract_attachments`, `read_form_fields`, `fill_form`, `encrypt_pdf`, `decrypt_pdf`, `draft_governance_issue` | no schema change (`_meta.apiVersion` moves with the catalogue) |
+>
+> - **`typography`** (ten tools: the nine document tools and `inspect_layout`) — one object, 12
+>   optional keys: `splitParagraphs`, `orphans`, `widows`, `keepHeadingsWithNext`, `unitBinding`,
+>   `bindShortWords`, `punctuationSpacing`, `opticalMargins`, `metrics`, `fontFeatures`, `kerning`,
+>   `hyphenationLanguage`. `hyphenationLanguage` is accepted and has no effect on this server: no
+>   hyphenation dictionary is installed.
+> - **`pdfx`** (six tools) — enum `pdfx4`, taken from the engine's own list. Requires `outputIntent`
+>   and `embedFonts: true`; exclusive with `pdfA` and `encrypt`. Incoherent requests are
+>   `VALIDATION_ERROR` before any work is done. `validate_pdf { standard: 'pdf-x-4' }` checks
+>   structural prerequisites only — it is not a certified preflight, and `caveats[]` says so.
+> - **Colour inputs** — every colour property keeps its published schema as the first `anyOf`
+>   member and gains a CMYK operand string (`'c m y k'`, components 0–1) and a CMYK percent tuple
+>   (`[c, m, y, k]`, components 0–100). A property whose published schema is an unconstrained
+>   string (table `cellBorders.color`, outline `color`, the `annotate_pdf` colours) gains the tuple
+>   only: the string already admitted the operands.
+> - **`print.marks.colourBars`** (`true` or `{ tints, size }`, `size` 4–72) and **CMYK / Gray
+>   `outputIntent` profiles** on the nine tools that carry `print` / `outputIntent`. No press
+>   profile is bundled.
+> - New engine **diagnostics** (not error codes): `PDFA_DEVICE_CMYK_CONTENT`,
+>   `PDFA_ICC_PROFILE_VERSION`, `PDFX_NO_FONT_ENTRIES`, `PDFX_DEVICE_CMYK`, `PDFX_ANNOTATIONS`,
+>   `TYPOGRAPHY_FEATURE_INEFFECTIVE` — nine in total, enumerated from the engine's own type.
+> - Operator environment: `PDFNATIVE_MCP_CREATION_DATE` and `SOURCE_DATE_EPOCH` pin the creation
+>   instant of the whole process (read once at boot; an invalid value refuses to start; a call's
+>   own `creationDate` wins). The response-cache namespace carries the pin and `TOOL_API_VERSION`,
+>   so no 1.6.0 cache entry is served.
+> - A seventh MCP prompt, `typography`; prompt texts are outside the §2 contract.
+>
+> **Error codes (1.7.0).** Two **new codes**, additive, both reachable **only** by a call that sets
+> `strict: true`: `PDF_X_COMPLIANCE_VIOLATION` (a `PDFX_*` diagnostic escalated) and
+> `DIAGNOSTIC_ESCALATED` (any other diagnostic escalated, e.g. `TYPOGRAPHY_FEATURE_INEFFECTIVE`;
+> the message carries the diagnostic code). `PDFA_*` diagnostics keep escalating to
+> `PDF_A_COMPLIANCE_VIOLATION`, unchanged. `strict` is now classified by the server from the
+> diagnostic's code and never forwarded to the engine. A client that matched
+> `PDF_A_COMPLIANCE_VIOLATION` for *every* strict failure should match the three. Existing codes
+> gained **new triggers** without changing their meaning: `PDF_PARSE_FAILED` is **widened** to
+> cover any unexpected failure on a tool call that carried PDF input (`pdfBase64` /
+> `pdfsBase64`) — a damaged PDF could previously surface an uncoded failure; the meaning ("the
+> input could not be processed as a PDF") is unchanged and no previously-coded failure changes
+> code. `VALIDATION_ERROR` covers the five incoherent `pdfx` requests and the engine's `pdfx` /
+> `typography` argument errors; `PRINT_ERROR` covers an `outputIntent.iccProfileBase64` that is
+> not an ICC profile (no `acsp` signature, or a size field larger than the buffer) — real
+> profiles pass, hand-made stubs that 1.6.0 accepted do not. The inventory is 47 codes
+> (`tests/error-codes.test.ts`; [`AGENT_CONTRACT.md`](AGENT_CONTRACT.md) §6).
+>
+> **Accepted deltas against the frozen 1.5.0 catalogue (1.7.0).** The superset gate
+> (`tests/catalogue-superset.test.ts`) gained exactly **one sound rule**: a schema that was plain
+> in 1.5.0 (no `oneOf` / `anyOf`, e.g. `{ type: 'string', pattern }` or the 0–1 triple of a
+> watermark) may become an `anyOf` when **at least one member is itself a superset of the 1.5.0
+> schema** under the gate's own rules (type, enum, bounds, `required`, `additionalProperties`) —
+> if one member accepts everything the old schema accepted, so does the union. The widening is
+> still **reported** (`<path>: widened to anyOf`) and must be accepted explicitly; an `anyOf`
+> with no such member is a plain failure (`replaced by an anyOf with no member accepting the
+> 1.5.0 schema`), and a unit test pins both outcomes. Acceptance is narrow: the `CMYK_WIDENING`
+> pattern admits only paths ending in `.color` or `.colors.items`, and the test asserts the
+> **exact list** of widened sites, so a new one cannot slip in unreviewed: `add_chart` `colors`
+> items and series `color`; `add_table` `cellBorders.color` and `watermark.color`;
+> `generate_basic_pdf` `chart`-block `colors` items and series `color`, outline `color` (at every
+> nesting depth) and `watermark.color`. The `annotate_pdf` colours were already a `oneOf` in
+> 1.5.0 and gained one member (the CMYK tuple), which the gate checks member by member and does
+> not report. Colour properties introduced after 1.5.0 (template `color`, `link` / `svg` blocks)
+> are not in the frozen catalogue; for them the same guarantee comes from `src/color.ts`, which
+> keeps the published member first and verbatim.
+> The enumerated `ACCEPTED_DELTAS` are unchanged since 1.6.0 (`lang` `oneOf` → `anyOf`,
+> `watermark.required` dropped on two tools, `sign_pdf` `openWorldHint`), beside the projectable
+> read-tool outputs; each must still occur.
+>
+> **Bug fix that changes bytes for inputs that were previously wrong (1.7.0, server-side):** an
+> RGB triple documented as 0–1 (`watermark.color`, the `annotate_pdf` colours) was handed to the
+> engine as-is, and the engine reads a three-number tuple as 0–255 — `[1, 0, 0]` rendered almost
+> black. The shared colour module now converts a 0–1 triple to an operand string. Bytes change
+> only for inputs that rendered the wrong colour.
+>
+> **Engine-inherited byte changes 1.7 → 1.8, default inputs.** pdfnative 1.8.0 changes the bytes
+> of the following outputs; in each case the previous output was wrong or incomplete, so per §3
+> these are correctness fixes, not "default value changes". Documents on base-14 fonts without
+> these features are byte-identical to 1.6.0.
+>
+> | Output | What changed | Why |
+> | --- | --- | --- |
+> | Every document that embeds a TrueType subset (`embedFonts: true`, `add_international_text`) | the subset's bytes | hinting tables are kept and `head.checkSumAdjustment` is computed |
+> | Every document drawing `print.marks` | the mark operators | marks stop 0.5 pt short of the trim line |
+> | Shaped text in every script with mark positioning | the shaped output | the previous output was wrong or incomplete (the engine's release note has the detail) |
+> | `/CreationDate` and the XMP dates, every document tool | the date strings | dates are written in UTC (`+00'00'` / `+00:00`) whatever the host zone; the instant is the same |
+> | A header / footer template using `{date}` on a call that sets `creationDate` | the printed date | `{date}` follows the pinned instant (it printed the wall-clock date); a call that pins nothing is unchanged |
+> | `extract_text` on a tagged PDF | `text` / `fullText` | `/ActualText` is returned for a marked-content span instead of the glyphs inside it; for tagged pdfnative output this makes complex-script extraction exact |
+> | `outputIntent.iccProfileBase64` that is not an ICC profile | an error instead of a file | the engine validates the `acsp` signature and the size field (`PRINT_ERROR`) |
+> | A 0–1 RGB triple (`watermark.color`, `annotate_pdf` colours) | the colour operands | the server-side correction above — not an engine change, listed here because the bytes move |
+>
+> The evidence is in the repository this time: `npm run test:generate` drives the built server
+> under `TZ=UTC` and `npm run verify:samples` holds the 96 samples to
+> `tests/_fixtures/samples.sha256.json`, a chained baseline in which an unchanged entry keeps the
+> version it was anchored at; the release note's *Upgrade* section declares the rebaseline. The
+> engine's own release note lists every case.
 
 > **v1.6.0 minor bump rationale:** four **new tools** were added on pdfnative 1.7 —
 > `add_ltv` (PAdES B-LT: `/DSS` + `/VRI` via `addValidationInfo` / `embedValidationInfo`),
@@ -212,7 +327,8 @@ All 28 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 > and therefore the trailer `/ID`; `signingTime` on `prepare_signature_placeholder`
 > (`/Sig /M` is frozen at placeholder time); `sign_pdf.signingTime` accepts time-zone
 > offsets; `rsaKeyPkcs1DerBase64` also accepts PKCS#8 DER. Pinned dates are byte-identical
-> on the **same host time zone** (the engine serialises local time). Additive outputs:
+> on the **same host time zone** (the engine serialised local time in 1.6.0; since 1.7.0 every date
+> is written in UTC and pinned output is identical on every host). Additive outputs:
 > `_meta.unmatchedFields` + `_meta.availableFields` when a `fields` path matches nothing;
 > `_meta.cached: true` on a response served from the opt-in cache; `verbosity: 'summary'`
 > keeps `ltvLevel` (`verify_pdf ltv: true`) and `docTimestampCount` / `trapped` /
@@ -303,7 +419,7 @@ All 28 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 > required for text extraction under ISO 19005). Per §3 these are correctness fixes, not
 > "default value changes". The byte-identity evidence (fixed inputs per tool, PDF bytes
 > normalised for `/CreationDate`, XMP dates and the trailer `/ID`, SHA-256 compared between
-> v1.5.0 on pdfnative 1.6.0 / SDK 1.29 and v1.6.0):
+> v1.5.0 on pdfnative 1.6.0 / SDK 1.29 and v1.6.0): <!-- verify-docs:allow version-token -->
 >
 > | Tool (input) | Result | Reason |
 > | --- | --- | --- |
@@ -356,7 +472,7 @@ All 28 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 > password).
 
 > **v1.4.0 minor bump rationale:** two **new tools** were added — `annotate_pdf`
-> (markup-overlay annotations on pdfnative v1.5.0's incremental-update annotation writer)
+> (markup-overlay annotations on pdfnative v1.5.0's incremental-update annotation writer) <!-- verify-docs:allow version-token -->
 > and `draft_governance_issue` (local, network-free GitHub-issue drafter with a compliance
 > report). `inspect_pdf` gained an **optional** `pageLabels[]` output field (additive, only
 > present when the PDF declares `/PageLabels`); `add_international_text` gained the explicit
@@ -367,7 +483,7 @@ All 28 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 > tools are byte-identical to v1.3.0.
 
 > **v1.3.0 minor bump rationale:** three **new tools** (`merge_pdfs`, `split_pdf`,
-> `extract_pages`) were added on pdfnative v1.4.0's page-tree API, and several authoring
+> `extract_pages`) were added on pdfnative v1.4.0's page-tree API, and several authoring <!-- verify-docs:allow version-token -->
 > tools gained **optional** inputs with backward-compatible defaults — `generate_basic_pdf`
 > gained nested-list items, `outline`, `pageLabels`, `viewerPreferences`; `add_table` gained
 > `cellBorders`, `cellVAlign`, `viewerPreferences`; `add_international_text` gained
@@ -399,7 +515,8 @@ All 28 tools shipped through pdfnative-mcp 1.6.0 are at `_meta.apiVersion = '1.6
 > shape. This is an opt-in token-saving feature. (Since 1.6.0 the read tools' `outputSchema`
 > declares every property optional, so a projection still validates against it — see §1.)
 
-Page-tree tools `merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative v1.4.0's page-tree API; `annotate_pdf` shipped in v1.4.0 on pdfnative v1.5.0's annotation writer; charts (`add_chart`), form fill/flatten (`read_form_fields`, `fill_form`) and the encrypted round-trip (`encrypt_pdf`, `decrypt_pdf`, `password`/`encrypt` on the page-tree and read-only tools) shipped in v1.5.0 on pdfnative v1.6.0; the PAdES LTV ladder (`add_ltv`, `timestamp_pdf`, `sign_pdf` `profile` / `timestamp`), `update_metadata`, `inspect_layout`, the 13 document block kinds, layout options, build-time `encrypt`, print production and charts v2 shipped in v1.6.0 on pdfnative v1.7.0. `redact_pdf` stays **deferred by design** (pdfnative can overlay/flatten but not remove content — an overlay-only redaction would create false security) and will be added with the same stability guarantees once pdfnative exports a content-removal API. Native ECDSA verification also stays deferred: pdfnative still does not export `ecdsaVerifyHash`, so `verify_pdf` keeps its local P-256 implementation (no contract impact).
+Page-tree tools `merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative v1.4.0's page-tree API; `annotate_pdf` shipped in v1.4.0 on pdfnative v1.5.0's annotation writer; charts (`add_chart`), form fill/flatten (`read_form_fields`, `fill_form`) and the encrypted round-trip (`encrypt_pdf`, `decrypt_pdf`, `password`/`encrypt` on the page-tree and read-only tools) shipped in v1.5.0 on pdfnative v1.6.0; the PAdES LTV ladder (`add_ltv`, `timestamp_pdf`, `sign_pdf` `profile` / `timestamp`), `update_metadata`, `inspect_layout`, the 13 document block kinds, layout options, build-time `encrypt`, print production and charts v2 shipped in v1.6.0 on pdfnative v1.7.0; fine typography, CMYK colours, PDF/X-4, 27 Unicode scripts and the operator creation-date pin shipped in v1.7.0 on pdfnative v1.8.0. <!-- verify-docs:allow version-token -->
+`redact_pdf` stays **deferred by design** (pdfnative can overlay/flatten but not remove content — an overlay-only redaction would create false security) and will be added with the same stability guarantees once pdfnative exports a content-removal API. Native ECDSA verification also stays deferred: pdfnative still does not export `ecdsaVerifyHash`, so `verify_pdf` keeps its local P-256 implementation (no contract impact). <!-- verify-docs:allow tool-parity -->
 
 > **Design note / follow-up (v1.6.0).** Two places where the wrapper is thicker than it
 > should be, recorded here so they are not mistaken for contract:
