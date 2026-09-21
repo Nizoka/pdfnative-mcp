@@ -32,7 +32,7 @@ import { join } from 'node:path';
 
 import { TEST_OUTPUT_DIR } from '../helpers/io.js';
 import { buildRsaSelfSignedCert } from './corpus-cert.js';
-import { buildMinimalRgbIccProfile } from './synthetic-icc.js';
+import { buildMinimalRgbIccProfile, buildSyntheticCmykProfile, buildSyntheticGrayProfile, iccBase64 } from './synthetic-icc.js';
 
 export const OUT_DIR = join(TEST_OUTPUT_DIR, 'pdfa');
 
@@ -81,6 +81,17 @@ const PARAGRAPHS = [
     'pdfnative-mcp renders this corpus through the same tool handlers an MCP client would call.',
     'Each file claims a PDF/A conformance level in its XMP packet and is validated by veraPDF.',
 ] as const;
+
+/** Synthetic output ('prtr') intents: no press profile is bundled, and these characterise no device. */
+const CMYK_INTENT = { iccProfileBase64: iccBase64(buildSyntheticCmykProfile()), outputConditionIdentifier: 'Synthetic CMYK (pdfnative test profile)' } as const;
+const GRAY_INTENT = { iccProfileBase64: iccBase64(buildSyntheticGrayProfile()), outputConditionIdentifier: 'Synthetic Gray (pdfnative test profile)' } as const;
+const GRAY_V4_INTENT = { iccProfileBase64: iccBase64(buildSyntheticGrayProfile({ version: 4 })), outputConditionIdentifier: 'Synthetic Gray v4 (pdfnative test profile)' } as const;
+
+/** The coherent PDF/X-4 request the positive entries share (ISO 15930-7 prerequisites). */
+const PDFX = { pdfx: 'pdfx4', outputIntent: CMYK_INTENT, metadata: { trapped: 'False' }, ...EMBED } as const;
+
+const LONG_TEXT =
+    'Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place asks the reader to work; one that is set with care disappears, and only the text remains. ';
 
 /** One AcroForm, rendered with and without embedded fonts (positive entry + negative canary). */
 const PDFA_FORM = {
@@ -532,6 +543,217 @@ export const CORPUS: readonly CorpusEntry[] = [
             ctx.produce('generate_basic_pdf', {
                 title: 'Corpus — PDF/A-2b without embedded fonts (negative canary)',
                 pdfA: 'pdfa2b',
+                blocks: [{ type: 'paragraph', text: 'Helvetica is referenced, not embedded.' }],
+            }),
+    },
+    // ── pdfnative 1.8.0: CMYK / Gray OutputIntents, typography, new scripts under PDF/A ──
+    {
+        file: 'cmyk-intent-pdfa2b.pdf',
+        tool: 'generate_basic_pdf',
+        // A CMYK printing condition as the PDF/A OutputIntent, with DeviceCMYK content that
+        // matches it: RGB content is mapped through the calibrated default space, CMYK is direct.
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
+                title: 'Corpus — PDF/A-2b CMYK OutputIntent',
+                pdfA: 'pdfa2b',
+                outputIntent: CMYK_INTENT,
+                watermark: { text: 'CMYK', opacity: 1, color: [0, 0, 0, 12] },
+                blocks: [
+                    { type: 'heading', text: 'CMYK OutputIntent', level: 1 },
+                    { type: 'paragraph', text: PARAGRAPHS[1] },
+                    { type: 'chart', chartType: 'bar', categories: ['A', 'B'], series: [{ label: 'Cyan', values: [3, 5], color: '1 0 0 0' }] },
+                ],
+                ...EMBED,
+            }),
+    },
+    {
+        file: 'gray-intent-pdfa2b.pdf',
+        tool: 'generate_basic_pdf',
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
+                title: 'Corpus — PDF/A-2b Gray OutputIntent',
+                pdfA: 'pdfa2b',
+                outputIntent: GRAY_INTENT,
+                blocks: [
+                    { type: 'heading', text: 'Gray OutputIntent', level: 1 },
+                    { type: 'paragraph', text: PARAGRAPHS[0] },
+                ],
+                ...EMBED,
+            }),
+    },
+    {
+        file: 'typography-pdfa2u.pdf',
+        tool: 'generate_basic_pdf',
+        // Every typography path that changes the content stream: split paragraphs, justified
+        // TJ arrays with optical margins, kerned pairs, substituted glyphs, no-break spaces.
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
+                title: 'Corpus — PDF/A-2u fine typography',
+                pdfA: 'pdfa2u',
+                typography: {
+                    splitParagraphs: true,
+                    orphans: 3,
+                    widows: 3,
+                    keepHeadingsWithNext: true,
+                    opticalMargins: true,
+                    kerning: true,
+                    fontFeatures: ['onum', 'smcp'],
+                    unitBinding: true,
+                    bindShortWords: true,
+                    punctuationSpacing: 'fr',
+                },
+                blocks: [
+                    { type: 'heading', text: 'Fine typography', level: 1 },
+                    ...Array.from({ length: 4 }, () => ({ type: 'paragraph', text: LONG_TEXT.repeat(5).trim(), align: 'justify' })),
+                    { type: 'heading', text: 'Espaces insécables', level: 2 },
+                    { type: 'paragraph', text: 'Vraiment ? Oui ! Le colis pèse 12 kg et coûte 150 € ; voici : « un exemple ».', align: 'justify' },
+                ],
+                ...EMBED,
+            }),
+    },
+    {
+        file: 'international-pdfa2u-lao-cham.pdf',
+        tool: 'add_international_text',
+        // Four of the five scripts added by pdfnative 1.8.0 (Lao shaper, Universal Shaping Engine
+        // for Cham) under level U: every glyph maps to Unicode. Tai Tham has its own two entries.
+        produce: (ctx) =>
+            ctx.produce('add_international_text', {
+                title: 'Corpus — PDF/A-2u Lao, New Tai Lue, Tai Le, Cham',
+                pdfA: 'pdfa2u',
+                lang: ['lo', 'khb', 'tdd', 'cjm', 'latin'],
+                paragraphs: ['Lao — ສະບາຍດີຊາວໂລກ', 'New Tai Lue — ᦎᦷᦑᦺᦟᦹᧉ', 'Tai Le — ᥖᥭᥰ ᥖᥬᥲ ᥑᥨᥒᥰ', 'Cham — ꨀꨇꩉ ꨌꩌ'],
+            }),
+    },
+    {
+        file: 'international-pdfa2b-taitham.pdf',
+        tool: 'add_international_text',
+        // Tai Tham (Lanna) conforms at level B, which does not require a Unicode mapping per glyph.
+        produce: (ctx) =>
+            ctx.produce('add_international_text', { title: 'Corpus — PDF/A-2b Tai Tham', pdfA: 'pdfa2b', lang: ['nod', 'latin'], paragraphs: ['Tai Tham — ᨣᩤᩴᨾᩮᩬᩥᨦ'] }),
+    },
+    {
+        file: 'international-pdfa2u-taitham.pdf',
+        tool: 'add_international_text',
+        // KNOWN UPSTREAM LIMIT (pdfnative 1.8.0): a Tai Tham glyph produced by the Universal
+        // Shaping Engine has no ToUnicode entry, so level U fails ISO 19005-2 6.2.11.7.2 ("the
+        // glyph can not be mapped to Unicode") — and the engine raises no diagnostic. Kept as a
+        // tracked expectation rather than dropped: the run turns XPASS (fatal) the day the engine
+        // maps the glyph, forcing this flag to be flipped deliberately. Use pdfa2b for Tai Tham.
+        expectCompliant: false,
+        produce: (ctx) =>
+            ctx.produce('add_international_text', { title: 'Corpus — PDF/A-2u Tai Tham (upstream limit)', pdfA: 'pdfa2u', lang: ['nod', 'latin'], paragraphs: ['Tai Tham — ᨣᩤᩴᨾᩮᩬᩥᨦ'] }),
+    },
+    {
+        file: 'cmyk-content-srgb-pdfa2b.pdf',
+        tool: 'generate_basic_pdf',
+        // Negative canary: DeviceCMYK content against the default sRGB OutputIntent
+        // (diagnostic PDFA_DEVICE_CMYK_CONTENT). ISO 19005-2 6.2.4.3 — veraPDF MUST reject it.
+        expectCompliant: false,
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
+                title: 'Corpus — PDF/A-2b CMYK content under sRGB (negative canary)',
+                pdfA: 'pdfa2b',
+                watermark: { text: 'CMYK', opacity: 1, color: '0 1 1 0' },
+                blocks: [{ type: 'paragraph', text: 'DeviceCMYK ink under an RGB output intent.' }],
+                ...EMBED,
+            }),
+    },
+    {
+        file: 'iccv4-pdfa1b.pdf',
+        tool: 'generate_basic_pdf',
+        // Negative canary: an ICC v4 profile under PDF/A-1 (diagnostic PDFA_ICC_PROFILE_VERSION).
+        // ISO 19005-1 6.2.2 allows ICC up to v2 — veraPDF MUST reject it.
+        expectCompliant: false,
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
+                title: 'Corpus — PDF/A-1b ICC v4 OutputIntent (negative canary)',
+                pdfA: 'pdfa1b',
+                outputIntent: GRAY_V4_INTENT,
+                blocks: [{ type: 'paragraph', text: 'An ICC v4 profile is too new for PDF/A-1.' }],
+                ...EMBED,
+            }),
+    },
+    // ── PDF/X-4 (ISO 15930-7) — checked by scripts/validate-pdfx.ts, never sent to veraPDF ──
+    {
+        file: 'pdfx4-cmyk.pdf',
+        tool: 'generate_basic_pdf',
+        claims: 'pdfx',
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
+                title: 'Corpus — PDF/X-4 CMYK',
+                ...PDFX,
+                watermark: { text: 'PROOF', opacity: 1, color: [0, 0, 0, 10] },
+                blocks: [
+                    { type: 'heading', text: 'PDF/X-4', level: 1 },
+                    { type: 'paragraph', text: PARAGRAPHS[0] },
+                    { type: 'chart', chartType: 'bar', categories: ['Q1', 'Q2'], series: [{ label: 'Orders', values: [12, 18], color: '1 0.6 0 0.1' }] },
+                ],
+            }),
+    },
+    {
+        file: 'pdfx4-gray.pdf',
+        tool: 'generate_basic_pdf',
+        claims: 'pdfx',
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
+                title: 'Corpus — PDF/X-4 Gray',
+                ...PDFX,
+                outputIntent: GRAY_INTENT,
+                metadata: { trapped: 'True' },
+                blocks: [{ type: 'heading', text: 'One-colour job', level: 1 }, { type: 'paragraph', text: PARAGRAPHS[1] }],
+            }),
+    },
+    {
+        file: 'pdfx4-cmyk-bleed-colourbars.pdf',
+        tool: 'generate_basic_pdf',
+        claims: 'pdfx',
+        // Bleed, crop + registration marks (in the registration colour /Separation /All) and the control strip.
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
+                title: 'Corpus — PDF/X-4 bleed, marks and colour bars',
+                ...PDFX,
+                print: { bleed: 14.17, marks: { colourBars: true } },
+                blocks: [{ type: 'heading', text: 'Press sheet', level: 1 }, { type: 'paragraph', text: PARAGRAPHS[0] }],
+            }),
+    },
+    {
+        file: 'pdfx4-table.pdf',
+        tool: 'add_table',
+        claims: 'pdfx',
+        // add_table goes through the engine's table builder, a different entry point from the document builder.
+        produce: (ctx) =>
+            ctx.produce('add_table', {
+                title: 'Corpus — PDF/X-4 table',
+                ...PDFX,
+                headers: ['Item', 'Qty', 'Price'],
+                rows: [['Widget', '2', '9.99'], ['Gadget', '1', '24.50']],
+            }),
+    },
+    {
+        file: 'pdfx4-link-annotation.pdf',
+        tool: 'generate_basic_pdf',
+        claims: 'pdfx',
+        // Negative canary: a link is an annotation on the printed area (diagnostic PDFX_ANNOTATIONS).
+        // validatePdfX() MUST reject it; an unexpected pass means the validator accepts everything.
+        expectCompliant: false,
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
+                title: 'Corpus — PDF/X-4 with a link annotation (negative canary)',
+                ...PDFX,
+                blocks: [{ type: 'link', text: 'A link on a print page', url: 'https://example.com' }],
+            }),
+    },
+    {
+        file: 'pdfx4-no-embedfonts.pdf',
+        tool: 'generate_basic_pdf',
+        claims: 'pdfx',
+        // Negative canary: PDF/X requires every font embedded (diagnostic PDFX_NO_FONT_ENTRIES).
+        expectCompliant: false,
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
+                title: 'Corpus — PDF/X-4 without embedded fonts (negative canary)',
+                pdfx: 'pdfx4',
+                outputIntent: CMYK_INTENT,
                 blocks: [{ type: 'paragraph', text: 'Helvetica is referenced, not embedded.' }],
             }),
     },

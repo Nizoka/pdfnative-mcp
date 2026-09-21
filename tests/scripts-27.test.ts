@@ -124,8 +124,13 @@ describe('tagged output extracts the SOURCE text: extract_text honours /ActualTe
 });
 
 describe('the five scripts added by pdfnative 1.8.0', () => {
-    it.each(NEW_IN_1_8)('%s holds a PDF/A-2u claim under strict (every font embedded, Unicode mapped)', async (code) => {
-        const out = await render(code, SCRIPT_SAMPLES[code]!.text, { pdfA: 'pdfa2u', strict: true, includeDiagnostics: true });
+    // veraPDF is the judge of the claim (see the corpus): Lao, New Tai Lue, Tai Le and Cham pass level U.
+    // Tai Tham passes level B only — one shaped glyph has no ToUnicode entry (ISO 19005-2 6.2.11.7.2), an
+    // engine limit the corpus tracks as a negative canary. The engine raises no diagnostic for it, so
+    // `strict` cannot catch it: the level below is the one this server can honestly recommend.
+    const LEVEL_FOR: Readonly<Record<string, string>> = { lo: 'pdfa2u', nod: 'pdfa2b', khb: 'pdfa2u', tdd: 'pdfa2u', cjm: 'pdfa2u' };
+    it.each(NEW_IN_1_8)('%s builds under strict at the level veraPDF accepts for it, with no diagnostic', async (code) => {
+        const out = await render(code, SCRIPT_SAMPLES[code]!.text, { pdfA: LEVEL_FOR[code], strict: true, includeDiagnostics: true });
         expect(out.diagnostics).toEqual([]);
     }, 60_000);
 
