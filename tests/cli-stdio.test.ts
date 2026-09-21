@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest';
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+
+import { describe, it, expect } from 'vitest';
+
+import { CLI, artifactsRequired, hasDist, runStdioSession, type StdioSession } from './_stdio-session.js';
 
 /**
  * End-to-end stdio smoke: spawns the built CLI and drives it over
@@ -18,10 +18,8 @@ import { fileURLToPath } from 'node:url';
  * dist/ is a hard failure — the workflows must build before testing, otherwise
  * this end-to-end smoke would silently vanish from the release gate.
  */
-const here = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.resolve(here, '..', 'dist', 'cli.js');
-const hasDist = existsSync(CLI);
-const inCi = process.env.CI !== undefined && process.env.CI !== '' && process.env.CI !== 'false';
+// CI and the gate (GATE_REQUIRE_ARTIFACTS=1) both require the built artefact.
+const inCi = artifactsRequired;
 
 if (!hasDist && !inCi) {
     console.warn(`[cli-stdio] dist/cli.js not found — run \`npm run build\` first; skipping the stdio smoke suite (it FAILS under CI).`);
@@ -32,74 +30,6 @@ describe('dist/cli.js presence', () => {
         expect(hasDist, `dist/cli.js is missing under CI — run \`npm run build\` before \`npm test\` (see .github/workflows/*.yml)`).toBe(true);
     });
 });
-
-interface Frame {
-    id?: number;
-    result?: Record<string, unknown>;
-    error?: { code: number; message: string };
-}
-
-interface StdioSession {
-    frames: Frame[];
-    stdoutLines: string[];
-    stderr: string;
-    exitCode: number | null;
-    signal: NodeJS.Signals | null;
-}
-
-/**
- * After every expected response arrived the child is asked to stop. On POSIX
- * that is a real SIGTERM (the server's handler closes the transport and exits
- * 0). On win32 `child.kill('SIGTERM')` is Node's emulation over
- * TerminateProcess: the process is torn down without running any handler and
- * reports `{ code: null, signal: 'SIGTERM' }` (or code 1), so a clean-exit
- * assertion is impossible there — the tests below only assert termination on
- * Windows and assert `code 0 / signal null` on POSIX.
- */
-function runStdioSession(messages: Array<Record<string, unknown>>, expectIds: number[]): Promise<StdioSession> {
-    return new Promise((resolve, reject) => {
-        const child = spawn(process.execPath, [CLI], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PDFNATIVE_MCP_PORT: '' } });
-        const stdoutLines: string[] = [];
-        const frames: Frame[] = [];
-        let stderr = '';
-        let buffer = '';
-        const pending = new Set(expectIds);
-        const timer = setTimeout(() => {
-            child.kill('SIGKILL');
-            reject(new Error(`stdio session timed out; stderr: ${stderr}`));
-        }, 20_000);
-
-        child.stderr.on('data', (c: Buffer) => {
-            stderr += c.toString('utf8');
-        });
-        child.stdout.on('data', (c: Buffer) => {
-            buffer += c.toString('utf8');
-            let idx: number;
-            while ((idx = buffer.indexOf('\n')) >= 0) {
-                const line = buffer.slice(0, idx).trim();
-                buffer = buffer.slice(idx + 1);
-                if (line.length === 0) continue;
-                stdoutLines.push(line);
-                try {
-                    const frame = JSON.parse(line) as Frame;
-                    frames.push(frame);
-                    if (typeof frame.id === 'number') pending.delete(frame.id);
-                } catch {
-                    /* non-JSON line — asserted by the test */
-                }
-                if (pending.size === 0) {
-                    child.kill('SIGTERM');
-                }
-            }
-        });
-        child.on('exit', (code, signal) => {
-            clearTimeout(timer);
-            resolve({ frames, stdoutLines, stderr, exitCode: code, signal });
-        });
-        child.on('error', reject);
-        for (const m of messages) child.stdin.write(`${JSON.stringify(m)}\n`);
-    });
-}
 
 /** Clean-exit assertion, platform-aware (see runStdioSession). */
 function expectCleanExit(session: StdioSession): void {

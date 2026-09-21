@@ -84,7 +84,8 @@ describe('registry metadata parity', () => {
                 const p = path.join(dir, entry.name);
                 if (entry.isDirectory()) await walk(p);
                 else if (entry.name.endsWith('.ts')) {
-                    for (const m of (await fs.readFile(p, 'utf8')).matchAll(/PDFNATIVE_MCP_[A-Z_]+/g)) read.add(m[0]);
+                    // SOURCE_DATE_EPOCH is the one variable read under a name this project does not own.
+                    for (const m of (await fs.readFile(p, 'utf8')).matchAll(/PDFNATIVE_MCP_[A-Z_]+|\bSOURCE_DATE_EPOCH\b/g)) read.add(m[0]);
                 }
             }
         };

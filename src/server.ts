@@ -26,6 +26,7 @@ import { initCrypto, initNodeCompression } from 'pdfnative';
 import { ToolError } from './errors.js';
 import { getCached, setCached } from './cache.js';
 import { PDFNATIVE_MCP_VERSION } from './version.js';
+import { creationDateCacheTag } from './reproducible.js';
 import { listResources, listResourceTemplates, readResource, resourceLinkForPath } from './resources.js';
 import {
     GOVERNANCE_CONTRACT_SUMMARY,
@@ -263,6 +264,16 @@ const NON_CACHEABLE_TOOLS: ReadonlySet<string> = new Set([
  * never serve bytes rendered by the previous engine.
  */
 const CACHE_API_VERSION = `${TOOL_API_VERSION}/${PDFNATIVE_MCP_VERSION}`;
+
+/**
+ * The cache namespace for a call made now: the API / server version, plus the
+ * operator's pinned creation instant when one is in force. The pin is read from
+ * the engine at call time, so bytes rendered under one instant are never served
+ * under another — nor under the wall clock.
+ */
+export function cacheNamespace(): string {
+    return `${CACHE_API_VERSION}${creationDateCacheTag()}`;
+}
 
 /** True when this call's output must bypass the response cache. */
 function isCacheable(name: string, input: unknown): boolean {
@@ -909,7 +920,7 @@ COMMON PITFALLS:
   • generate_basic_pdf 'svg' blocks support paths, basic shapes and <text> only — no transform, <g>, gradients or CSS (silently ignored); 'image' blocks are capped at 24 MiB decoded per call; 'formField' blocks under pdfA need embedFonts:true (PDFA_UNEMBEDDED_FORM_FONT otherwise).
   • Watermarks take text and/or an image (JPEG/PNG, default opacity 0.10) and a position (background | foreground); opacity < 1 is rejected under pdfa1b.
 
-REPRODUCIBILITY: outputs differ on every call because /CreationDate (and /ID) follow the wall clock. For byte-identical output pass creationDate (document tools), signingTime (sign_pdf / prepare_signature_placeholder) and modDate (update_metadata) as fixed ISO-8601 instants — every date is written in UTC, so the bytes are identical on every host whatever its time zone. The {date} placeholder of header/footer templates follows creationDate. Timestamps (TSA tokens), encryption (fresh keys / IVs) and ECDSA signatures are never reproducible.
+REPRODUCIBILITY: outputs differ on every call because /CreationDate (and /ID) follow the wall clock. For byte-identical output pass creationDate (document tools), signingTime (sign_pdf / prepare_signature_placeholder) and modDate (update_metadata) as fixed ISO-8601 instants — every date is written in UTC, so the bytes are identical on every host whatever its time zone. The {date} placeholder of header/footer templates follows creationDate. The operator can pin the instant for the whole server (PDFNATIVE_MCP_CREATION_DATE, else SOURCE_DATE_EPOCH); a call's own creationDate still wins. Timestamps (TSA tokens), encryption (fresh keys / IVs) and ECDSA signatures are never reproducible.
 
 TOKEN-FRUGAL READS & RESOURCES: read tools accept verbosity:'summary' and fields:[…]. Generated PDFs arrive as an embedded resource block (not duplicated in structuredContent); in file mode the result carries a resource_link and the file is listed under resources/list as pdfnative://output/<path>. Prompts: governance_contract, draft_issue_workflow, pades_ladder, print_ready, reproducible_output, pdfa_valid. Docs: docs/AI_GUIDE.md, docs/guides/*.md.`;
 
@@ -1216,6 +1227,7 @@ const REPRODUCIBLE_OUTPUT_RECIPE = `Byte-identical output across calls:
 • prepare_signature_placeholder: also pin signingTime (the /Sig /M entry is frozen at placeholder time). sign_pdf: pin signingTime; the CMS signature is deterministic for RSA, but ECDSA signatures are randomised by design and RFC 3161 timestamps (timestamp:true, timestamp_pdf) are always fresh.
 • Header/footer templates: the {date} placeholder is the UTC date of creationDate, so a dated footer stays reproducible once creationDate is pinned (unpinned, it is the build day).
 • update_metadata: pin modDate. encrypt_pdf / decrypt_pdf: never reproducible (fresh IV / salt) and never cached.
+• Operator pin: PDFNATIVE_MCP_CREATION_DATE (ISO-8601 with a time zone), else SOURCE_DATE_EPOCH (seconds), pins every generated document for the whole server — no per-call argument needed, and creationDate still wins when given. It does not cover signingTime, modDate, timestamps or encryption.
 • Proof: call twice and compare structuredContent.sizeBytes and the resource blob, or hash the bytes on the host. With PDFNATIVE_MCP_CACHE_DIR set, a repeated call may be served from cache (_meta.cached:true) — the bytes are the earlier render.`;
 
 const PDFA_VALID_RECIPE = `A PDF/A claim that a reference validator (veraPDF) accepts:
@@ -1315,7 +1327,7 @@ export async function callToolDirect(name: string, args: unknown): Promise<CallT
         // We skip caching for outputMode='file' since the filesystem write is itself an effect,
         // and for the encryption tools so decrypted/protected bytes are never persisted at rest.
         const cacheable = isCacheable(name, input);
-        const cacheKey = cacheable ? { tool: name, apiVersion: CACHE_API_VERSION } : null;
+        const cacheKey = cacheable ? { tool: name, apiVersion: cacheNamespace() } : null;
         if (cacheKey !== null) {
             const hit = getCached<unknown>(cacheKey.tool, cacheKey.apiVersion, input);
             if (hit !== null) {

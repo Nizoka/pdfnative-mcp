@@ -67,6 +67,19 @@
           "format": "number"
         },
         {
+          "name": "PDFNATIVE_MCP_CREATION_DATE",
+          "description": "ISO 8601 instant with a time zone (e.g. 2026-01-01T00:00:00Z) pinned as the creation date of every generated document: reproducible bytes on any host. A call's own creationDate still wins. An invalid value refuses to start the server.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SOURCE_DATE_EPOCH",
+          "description": "reproducible-builds.org convention: integer seconds since the Unix epoch, used as the pinned creation date when PDFNATIVE_MCP_CREATION_DATE is unset. An invalid value refuses to start the server.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "number"
+        },
+        {
           "name": "PDFNATIVE_MCP_TSA_URL",
           "description": "http(s) URL of the RFC 3161 timestamp authority used by sign_pdf timestamp=true and timestamp_pdf (PAdES B-T / B-LTA). Unset: those calls fail with TSA_NOT_CONFIGURED and no network request is made. Tool arguments can never supply a URL.",
           "isRequired": false,
