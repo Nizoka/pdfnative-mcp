@@ -29,6 +29,8 @@ import {
 } from 'pdfnative';
 import { z } from 'zod';
 
+import { CMYK_TUPLE_SCHEMA, CmykTupleSchema, toEngineColor } from '../color.js';
+
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
 import { decodePdfBase64 } from '../base64.js';
@@ -57,8 +59,9 @@ const RECT_SCHEMA = {
 
 const COLOR_SCHEMA = {
     oneOf: [
-        { type: 'string', description: 'Hex (e.g. "#ffcc00") or PDF operator string ("R G B").' },
+        { type: 'string', description: 'Hex (e.g. "#ffcc00") or PDF operator string ("R G B", or "C M Y K" for DeviceCMYK), each operand 0.0–1.0.' },
         { type: 'array', minItems: 3, maxItems: 3, items: { type: 'number' }, description: 'RGB tuple, 0.0–1.0.' },
+        CMYK_TUPLE_SCHEMA,
     ],
 } as const;
 
@@ -116,7 +119,7 @@ export const ANNOTATE_PDF_INPUT_SCHEMA = {
 
 const rectSchema = z.tuple([z.number(), z.number(), z.number(), z.number()]);
 const pointSchema = z.tuple([z.number(), z.number()]);
-const colorSchema = z.union([z.string(), z.tuple([z.number(), z.number(), z.number()])]);
+const colorSchema = z.union([z.string(), z.tuple([z.number(), z.number(), z.number()]), CmykTupleSchema]);
 
 const AnnotationSchema = z
     .strictObject({
@@ -166,7 +169,7 @@ function baseFields(a: AnnotationInput): {
     return {
         rect: a.rect,
         ...(a.contents !== undefined ? { contents: a.contents } : {}),
-        ...(a.color !== undefined ? { color: a.color as PdfColor } : {}),
+        ...(a.color !== undefined ? { color: toEngineColor(a.color) } : {}),
         ...(a.opacity !== undefined ? { opacity: a.opacity } : {}),
         ...(a.title !== undefined ? { title: a.title } : {}),
     };
@@ -197,7 +200,7 @@ function toMarkupAnnotation(a: AnnotationInput): MarkupAnnotation {
             return {
                 type: a.type,
                 ...base,
-                ...(a.interiorColor !== undefined ? { interiorColor: a.interiorColor as PdfColor } : {}),
+                ...(a.interiorColor !== undefined ? { interiorColor: toEngineColor(a.interiorColor) } : {}),
                 ...(a.borderWidth !== undefined ? { borderWidth: a.borderWidth } : {}),
             };
         case 'line':

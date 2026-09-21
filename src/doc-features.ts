@@ -9,6 +9,7 @@
  * convention of this server).
  */
 import { z } from 'zod';
+import { freeStringColorSchema, freeStringColorZod, toEngineColor } from './color.js';
 import type { ListItem, OutlineItem, PageLabelRange, ViewerPreferences } from 'pdfnative';
 
 /* -------------------------------------------------------------------------- */
@@ -91,10 +92,10 @@ function outlineNodeSchema(depth: number): Record<string, unknown> {
         y: { type: 'number', description: 'Destination Y coordinate in points (default: top of page).' },
         bold: { type: 'boolean' },
         italic: { type: 'boolean' },
-        color: {
-            type: 'string',
-            description: "Label colour as a hex string ('#1a73e8') or PDF operator string ('0 0 1').",
-        },
+        color: freeStringColorSchema(
+            { type: 'string' },
+            "Label colour as a hex string ('#1a73e8') or PDF operator string ('0 0 1'). An outline label is RGB by definition (/C): a CMYK value is converted for on-screen display.",
+        ),
         open: {
             type: 'boolean',
             description: 'Initial expansion state (default true). false renders the branch collapsed.',
@@ -130,7 +131,7 @@ interface OutlineNodeInput {
     y?: number;
     bold?: boolean;
     italic?: boolean;
-    color?: string;
+    color?: string | readonly number[];
     open?: boolean;
     children?: OutlineNodeInput[];
 }
@@ -142,7 +143,7 @@ const OutlineNodeSchema: z.ZodType<OutlineNodeInput> = z.lazy(() =>
         y: z.number().optional(),
         bold: z.boolean().optional(),
         italic: z.boolean().optional(),
-        color: z.string().min(1).max(64).optional(),
+        color: freeStringColorZod(z.string().min(1).max(64)).optional(),
         open: z.boolean().optional(),
         children: z.array(OutlineNodeSchema).max(1000).optional(),
     }),
@@ -157,7 +158,7 @@ function toOutlineItem(node: OutlineNodeInput): OutlineItem {
         ...(node.y !== undefined ? { y: node.y } : {}),
         ...(node.bold !== undefined ? { bold: node.bold } : {}),
         ...(node.italic !== undefined ? { italic: node.italic } : {}),
-        ...(node.color !== undefined ? { color: node.color } : {}),
+        ...(node.color !== undefined ? { color: toEngineColor(node.color) } : {}),
         ...(node.open !== undefined ? { open: node.open } : {}),
         ...(node.children !== undefined ? { children: node.children.map(toOutlineItem) } : {}),
     };

@@ -13,6 +13,7 @@ import type { DocumentBlock } from 'pdfnative';
 import { z } from 'zod';
 
 import { BARCODE_BODY_PROPERTIES, BLOCK_ALIGN_ENUM, BarcodeBodyShape, assertBarcodePayload, toBarcodeBlock } from './barcode.js';
+import { colorSchema, colorZod, toEngineColor } from './color.js';
 import { ToolError } from './errors.js';
 import { FORM_FIELD_PROPERTIES, FormFieldShape, assertFormFieldOptions, toFormFieldBlock } from './form.js';
 import { BOUNDED_IMAGE_PAYLOAD_PROPERTIES, BoundedImagePayloadShape, ImageByteBudget, decodeImageBase64 } from './image.js';
@@ -35,7 +36,7 @@ const ALT_PROPERTY = {
     maxLength: 500,
     description: 'Accessible description (tagged /Figure /Alt). Always provide it for non-decorative content under PDF/A or PDF/UA.',
 } as const;
-const COLOR_PROPERTY = { type: 'string', pattern: '^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$', description: 'Hex colour (#RGB or #RRGGBB).' } as const;
+const COLOR_PROPERTY = colorSchema({ type: 'string', pattern: '^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$' }, 'Hex colour (#RGB or #RRGGBB).');
 
 /** JSON Schema `oneOf` members for the seven extended blocks. */
 export const EXTENDED_BLOCK_SCHEMAS = [
@@ -119,8 +120,8 @@ export const EXTENDED_BLOCK_SCHEMAS = [
                 items: { type: 'number' },
                 description: '[minX, minY, width, height] — overrides the viewBox of the markup; required for a bare path string that is not 0-based.',
             },
-            fill: { type: 'string', description: "Hex colour or 'none' (default black).", pattern: '^(?:none|#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}))$' },
-            stroke: { type: 'string', description: "Hex colour or 'none' (default none).", pattern: '^(?:none|#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}))$' },
+            fill: colorSchema({ type: 'string', pattern: '^(?:none|#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}))$' }, "Hex colour or 'none' (default black)."),
+            stroke: colorSchema({ type: 'string', pattern: '^(?:none|#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}))$' }, "Hex colour or 'none' (default none)."),
             strokeWidth: { type: 'number', minimum: 0, maximum: 50, description: 'Stroke width in SVG user units (default 1).' },
             alt: ALT_PROPERTY,
         },
@@ -137,8 +138,8 @@ export const EXTENDED_BLOCK_SCHEMAS = [
     },
 ] as const;
 
-const Color = z.string().regex(HEX_COLOR);
-const ColorOrNone = z.union([z.literal('none'), Color]);
+const Color = colorZod(z.string().regex(HEX_COLOR));
+const ColorOrNone = colorZod(z.union([z.literal('none'), z.string().regex(HEX_COLOR)]));
 
 /** Zod members for the seven extended blocks (spread into the `discriminatedUnion`). */
 export const ExtendedBlockSchemas = [
@@ -222,7 +223,7 @@ export function toExtendedBlock(block: ExtendedBlockInput, index: number, ctx: B
                 text: block.text,
                 url: block.url,
                 ...(block.fontSize !== undefined ? { fontSize: block.fontSize } : {}),
-                ...(block.color !== undefined ? { color: block.color } : {}),
+                ...(block.color !== undefined ? { color: toEngineColor(block.color) } : {}),
             };
         }
         case 'toc':
@@ -245,8 +246,8 @@ export function toExtendedBlock(block: ExtendedBlockInput, index: number, ctx: B
                 ...(block.height !== undefined ? { height: block.height } : {}),
                 align: block.align,
                 ...(block.viewBox !== undefined ? { viewBox: block.viewBox } : {}),
-                ...(block.fill !== undefined ? { fill: block.fill } : {}),
-                ...(block.stroke !== undefined ? { stroke: block.stroke } : {}),
+                ...(block.fill !== undefined ? { fill: toEngineColor(block.fill) } : {}),
+                ...(block.stroke !== undefined ? { stroke: toEngineColor(block.stroke) } : {}),
                 ...(block.strokeWidth !== undefined ? { strokeWidth: block.strokeWidth } : {}),
                 ...(block.alt !== undefined ? { alt: block.alt } : {}),
             };

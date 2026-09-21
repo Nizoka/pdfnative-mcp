@@ -339,8 +339,26 @@
              }
             },
             "color": {
-             "type": "string",
-             "pattern": "^#?[0-9a-fA-F]{6}$"
+             "anyOf": [
+              {
+               "type": "string",
+               "pattern": "^#?[0-9a-fA-F]{6}$"
+              },
+              {
+               "type": "string",
+               "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+              },
+              {
+               "type": "array",
+               "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+               },
+               "minItems": 4,
+               "maxItems": 4
+              }
+             ]
             },
             "xValues": {
              "type": "array",
@@ -513,8 +531,26 @@
           "type": "array",
           "maxItems": 50,
           "items": {
-           "type": "string",
-           "pattern": "^#?[0-9a-fA-F]{6}$"
+           "anyOf": [
+            {
+             "type": "string",
+             "pattern": "^#?[0-9a-fA-F]{6}$"
+            },
+            {
+             "type": "string",
+             "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+            },
+            {
+             "type": "array",
+             "items": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+             },
+             "minItems": 4,
+             "maxItems": 4
+            }
+           ]
           }
          },
          "align": {
@@ -631,7 +667,21 @@
             "type": "boolean"
            },
            "color": {
-            "type": "string"
+            "anyOf": [
+             {
+              "type": "string"
+             },
+             {
+              "type": "array",
+              "items": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 100
+              },
+              "minItems": 4,
+              "maxItems": 4
+             }
+            ]
            },
            "width": {
             "type": "number",
@@ -735,8 +785,26 @@
           "maximum": 48
          },
          "color": {
-          "type": "string",
-          "pattern": "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+          "anyOf": [
+           {
+            "type": "string",
+            "pattern": "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+           },
+           {
+            "type": "string",
+            "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+           },
+           {
+            "type": "array",
+            "items": {
+             "type": "number",
+             "minimum": 0,
+             "maximum": 100
+            },
+            "minItems": 4,
+            "maxItems": 4
+           }
+          ]
          }
         }
        },
@@ -878,12 +946,48 @@
           }
          },
          "fill": {
-          "type": "string",
-          "pattern": "^(?:none|#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}))$"
+          "anyOf": [
+           {
+            "type": "string",
+            "pattern": "^(?:none|#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}))$"
+           },
+           {
+            "type": "string",
+            "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+           },
+           {
+            "type": "array",
+            "items": {
+             "type": "number",
+             "minimum": 0,
+             "maximum": 100
+            },
+            "minItems": 4,
+            "maxItems": 4
+           }
+          ]
          },
          "stroke": {
-          "type": "string",
-          "pattern": "^(?:none|#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}))$"
+          "anyOf": [
+           {
+            "type": "string",
+            "pattern": "^(?:none|#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}))$"
+           },
+           {
+            "type": "string",
+            "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+           },
+           {
+            "type": "array",
+            "items": {
+             "type": "number",
+             "minimum": 0,
+             "maximum": 100
+            },
+            "minItems": 4,
+            "maxItems": 4
+           }
+          ]
          },
          "strokeWidth": {
           "type": "number",
@@ -1016,14 +1120,32 @@
        "maximum": 360
       },
       "color": {
-       "type": "array",
-       "items": {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 1
-       },
-       "minItems": 3,
-       "maxItems": 3
+       "anyOf": [
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+         },
+         "minItems": 3,
+         "maxItems": 3
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       },
       "image": {
        "type": "object",
@@ -1120,7 +1242,21 @@
           "type": "boolean"
          },
          "color": {
-          "type": "string"
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "type": "array",
+            "items": {
+             "type": "number",
+             "minimum": 0,
+             "maximum": 100
+            },
+            "minItems": 4,
+            "maxItems": 4
+           }
+          ]
          },
          "open": {
           "type": "boolean"
@@ -1155,7 +1291,21 @@
              "type": "boolean"
             },
             "color": {
-             "type": "string"
+             "anyOf": [
+              {
+               "type": "string"
+              },
+              {
+               "type": "array",
+               "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+               },
+               "minItems": 4,
+               "maxItems": 4
+              }
+             ]
             },
             "open": {
              "type": "boolean"
@@ -1190,7 +1340,21 @@
                 "type": "boolean"
                },
                "color": {
-                "type": "string"
+                "anyOf": [
+                 {
+                  "type": "string"
+                 },
+                 {
+                  "type": "array",
+                  "items": {
+                   "type": "number",
+                   "minimum": 0,
+                   "maximum": 100
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                 }
+                ]
                },
                "open": {
                 "type": "boolean"
@@ -1225,7 +1389,21 @@
                    "type": "boolean"
                   },
                   "color": {
-                   "type": "string"
+                   "anyOf": [
+                    {
+                     "type": "string"
+                    },
+                    {
+                     "type": "array",
+                     "items": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100
+                     },
+                     "minItems": 4,
+                     "maxItems": 4
+                    }
+                   ]
                   },
                   "open": {
                    "type": "boolean"
@@ -1260,7 +1438,21 @@
                       "type": "boolean"
                      },
                      "color": {
-                      "type": "string"
+                      "anyOf": [
+                       {
+                        "type": "string"
+                       },
+                       {
+                        "type": "array",
+                        "items": {
+                         "type": "number",
+                         "minimum": 0,
+                         "maximum": 100
+                        },
+                        "minItems": 4,
+                        "maxItems": 4
+                       }
+                      ]
                      },
                      "open": {
                       "type": "boolean"
@@ -1295,7 +1487,21 @@
                          "type": "boolean"
                         },
                         "color": {
-                         "type": "string"
+                         "anyOf": [
+                          {
+                           "type": "string"
+                          },
+                          {
+                           "type": "array",
+                           "items": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 100
+                           },
+                           "minItems": 4,
+                           "maxItems": 4
+                          }
+                         ]
                         },
                         "open": {
                          "type": "boolean"
@@ -1663,8 +1869,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -1690,8 +1914,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -2106,8 +2348,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -2133,8 +2393,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -2866,8 +3144,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -2893,8 +3189,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -3126,7 +3440,21 @@
        "type": "boolean"
       },
       "color": {
-       "type": "string"
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       },
       "width": {
        "type": "number",
@@ -3212,14 +3540,32 @@
        "maximum": 360
       },
       "color": {
-       "type": "array",
-       "items": {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 1
-       },
-       "minItems": 3,
-       "maxItems": 3
+       "anyOf": [
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+         },
+         "minItems": 3,
+         "maxItems": 3
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       },
       "image": {
        "type": "object",
@@ -3574,8 +3920,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -3601,8 +3965,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -4061,8 +4443,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -4088,8 +4488,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -4501,8 +4919,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -4528,8 +4964,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -5031,8 +5485,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -5058,8 +5530,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -6107,8 +6597,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -6134,8 +6642,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -7072,6 +7598,16 @@
           "items": {
            "type": "number"
           }
+         },
+         {
+          "type": "array",
+          "items": {
+           "type": "number",
+           "minimum": 0,
+           "maximum": 100
+          },
+          "minItems": 4,
+          "maxItems": 4
          }
         ]
        },
@@ -7107,6 +7643,16 @@
           "items": {
            "type": "number"
           }
+         },
+         {
+          "type": "array",
+          "items": {
+           "type": "number",
+           "minimum": 0,
+           "maximum": 100
+          },
+          "minItems": 4,
+          "maxItems": 4
          }
         ]
        },
@@ -7759,8 +8305,26 @@
         }
        },
        "color": {
-        "type": "string",
-        "pattern": "^#?[0-9a-fA-F]{6}$"
+        "anyOf": [
+         {
+          "type": "string",
+          "pattern": "^#?[0-9a-fA-F]{6}$"
+         },
+         {
+          "type": "string",
+          "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+         },
+         {
+          "type": "array",
+          "items": {
+           "type": "number",
+           "minimum": 0,
+           "maximum": 100
+          },
+          "minItems": 4,
+          "maxItems": 4
+         }
+        ]
        },
        "xValues": {
         "type": "array",
@@ -7933,8 +8497,26 @@
      "type": "array",
      "maxItems": 50,
      "items": {
-      "type": "string",
-      "pattern": "^#?[0-9a-fA-F]{6}$"
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^#?[0-9a-fA-F]{6}$"
+       },
+       {
+        "type": "string",
+        "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+       },
+       {
+        "type": "array",
+        "items": {
+         "type": "number",
+         "minimum": 0,
+         "maximum": 100
+        },
+        "minItems": 4,
+        "maxItems": 4
+       }
+      ]
      }
     },
     "align": {
@@ -8176,8 +8758,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -8203,8 +8803,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -9247,8 +9865,26 @@
              }
             },
             "color": {
-             "type": "string",
-             "pattern": "^#?[0-9a-fA-F]{6}$"
+             "anyOf": [
+              {
+               "type": "string",
+               "pattern": "^#?[0-9a-fA-F]{6}$"
+              },
+              {
+               "type": "string",
+               "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+              },
+              {
+               "type": "array",
+               "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+               },
+               "minItems": 4,
+               "maxItems": 4
+              }
+             ]
             },
             "xValues": {
              "type": "array",
@@ -9421,8 +10057,26 @@
           "type": "array",
           "maxItems": 50,
           "items": {
-           "type": "string",
-           "pattern": "^#?[0-9a-fA-F]{6}$"
+           "anyOf": [
+            {
+             "type": "string",
+             "pattern": "^#?[0-9a-fA-F]{6}$"
+            },
+            {
+             "type": "string",
+             "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+            },
+            {
+             "type": "array",
+             "items": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+             },
+             "minItems": 4,
+             "maxItems": 4
+            }
+           ]
           }
          },
          "align": {
@@ -9539,7 +10193,21 @@
             "type": "boolean"
            },
            "color": {
-            "type": "string"
+            "anyOf": [
+             {
+              "type": "string"
+             },
+             {
+              "type": "array",
+              "items": {
+               "type": "number",
+               "minimum": 0,
+               "maximum": 100
+              },
+              "minItems": 4,
+              "maxItems": 4
+             }
+            ]
            },
            "width": {
             "type": "number",
@@ -9643,8 +10311,26 @@
           "maximum": 48
          },
          "color": {
-          "type": "string",
-          "pattern": "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+          "anyOf": [
+           {
+            "type": "string",
+            "pattern": "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+           },
+           {
+            "type": "string",
+            "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+           },
+           {
+            "type": "array",
+            "items": {
+             "type": "number",
+             "minimum": 0,
+             "maximum": 100
+            },
+            "minItems": 4,
+            "maxItems": 4
+           }
+          ]
          }
         }
        },
@@ -9786,12 +10472,48 @@
           }
          },
          "fill": {
-          "type": "string",
-          "pattern": "^(?:none|#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}))$"
+          "anyOf": [
+           {
+            "type": "string",
+            "pattern": "^(?:none|#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}))$"
+           },
+           {
+            "type": "string",
+            "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+           },
+           {
+            "type": "array",
+            "items": {
+             "type": "number",
+             "minimum": 0,
+             "maximum": 100
+            },
+            "minItems": 4,
+            "maxItems": 4
+           }
+          ]
          },
          "stroke": {
-          "type": "string",
-          "pattern": "^(?:none|#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}))$"
+          "anyOf": [
+           {
+            "type": "string",
+            "pattern": "^(?:none|#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}))$"
+           },
+           {
+            "type": "string",
+            "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+           },
+           {
+            "type": "array",
+            "items": {
+             "type": "number",
+             "minimum": 0,
+             "maximum": 100
+            },
+            "minItems": 4,
+            "maxItems": 4
+           }
+          ]
          },
          "strokeWidth": {
           "type": "number",
@@ -9976,8 +10698,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },
@@ -10003,8 +10743,26 @@
        "maximum": 14
       },
       "color": {
-       "type": "string",
-       "pattern": "^#[0-9a-fA-F]{6}$"
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        {
+         "type": "string",
+         "pattern": "^(?:0(?:\\.\\d+)?|1(?:\\.0+)?)(?: (?:0(?:\\.\\d+)?|1(?:\\.0+)?)){3}$"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+         },
+         "minItems": 4,
+         "maxItems": 4
+        }
+       ]
       }
      }
     },

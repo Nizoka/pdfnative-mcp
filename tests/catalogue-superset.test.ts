@@ -50,8 +50,16 @@ const ACCEPTED_DELTAS = new Set<string>([
 
 /** The six 1.5.0 read tools' output schemas are projectable: every `required` dropped, at every depth (loosening only). */
 const PROJECTABLE_OUTPUT = /^(inspect_pdf|verify_pdf|extract_text|validate_pdf|extract_attachments|read_form_fields)\.out.*: required removed$/;
+/**
+ * 1.7.0 (pdfnative 1.8.0): every colour property published in 1.5.0 — chart series / palette,
+ * watermark, outline label (six nesting depths), table cell borders — keeps its historical schema
+ * as one `anyOf` member and gains the DeviceCMYK string and tuple beside it (src/color.ts).
+ * Only colour properties qualify, and only when assertSuperset proved a member still accepts
+ * every 1.5.0 value (`widened`, never `replaced`).
+ */
+const CMYK_WIDENING = /\.(?:color|colors\.items): widened to anyOf$/;
 function accepted(issue: string): boolean {
-    return ACCEPTED_DELTAS.has(issue) || PROJECTABLE_OUTPUT.test(issue);
+    return ACCEPTED_DELTAS.has(issue) || PROJECTABLE_OUTPUT.test(issue) || CMYK_WIDENING.test(issue);
 }
 
 const UPPER_BOUNDS = ['maxLength', 'maximum', 'maxItems', 'exclusiveMaximum'];
@@ -61,6 +69,19 @@ const LOWER_BOUNDS = ['minLength', 'minimum', 'minItems', 'exclusiveMinimum'];
 function assertSuperset(oldS: Schema, newS: Schema | undefined, at: string, issues: string[]): void {
     if (newS === undefined) {
         issues.push(`${at}: removed`);
+        return;
+    }
+    // A plain schema widened into `anyOf` (1.7.0: every colour gained the CMYK forms).
+    // Sound by construction: if one member accepts everything the old schema accepted,
+    // so does the union. The widening is still REPORTED — it must be listed in
+    // ACCEPTED_DELTAS — and an `anyOf` with no such member is a plain failure.
+    if (oldS['oneOf'] === undefined && oldS['anyOf'] === undefined && newS['type'] === undefined && Array.isArray(newS['anyOf'])) {
+        const covers = (newS['anyOf'] as Schema[]).some((member) => {
+            const sub: string[] = [];
+            assertSuperset(oldS, member, at, sub);
+            return sub.length === 0;
+        });
+        issues.push(covers ? `${at}: widened to anyOf` : `${at}: replaced by an anyOf with no member accepting the 1.5.0 schema`);
         return;
     }
     if (oldS['type'] !== undefined && JSON.stringify(oldS['type']) !== JSON.stringify(newS['type'])) {
@@ -144,5 +165,27 @@ describe('tools/list is a superset of the published 1.5.0 catalogue', () => {
             issues.forEach((i) => seen.add(i));
         }
         expect([...ACCEPTED_DELTAS].filter((d) => !seen.has(d))).toEqual([]);
+        // The colour widening is a pattern, not a list: hold it to the exact sites it was reviewed for.
+        const widened = [...seen].filter((i) => CMYK_WIDENING.test(i)).map((i) => i.replace(/(\.properties\.children\.items)+/, '.…'));
+        expect([...new Set(widened)].sort()).toEqual([
+            'add_chart.in.properties.colors.items: widened to anyOf',
+            'add_chart.in.properties.series.items.properties.color: widened to anyOf',
+            'add_table.in.properties.cellBorders.properties.color: widened to anyOf',
+            'add_table.in.properties.watermark.properties.color: widened to anyOf',
+            'generate_basic_pdf.in.properties.blocks.items.oneOf[chart].properties.colors.items: widened to anyOf',
+            'generate_basic_pdf.in.properties.blocks.items.oneOf[chart].properties.series.items.properties.color: widened to anyOf',
+            'generate_basic_pdf.in.properties.outline.oneOf[1].items.properties.color: widened to anyOf',
+            'generate_basic_pdf.in.properties.outline.oneOf[1].items.….properties.color: widened to anyOf',
+            'generate_basic_pdf.in.properties.watermark.properties.color: widened to anyOf',
+        ]);
+    });
+
+    it('the anyOf rule refuses a union that no longer accepts the published schema', () => {
+        const issues: string[] = [];
+        assertSuperset({ type: 'string', pattern: '^#[0-9a-f]{6}$' }, { anyOf: [{ type: 'string', pattern: '^#[0-9a-f]{3}$' }, { type: 'array' }] }, 'x', issues);
+        expect(issues).toEqual(['x: replaced by an anyOf with no member accepting the 1.5.0 schema']);
+        const ok: string[] = [];
+        assertSuperset({ type: 'string', pattern: '^#[0-9a-f]{6}$' }, { anyOf: [{ type: 'string', pattern: '^#[0-9a-f]{6}$' }, { type: 'array' }] }, 'x', ok);
+        expect(ok).toEqual(['x: widened to anyOf']);
     });
 });

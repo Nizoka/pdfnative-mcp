@@ -23,6 +23,7 @@
  */
 import type { PageTemplate, PdfLayoutOptions } from 'pdfnative';
 import { z } from 'zod';
+import { colorSchema, colorZod, toEngineColor } from './color.js';
 
 import { ENCRYPT_INPUT_SCHEMA, EncryptSchema, toEncryptionOptions } from './encryption.js';
 import { ToolError } from './errors.js';
@@ -61,7 +62,7 @@ const TEMPLATE_SCHEMA = (zone: 'top' | 'bottom') =>
             center: TEMPLATE_TEXT_SCHEMA,
             right: TEMPLATE_TEXT_SCHEMA,
             fontSize: { type: 'number', minimum: 6, maximum: 14, description: 'Default 7.' },
-            color: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$', description: 'Hex colour.' },
+            color: colorSchema({ type: 'string', pattern: '^#[0-9a-fA-F]{6}$' }, 'Hex colour (#RRGGBB).'),
         },
     }) as const;
 
@@ -105,7 +106,7 @@ const TemplateSchema = z.strictObject({
     center: z.string().max(200).optional(),
     right: z.string().max(200).optional(),
     fontSize: z.number().min(6).max(14).optional(),
-    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+    color: colorZod(z.string().regex(/^#[0-9a-fA-F]{6}$/)).optional(),
 });
 
 const MarginsSchema = z.strictObject({
@@ -154,7 +155,7 @@ function toTemplate(t: TemplateInput): PageTemplate {
         ...(t.center !== undefined ? { center: t.center } : {}),
         ...(t.right !== undefined ? { right: t.right } : {}),
         ...(t.fontSize !== undefined ? { fontSize: t.fontSize } : {}),
-        ...(t.color !== undefined ? { color: t.color } : {}),
+        ...(t.color !== undefined ? { color: toEngineColor(t.color) } : {}),
     };
 }
 

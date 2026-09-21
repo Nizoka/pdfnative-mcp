@@ -20,8 +20,10 @@
  * emitted automatically (auto-generated alt text when `altText` is omitted), so
  * charts stay PDF/A- and PDF/UA-safe.
  */
-import { type ChartBlock } from 'pdfnative';
+import { type ChartBlock, type PdfColor } from 'pdfnative';
 import { z } from 'zod';
+
+import { colorSchema, colorZod, toEngineColor, type ColorInput } from './color.js';
 
 export const CHART_TYPE_ENUM = ['bar', 'barH', 'stackedBar', 'stackedBarH', 'line', 'area', 'scatter', 'pie', 'donut'] as const;
 
@@ -30,7 +32,8 @@ const X_VALUE = { type: ['number', 'string'], maxLength: 64, description: 'Posit
 /** Hex-colour pattern shared by series and palette overrides (JSON Schema + Zod stay in lock-step). */
 const HEX_COLOR_PATTERN = '^#?[0-9a-fA-F]{6}$';
 const HEX_COLOR_RE = new RegExp(HEX_COLOR_PATTERN);
-const HEX_COLOR = { type: 'string', pattern: HEX_COLOR_PATTERN, description: 'CSS-style hex colour, e.g. "#3366cc".' } as const;
+const HEX_COLOR = colorSchema({ type: 'string', pattern: HEX_COLOR_PATTERN }, 'CSS-style hex colour, e.g. "#3366cc".');
+const HexOrCmyk = colorZod(z.string().regex(HEX_COLOR_RE));
 
 /** JSON Schema fragment for a single chart series. */
 const CHART_SERIES_SCHEMA = {
@@ -157,7 +160,7 @@ export const ChartBodySchema = z.strictObject({
             z.strictObject({
                 label: z.string().min(1).max(200),
                 values: z.array(z.number()).min(1).max(1000),
-                color: z.string().regex(HEX_COLOR_RE).optional(),
+                color: HexOrCmyk.optional(),
                 xValues: z.array(z.union([z.number(), z.string().max(64)])).min(1).max(1000).optional(),
                 yAxis: z.enum(['left', 'right']).optional(),
             }),
@@ -206,16 +209,17 @@ export const ChartBodySchema = z.strictObject({
     labelStride: z.number().int().min(1).max(1000).optional(),
     labelRotation: z.number().min(0).max(90).optional(),
     markers: z.boolean().optional(),
-    colors: z.array(z.string().regex(HEX_COLOR_RE)).max(50).optional(),
+    colors: z.array(HexOrCmyk).max(50).optional(),
     align: z.enum(['left', 'center', 'right']).optional(),
     altText: z.string().max(500).optional(),
     width: z.number().min(50).max(2000).optional(),
     height: z.number().min(50).max(2000).optional(),
 });
 
-/** Normalise a hex colour to pdfnative's expected `#rrggbb` form. */
-function normHex(color: string): string {
-    return color.startsWith('#') ? color : `#${color}`;
+/** Normalise a hex colour to pdfnative's expected `#rrggbb` form; CMYK strings and tuples pass through. */
+function normHex(color: ColorInput): PdfColor {
+    if (typeof color !== 'string') return toEngineColor(color);
+    return color.startsWith('#') || color.includes(' ') ? color : `#${color}`;
 }
 
 /** Map a validated chart body to a pdfnative {@link ChartBlock}. */
