@@ -1,7 +1,11 @@
 ---
-description: "Use when writing tests, extending coverage, regenerating samples or the corpus, or debugging failures for pdfnative-mcp."
-applyTo: "tests/**,scripts/**,examples/**"
+paths:
+  - "tests/**"
+  - "scripts/**"
+  - "examples/**"
 ---
+<!-- GENERATED from .github/instructions/testing.instructions.md by scripts/build-claude-rules.ts — do not edit -->
+
 # Testing Standards
 
 ## The gate

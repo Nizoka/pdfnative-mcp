@@ -1,7 +1,12 @@
 ---
-description: "Use when editing MCP transport, tool registration, JSON schemas, or request/response handling."
-applyTo: "src/server.ts,src/tools/**,src/cli.ts,src/*.ts"
+paths:
+  - "src/server.ts"
+  - "src/tools/**"
+  - "src/cli.ts"
+  - "src/*.ts"
 ---
+<!-- GENERATED from .github/instructions/mcp-server.instructions.md by scripts/build-claude-rules.ts — do not edit -->
+
 # MCP Server Standards
 
 ## Transport and lifecycle

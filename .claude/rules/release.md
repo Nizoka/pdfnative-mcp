@@ -1,7 +1,11 @@
 ---
-description: "Use when preparing releases, changelog entries, release notes and the release PR draft."
-applyTo: "release-notes/**,CHANGELOG.md,.github/drafts/**"
+paths:
+  - "release-notes/**"
+  - "CHANGELOG.md"
+  - ".github/drafts/**"
 ---
+<!-- GENERATED from .github/instructions/release.instructions.md by scripts/build-claude-rules.ts — do not edit -->
+
 # Release Standards
 
 ## Structure

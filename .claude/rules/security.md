@@ -1,7 +1,22 @@
 ---
-description: "Use when touching file IO, path handling, network egress, operator knobs, or sensitive key/certificate inputs."
-applyTo: "src/output.ts,src/network.ts,src/http.ts,src/auth.ts,src/image.ts,src/inflate-cap.ts,src/reproducible.ts,src/cache.ts,src/base64.ts,src/tools/sign-pdf.ts,src/tools/add-ltv.ts,src/tools/timestamp-pdf.ts,src/server.ts,.github/workflows/**"
+paths:
+  - "src/output.ts"
+  - "src/network.ts"
+  - "src/http.ts"
+  - "src/auth.ts"
+  - "src/image.ts"
+  - "src/inflate-cap.ts"
+  - "src/reproducible.ts"
+  - "src/cache.ts"
+  - "src/base64.ts"
+  - "src/tools/sign-pdf.ts"
+  - "src/tools/add-ltv.ts"
+  - "src/tools/timestamp-pdf.ts"
+  - "src/server.ts"
+  - ".github/workflows/**"
 ---
+<!-- GENERATED from .github/instructions/security.instructions.md by scripts/build-claude-rules.ts — do not edit -->
+
 # Security Standards
 
 ## Filesystem confinement
