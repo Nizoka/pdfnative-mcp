@@ -86,6 +86,15 @@ export function pdfBase64Of(result: ToolResult): string | null {
     return block?.resource?.blob ?? null;
 }
 
+/** Every base64 PDF of the result, in order (split_pdf returns several). */
+export function pdfBlobsOf(result: ToolResult): string[] {
+    const blobs: string[] = [];
+    for (const c of result.content ?? []) {
+        if (c.type === 'resource' && typeof c.resource?.blob === 'string' && c.resource.blob.length > 0) blobs.push(c.resource.blob);
+    }
+    return blobs;
+}
+
 /** Call a tool and return its PDF bytes as base64. */
 export async function producePdf(server: BuiltServer, name: string, args: Readonly<Record<string, unknown>>): Promise<string> {
     const blob = pdfBase64Of(await callPinned(server, name, args));
