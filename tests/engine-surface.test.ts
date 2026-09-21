@@ -148,7 +148,7 @@ describe('engine-surface: named means exercised', () => {
         expect(DIAGNOSTIC_CODES).toHaveLength(9);
         // The table is executed, not just declared.
         expect(read('tests/diagnostics-triggers.test.ts')).toContain('it.each(Object.entries(DIAGNOSTIC_TRIGGERS))');
-        const contract = existsSync(join(ROOT, 'docs', 'AGENT_CONTRACT.md')) ? read('docs/AGENT_CONTRACT.md') : read('AGENTS.md');
+        const contract = read('docs/AGENT_CONTRACT.md');
         for (const code of DIAGNOSTIC_CODES) expect(contract.includes(`\`${code}\``), `the agent contract documents ${code}`).toBe(true);
     });
 

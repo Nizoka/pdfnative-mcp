@@ -72,7 +72,7 @@ Priorities may shift based on community feedback and sponsorship.
 - [x] **Token-frugal reads** — optional `verbosity: 'summary'` + `fields: […]` on every read-only tool (~90% smaller responses); no base64 duplication in `structuredContent`.
 - [x] **MCP registry publish fix** — canonical `io.github.Nizoka/pdfnative-mcp` casing.
 - [x] **Dependency** — upgraded to **zod 4**.
-- [x] **AGENTS.md** — root agent operations manual (catalogue, decision tree, recipes, error table).
+- [x] **AGENTS.md** — root agent operations manual (catalogue, decision tree, recipes, error table). Since 1.7.0 the consumer contract lives in `docs/AGENT_CONTRACT.md` and `AGENTS.md` holds the repository rules.
 
 ### v1.3.0 — page-tree tools, pdfnative 1.4 features, constant-time signing
 

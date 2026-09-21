@@ -4,7 +4,7 @@
  *
  * pdfnative throws plain `Error`s for these operations; this helper translates
  * them into stable {@link ToolError} codes so AI clients get a consistent,
- * actionable `code` to branch on (see AGENTS.md §6 error reference).
+ * actionable `code` to branch on (see docs/AGENT_CONTRACT.md §6 error reference).
  */
 import { PdfEncryptionUnsupportedError, PdfPasswordError } from 'pdfnative';
 

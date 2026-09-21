@@ -1,6 +1,6 @@
 /**
  * Error-code inventory: every `ToolError('CODE', …)` literal in `src/` must be
- * (a) documented in the AGENTS.md error table and (b) exercised by at least
+ * (a) documented in the docs/AGENT_CONTRACT.md error table and (b) exercised by at least
  * one test under `tests/`. The second half of this file adds the targeted
  * tests for codes that no tool suite reached before.
  */
@@ -52,7 +52,7 @@ function collectSourceCodes(): string[] {
 
 describe('ToolError code inventory', () => {
     const codes = collectSourceCodes();
-    const agents = readFileSync(path.join(ROOT, 'AGENTS.md'), 'utf8');
+    const agents = readFileSync(path.join(ROOT, 'docs', 'AGENT_CONTRACT.md'), 'utf8');
     const tests = walk(path.join(ROOT, 'tests'))
         .filter((f) => !f.endsWith('error-codes.test.ts'))
         .map((f) => ({ file: path.basename(f), text: readFileSync(f, 'utf8') }));
@@ -64,9 +64,9 @@ describe('ToolError code inventory', () => {
         expect(codes).toContain('SECURITY_VIOLATION');
     });
 
-    it('documents every code in the AGENTS.md error table', () => {
+    it('documents every code in the agent contract error table', () => {
         const missing = codes.filter((c) => !agents.includes(`\`${c}\``));
-        expect(missing, `codes missing from AGENTS.md error table: ${missing.join(', ')}`).toEqual([]);
+        expect(missing, `codes missing from docs/AGENT_CONTRACT.md §6: ${missing.join(', ')}`).toEqual([]);
     });
 
     it('exercises every code in at least one test under tests/', () => {

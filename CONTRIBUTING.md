@@ -36,8 +36,8 @@ For the full local-verification workflow — quality gate, examples-as-tests, ch
    - `<TOOL>_INPUT_SCHEMA` (JSON Schema, served to clients)
    - `<toolName>` handler `(args: unknown) => Promise<OutputResult>`
 2. Register the tool in `src/server.ts` (`TOOLS` array). Provide `title`, `description`, and appropriate `annotations`.
-3. Add tests in a dedicated `tests/<tool-name>.test.ts` (success, each error code, file mode). Every new `ToolError` code must appear in `AGENTS.md` §6 and be named by a test — `tests/error-codes.test.ts` enforces both.
-4. Document the tool: README matrix and tool reference, `AGENTS.md` (catalogue, decision tree, §6), `docs/AI_GUIDE.md` decision table, `llms.txt`, `docs/KNOWLEDGE_BASE.md`, `docs/API_STABILITY.md` §5.
+3. Add tests in a dedicated `tests/<tool-name>.test.ts` (success, each error code, file mode). Every new `ToolError` code must appear in `docs/AGENT_CONTRACT.md` §6 and be named by a test — `tests/error-codes.test.ts` enforces both.
+4. Document the tool: README matrix and tool reference, `docs/AGENT_CONTRACT.md` (catalogue, decision tree, §6), `docs/AI_GUIDE.md` decision table, `llms.txt`, `docs/KNOWLEDGE_BASE.md`, `docs/API_STABILITY.md` §5.
 5. Add a worked example under `examples/` (it is automatically executed by `tests/examples.test.ts` — run `npm run examples:check`).
 6. Refresh the catalogue-parity fixture: `npm run build && node scripts/tool-shape.mjs --write` updates `tests/_fixtures/tool-shape.json`, which `tests/catalogue-parity.test.ts` compares against the live `tools/list` (structure only — descriptions are stripped, so wording never trips it). Any fixture diff is a deliberate schema change and is reviewed under [docs/API_STABILITY.md](docs/API_STABILITY.md) §5 (it may need a `TOOL_API_VERSION` bump). `tests/catalogue-superset.test.ts` must keep passing against the frozen `tests/_fixtures/tool-shape.v1.5.0.json` — never regenerate that file; it proves nothing published in 1.5.0 was removed or narrowed.
 7. Bump the changelog.

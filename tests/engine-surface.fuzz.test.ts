@@ -33,7 +33,7 @@ const DOCUMENTED_CODES = ((): Set<string> => {
     try {
         contract = readFileSync(resolve(root, 'docs', 'AGENT_CONTRACT.md'), 'utf8');
     } catch {
-        contract = readFileSync(resolve(root, 'AGENTS.md'), 'utf8');
+        contract = readFileSync(resolve(root, 'docs', 'AGENT_CONTRACT.md'), 'utf8');
     }
     return new Set([...contract.matchAll(/^\| `([A-Z][A-Z0-9_]+)` \|/gm)].map((m) => m[1]!));
 })();
