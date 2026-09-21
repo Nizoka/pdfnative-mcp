@@ -212,7 +212,7 @@ const SERVER_DESCRIPTION =
     'AcroForm fill & flatten, page-tree ops (merge / split / extract), markup annotations, Factur-X invoices, ' +
     'Unicode text extraction with positioned runs, PDF introspection, MCP resources for generated PDFs, ' +
     'and human-in-the-loop AI-governance issue drafting. ' +
-    '28 tools, 24 scripts, three runtime dependencies (pdfnative, the MCP SDK, zod).';
+    '28 tools, 27 scripts, three runtime dependencies (pdfnative, the MCP SDK, zod).';
 
 /**
  * Per-tool API version used by the opt-in cache key and by `_meta.apiVersion`.
@@ -512,7 +512,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ADD_INTERNATIONAL_TEXT_NAME,
         title: 'Add international text',
         description:
-            "PDF rendering text in 24 scripts (Arabic, Hebrew, Thai, CJK, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Vietnamese, …), COLRv1 colour emoji and mathematical symbols ('math': ∀ ∃ √ ∑ ∫ ∞). BiDi (UAX #9), Arabic joining and complex-script shaping are automatic; input is NFC-normalised; newlines split paragraphs. `lang` is a code or an array for mixed runs (['ar','emoji'], ['latin','math']). Fonts are always embedded, so `embedFonts` does not exist here. PDF/A, print, metadata and creationDate options as on every document tool.",
+            "PDF rendering text in 27 scripts (Arabic, Hebrew, Thai, Lao, CJK, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Tai Tham, New Tai Lue, Tai Le, Cham, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Vietnamese, …; ha / yo / ig / sw are aliases of latin with anchored combining marks), COLRv1 colour emoji and mathematical symbols ('math': ∀ ∃ √ ∑ ∫ ∞). BiDi (UAX #9), Arabic joining and complex-script shaping are automatic; input is NFC-normalised; newlines split paragraphs. `lang` is a code or an array for mixed runs (['ar','emoji'], ['latin','math']). Fonts are always embedded, so `embedFonts` does not exist here. PDF/A, print, metadata and creationDate options as on every document tool.",
         inputSchema: ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },

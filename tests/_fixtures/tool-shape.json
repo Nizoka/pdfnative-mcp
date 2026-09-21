@@ -3177,13 +3177,22 @@
         "my",
         "am",
         "emoji",
-        "math"
+        "math",
+        "lo",
+        "nod",
+        "khb",
+        "tdd",
+        "cjm",
+        "ha",
+        "yo",
+        "ig",
+        "sw"
        ]
       },
       {
        "type": "array",
        "minItems": 1,
-       "maxItems": 25,
+       "maxItems": 34,
        "items": {
         "type": "string",
         "enum": [
@@ -3211,7 +3220,16 @@
          "my",
          "am",
          "emoji",
-         "math"
+         "math",
+         "lo",
+         "nod",
+         "khb",
+         "tdd",
+         "cjm",
+         "ha",
+         "yo",
+         "ig",
+         "sw"
         ]
        }
       },

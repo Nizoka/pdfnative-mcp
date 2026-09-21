@@ -76,16 +76,40 @@ const LANG_TO_FONT_FILE: Readonly<Record<string, string>> = {
     // Mathematical / technical symbols (pdfnative v1.5.0, Noto Sans Math OFL-1.1).
     // Combine with a base script (e.g. lang: ['latin','math']) to render ∀ ∃ √ ∑ ∫ ∞ ± ÷ ×.
     math: 'noto-sans-math-data.js',
+    // Added in v1.7.0 / pdfnative v1.8.0 — Lao (dedicated shaper), Tai Tham and Cham
+    // (Universal Shaping Engine), New Tai Lue and Tai Le.
+    lo: 'noto-lao-data.js',
+    nod: 'noto-taitham-data.js',
+    khb: 'noto-newtailue-data.js',
+    tdd: 'noto-taile-data.js',
+    cjm: 'noto-cham-data.js',
 };
 
-const SUPPORTED_LANGS = Object.keys(LANG_TO_FONT_FILE) as ReadonlyArray<keyof typeof LANG_TO_FONT_FILE>;
+/**
+ * Language codes that are labels over an existing module: Hausa, Yoruba, Igbo
+ * and Swahili are written in Latin with combining marks, which the bundled
+ * Noto Sans module anchors (pdfnative 1.8.0 latin-marks shaper). No new font,
+ * no new registration — the alias resolves before any lookup, exactly as in
+ * pdfnative-cli.
+ */
+export const LANG_ALIASES: Readonly<Record<string, string>> = Object.freeze({ ha: 'latin', yo: 'latin', ig: 'latin', sw: 'latin' });
+
+/** Faces that are not scripts: the Latin base, colour emoji and math symbols. */
+const UTILITY_LANGS: readonly string[] = ['latin', 'emoji', 'math'];
+
+/** The 27 script codes (every font-backed code that is not a utility face) — pdfnative 1.8.0. */
+export const SCRIPT_CODES: readonly string[] = Object.keys(LANG_TO_FONT_FILE).filter((k) => !UTILITY_LANGS.includes(k));
+
+/** Every value `lang` accepts: the font-backed codes, then the aliases. */
+const SUPPORTED_LANGS: readonly string[] = [...Object.keys(LANG_TO_FONT_FILE), ...Object.keys(LANG_ALIASES)];
+const SUPPORTED_LANGS_HINT = `${Object.keys(LANG_TO_FONT_FILE).join(', ')} (aliases of latin: ${Object.keys(LANG_ALIASES).join(', ')})`;
 
 const _registered = new Set<string>();
 function ensureFontRegistered(lang: string): void {
     if (_registered.has(lang)) return;
     const fontFile = LANG_TO_FONT_FILE[lang];
     if (fontFile === undefined) {
-        throw new ToolError('UNSUPPORTED_LANG', `Unsupported lang '${lang}'. Supported: ${SUPPORTED_LANGS.join(', ')}.`);
+        throw new ToolError('UNSUPPORTED_LANG', `Unsupported lang '${lang}'. Supported: ${SUPPORTED_LANGS_HINT}.`);
     }
     registerFont(lang, async () => {
         const data = await importFontModule(fontFile);
@@ -106,7 +130,7 @@ export const ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA = {
         },
         lang: {
             description:
-                "Language / script identifier. Either a single code (e.g. 'ar'), a comma-separated list ('ar,emoji'), or an array (['ar','emoji']). Multiple codes enable multi-font run splitting (script + emoji + Latin fallback).",
+                "Language / script identifier. Either a single code (e.g. 'ar'), a comma-separated list ('ar,emoji'), or an array (['ar','emoji']). Multiple codes enable multi-font run splitting (script + emoji + Latin fallback). 27 scripts; ha / yo / ig / sw (Hausa, Yoruba, Igbo, Swahili) are aliases of latin, whose combining marks are anchored.",
             // anyOf (not oneOf): a single code also satisfies the comma-separated string branch.
             anyOf: [
                 { type: 'string', enum: [...SUPPORTED_LANGS] },
@@ -176,11 +200,14 @@ function normaliseLangs(raw: string | string[]): string[] {
     const tokens = Array.isArray(raw) ? raw : raw.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
     const seen = new Set<string>();
     const out: string[] = [];
-    for (const t of tokens) {
+    for (const token of tokens) {
+        // An alias is a label over an existing module: resolve it before the lookup and the
+        // de-duplication, so ['yo', 'latin'] registers Noto Sans once.
+        const t = LANG_ALIASES[token] ?? token;
         if (LANG_TO_FONT_FILE[t] === undefined) {
             throw new ToolError(
                 'UNSUPPORTED_LANG',
-                `Unsupported lang '${t}'. Supported: ${SUPPORTED_LANGS.join(', ')}.`,
+                `Unsupported lang '${token}'. Supported: ${SUPPORTED_LANGS_HINT}.`,
             );
         }
         if (!seen.has(t)) {

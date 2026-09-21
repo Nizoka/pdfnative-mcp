@@ -169,38 +169,38 @@ describe('typography — text refinements', () => {
         const blocks = [{ type: 'paragraph', text: 'Total 150 € for 12 kg and 30 % of 150 personnes.' }];
         const bound = await generateBasicPdf(doc(blocks, { typography: { unitBinding: true }, embedFonts: true }));
         const text = await textOf(bound);
-        expect(text).toContain('150 €');
-        expect(text).toContain('12 kg');
+        expect(text).toContain('150\u00a0€');
+        expect(text).toContain('12\u00a0kg');
         expect(text).toContain('150 personnes'); // a word is not a unit
         const custom = await textOf(await generateBasicPdf(doc(blocks, { typography: { unitBinding: { units: ['personnes'] } }, embedFonts: true })));
-        expect(custom).toContain('150 personnes');
+        expect(custom).toContain('150\u00a0personnes');
         expect(custom).toContain('150 €');
     });
 
     it('bindShortWords keeps a short word with the next one', async () => {
         const blocks = [{ type: 'paragraph', text: 'Spotkanie w Krakowie i w Gdansku z ekspertami.' }];
         const text = await textOf(await generateBasicPdf(doc(blocks, { typography: { bindShortWords: true }, embedFonts: true })));
-        expect(text).toContain('w Krakowie');
-        expect(text).toContain('i w Gdansku');
+        expect(text).toContain('w\u00a0Krakowie');
+        expect(text).toContain('i\u00a0w\u00a0Gdansku');
         const listed = await textOf(await generateBasicPdf(doc(blocks, { typography: { bindShortWords: { words: ['z'] } }, embedFonts: true })));
-        expect(listed).toContain('z ekspertami');
+        expect(listed).toContain('z\u00a0ekspertami');
         expect(listed).toContain('w Krakowie');
         const wider = await textOf(await generateBasicPdf(doc([{ type: 'paragraph', text: 'Go to the lab at once.' }], { typography: { bindShortWords: { maxLength: 2 } }, embedFonts: true })));
-        expect(wider).toContain('to the');
+        expect(wider).toContain('to\u00a0the');
     });
 
     it("punctuationSpacing: 'fr' binds ; ! ? with a narrow no-break space (embedded font), 'fr-CA' binds the colon and guillemets only; rules are honoured", async () => {
         const blocks = [{ type: 'paragraph', text: 'Vraiment ? Oui ! Voici : « un exemple » ; fin.' }];
         const fr = await textOf(await generateBasicPdf(doc(blocks, { typography: { punctuationSpacing: 'fr' }, embedFonts: true })));
-        expect(fr).toContain('Vraiment ?');
-        expect(fr).toContain('Voici :');
+        expect(fr).toContain('Vraiment\u202f?');
+        expect(fr).toContain('Voici\u00a0:');
         const frCa = await textOf(await generateBasicPdf(doc(blocks, { typography: { punctuationSpacing: 'fr-CA' }, embedFonts: true })));
         // Canadian French sets no space rule before ; ! ? — only the colon and the guillemets are bound.
         expect(frCa).toContain('Vraiment ?');
-        expect(frCa).toContain('Voici :');
-        expect(frCa).toContain('« un');
+        expect(frCa).toContain('Voici\u00a0:');
+        expect(frCa).toContain('«\u00a0un');
         const rules = await textOf(await generateBasicPdf(doc(blocks, { typography: { punctuationSpacing: [{ char: ';', side: 'before', space: 'nbsp' }] }, embedFonts: true })));
-        expect(rules).toContain('» ;');
+        expect(rules).toContain('»\u00a0;');
         expect(rules).toContain('Vraiment ?');
     });
 
@@ -231,10 +231,10 @@ describe('typography — text refinements', () => {
     });
 
     it('soft hyphens are honoured as break opportunities and never drawn mid-word', async () => {
-        const word = 'Donau­dampf­schiff­fahrts­gesell­schaft';
+        const word = 'Donau\u00addampf\u00adschiff\u00adfahrts\u00adgesell\u00adschaft';
         const out = await generateBasicPdf(doc([{ type: 'paragraph', text: `${word} `.repeat(30).trim() }], { embedFonts: true }));
         const text = await textOf(out);
-        expect(text.replace(/[\s­-]/g, '')).toContain('Donaudampfschifffahrtsgesellschaft');
+        expect(text.replace(/[\s\u00ad-]/g, '')).toContain('Donaudampfschifffahrtsgesellschaft');
     });
 
     it('hyphenationLanguage is accepted and has no effect here: no provider is installed on this server', async () => {
@@ -268,6 +268,6 @@ describe('typography — font-level keys need an embedded font', () => {
         const plain = await addInternationalText(input);
         const refined = await addInternationalText({ ...input, typography: { unitBinding: true, punctuationSpacing: 'fr', kerning: true } });
         expect(refined.base64).not.toBe(plain.base64);
-        expect((await extractText({ pdfBase64: refined.base64! })).fullText).toContain('150 €');
+        expect((await extractText({ pdfBase64: refined.base64! })).fullText).toContain('150\u00a0€');
     });
 });
