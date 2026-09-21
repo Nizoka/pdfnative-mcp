@@ -199,10 +199,10 @@ const SERVER_NAME = 'pdfnative-mcp';
 
 /**
  * Human-readable server identity surfaced in `serverInfo` (MCP `Implementation`).
- * `title` is a display name; `description` mirrors `server.json` so hosts and the
+ * `title` mirrors `server.json` (asserted by tests/metadata.test.ts); `description` is its long form, so hosts and the
  * MCP registry present consistent metadata during initialization.
  */
-const SERVER_TITLE = 'pdfnative MCP — PDF generation, signing & introspection';
+const SERVER_TITLE = 'pdfnative MCP — PDF generation, PAdES signing & introspection';
 /** Mirrors server.json `websiteUrl` (asserted by tests/metadata.test.ts). */
 export const SERVER_WEBSITE_URL = 'https://github.com/Nizoka/pdfnative-mcp#readme';
 const SERVER_DESCRIPTION =

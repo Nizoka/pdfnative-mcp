@@ -1,7 +1,8 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Nizoka/pdfnative-mcp",
-  "description": "MCP server for PDF: generate, PDF/A, PAdES sign/verify (LTV), forms, merge/split, encrypt. 28 tools.",
+  "title": "pdfnative MCP — PDF generation, PAdES signing & introspection",
+  "description": "PDF MCP server: generate PDF/A, sign & verify PAdES (LTV), forms, merge, split, encrypt. 28 tools",
   "repository": {
     "url": "https://github.com/Nizoka/pdfnative-mcp",
     "source": "github"
@@ -14,9 +15,6 @@
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "pdfnative-mcp",
       "version": "1.6.0",
-      "transport": {
-        "type": "stdio"
-      },
       "runtimeHint": "npx",
       "runtimeArguments": [
         {
@@ -30,60 +28,70 @@
           "valueHint": "package"
         }
       ],
+      "transport": {
+        "type": "stdio"
+      },
       "environmentVariables": [
         {
           "name": "PDFNATIVE_MCP_OUTPUT_DIR",
-          "description": "Absolute path to a sandboxed directory where outputMode='file' may write PDF outputs. When unset, every tool returns base64.",
+          "description": "Absolute path of a sandboxed directory where outputMode='file' may write PDFs. Unset: every tool returns base64 only (file output disabled).",
           "isRequired": false,
-          "isSecret": false
+          "isSecret": false,
+          "format": "filepath"
         },
         {
           "name": "PDFNATIVE_MCP_CACHE_DIR",
-          "description": "Opt-in content-addressed response cache directory. SHA-256 keyed, 1h TTL, 256 MiB LRU. Tool output is stored as plaintext at rest. Never cached: encrypt_pdf, decrypt_pdf (so decrypted/protected bytes never linger on disk), add_ltv, timestamp_pdf, update_metadata, sign_pdf (time- or network-dependent output, key material), any document call with encrypt, and any call with outputMode='file'.",
+          "description": "Opt-in content-addressed response cache directory (SHA-256 keyed, 1h TTL, 256 MiB LRU, plaintext at rest). Never caches encrypt/decrypt, sign, timestamp, add_ltv, update_metadata, encrypted builds or file output.",
           "isRequired": false,
-          "isSecret": false
+          "isSecret": false,
+          "format": "filepath"
         },
         {
           "name": "PDFNATIVE_MCP_PORT",
-          "description": "Bind to an HTTP port instead of stdio (Streamable HTTP MCP transport, loopback only). No authentication unless PDFNATIVE_MCP_HTTP_TOKEN is set.",
+          "description": "Serve Streamable HTTP on this loopback port instead of stdio (MCP 2026-07-28, stateless). Unauthenticated unless PDFNATIVE_MCP_HTTP_TOKEN is set.",
           "isRequired": false,
           "isSecret": false,
           "format": "number"
         },
         {
           "name": "PDFNATIVE_MCP_HTTP_TOKEN",
-          "description": "Opt-in bearer token for the HTTP transport (at least 16 characters, no whitespace). When set, every request to /mcp must carry 'Authorization: Bearer <token>'; otherwise 401. Never logged or echoed.",
+          "description": "Opt-in bearer token for the HTTP transport (>= 16 chars, no whitespace). When set, /mcp requires 'Authorization: Bearer <token>' or answers 401. Never logged.",
           "isRequired": false,
           "isSecret": true
         },
         {
           "name": "PDFNATIVE_MCP_MAX_INFLATE_BYTES",
-          "description": "Per-stream decompression cap in bytes for FlateDecode content (zip-bomb mitigation; engine default 104857600 = 100 MiB). Positive integer >= 1024; an invalid value refuses to start the server. Lower it on shared hosts, raise it for trusted archives of large scanned documents. Over the cap, extract_attachments fails with PDF_PARSE_FAILED (remedy names this variable); extract_text returns empty text for the affected page (the engine skips undecodable content streams); inspect_pdf and the document tools are unaffected.",
+          "description": "Per-stream FlateDecode decompression cap in bytes (zip-bomb mitigation; default 104857600 = 100 MiB). Integer >= 1024; an invalid value refuses to start the server.",
           "isRequired": false,
           "isSecret": false,
           "format": "number"
         },
         {
           "name": "PDFNATIVE_MCP_TSA_URL",
-          "description": "Absolute http(s) URL of the RFC 3161 timestamp authority used by sign_pdf timestamp=true and timestamp_pdf (PAdES B-T / B-LTA). When unset those calls fail with TSA_NOT_CONFIGURED and no network request is made. The server never makes an outbound call except to operator-configured TSA / OCSP / CRL endpoints; tool arguments can never supply a URL.",
+          "description": "http(s) URL of the RFC 3161 timestamp authority used by sign_pdf timestamp=true and timestamp_pdf (PAdES B-T / B-LTA). Unset: those calls fail with TSA_NOT_CONFIGURED and no network request is made. Tool arguments can never supply a URL.",
           "isRequired": false,
           "isSecret": false
         },
         {
           "name": "PDFNATIVE_MCP_TSA_AUTH",
-          "description": "Optional Authorization header value sent to the TSA (e.g. 'Basic …' or 'Bearer …'). Never logged or echoed in error messages.",
+          "description": "Optional Authorization header value sent to the TSA (e.g. 'Basic ...' or 'Bearer ...'). Never logged or echoed.",
           "isRequired": false,
           "isSecret": true
         },
         {
           "name": "PDFNATIVE_MCP_REVOCATION",
-          "description": "'ocsp', 'crl' or 'ocsp,crl' — enables online OCSP / CRL collection for add_ltv mode='online' (PAdES B-LT). When unset that mode fails with REVOCATION_NOT_CONFIGURED; add_ltv mode='offline' embeds caller-supplied material with zero network access. Requires PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS.",
+          "description": "'ocsp', 'crl' or 'ocsp,crl': enables online revocation collection for add_ltv mode='online' (PAdES B-LT). Unset: that mode fails with REVOCATION_NOT_CONFIGURED; mode='offline' stays fully offline. Requires PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS.",
           "isRequired": false,
-          "isSecret": false
+          "isSecret": false,
+          "choices": [
+            "ocsp",
+            "crl",
+            "ocsp,crl"
+          ]
         },
         {
           "name": "PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS",
-          "description": "Comma-separated allow-list of OCSP / CRL responder hosts ('host', 'host:port' or '*.suffix'). Mandatory when PDFNATIVE_MCP_REVOCATION is set: responder URLs come from untrusted certificates inside the PDF and are fetched only when the host matches (http(s) only, no credentials, no redirects, internal address literals rejected unless listed verbatim). Entries are hostnames: 'host:port' only matches URLs with an explicit non-default port, wildcards cannot carry a port, IDN hosts must be punycode, IPv6 literals in brackets. Address literals only are checked — a listed hostname resolving to an internal address (DNS rebinding) is not detected.",
+          "description": "Comma-separated allow-list of OCSP / CRL responder hosts ('host', 'host:port' or '*.suffix'). Mandatory when PDFNATIVE_MCP_REVOCATION is set: responder URLs found in certificates are fetched only if the host matches (http(s) only, no credentials, no redirects, internal addresses rejected unless listed verbatim).",
           "isRequired": false,
           "isSecret": false
         },
