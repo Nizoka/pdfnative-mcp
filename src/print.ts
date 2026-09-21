@@ -1,6 +1,7 @@
 /**
- * Shared print-production schema (pdfnative ≥ 1.7): page boxes / bleed,
- * printer's marks, `/UserUnit`, a caller-supplied OutputIntent ICC profile and
+ * Shared print-production schema (pdfnative ≥ 1.7; colour bars and CMYK / Gray
+ * OutputIntents since 1.8): page boxes / bleed, printer's marks, `/UserUnit`, a
+ * caller-supplied OutputIntent ICC profile and
  * the document-level `/Info` + XMP metadata (author / subject / keywords /
  * `/Trapped`).
  *
@@ -11,9 +12,10 @@
  * (pdfnative itself is byte-identical when `print` / `outputIntent` /
  * `metadata` are unused).
  */
-import type { CustomOutputIntent, DocumentMetadata, PageBox, PrintOptions, PrinterMarksOptions } from 'pdfnative';
+import type { ColourBarOptions, CustomOutputIntent, DocumentMetadata, PageBox, PrintOptions, PrinterMarksOptions } from 'pdfnative';
 import { z } from 'zod';
 
+import { decodeBase64Field } from './base64.js';
 import { ToolError } from './errors.js';
 
 const BOX_SCHEMA = {
@@ -55,6 +57,20 @@ export const PRINT_INPUT_PROPERTIES = {
                             length: { type: 'number', minimum: 1, maximum: 100, description: 'Mark length in points. Default 14.' },
                             offset: { type: 'number', minimum: 0, maximum: 100, description: 'Gap between TrimBox and marks in points. Default 5.' },
                             weight: { type: 'number', minimum: 0.05, maximum: 5, description: 'Stroke width in points. Default 0.25.' },
+                            colourBars: {
+                                description: 'Colour control strip in the bleed (C M Y K + overprints, tints): true for defaults. Off by default; needs a bleed of about 5 mm (14.17 pt) and is skipped when the strip would not fit.',
+                                anyOf: [
+                                    { type: 'boolean' },
+                                    {
+                                        type: 'object',
+                                        additionalProperties: false,
+                                        properties: {
+                                            tints: { type: 'boolean', description: 'Add the 75 / 50 / 25 % tint patches. Default true.' },
+                                            size: { type: 'number', minimum: 4, maximum: 72, description: 'Patch size in points. Default 12.' },
+                                        },
+                                    },
+                                ],
+                            },
                         },
                     },
                 ],
@@ -72,9 +88,9 @@ export const PRINT_INPUT_PROPERTIES = {
         additionalProperties: false,
         required: ['iccProfileBase64', 'outputConditionIdentifier'],
         description:
-            'Custom PDF/A OutputIntent: an RGB ICC profile + condition strings replacing the built-in sRGB intent (CMYK rejected).',
+            "Custom OutputIntent (under pdfA or pdfx): an RGB, CMYK or Gray ICC profile + condition strings, replacing the built-in sRGB intent. The profile must be a real ICC file ('acsp' signature, consistent size — PRINT_ERROR otherwise); pdfx needs device class 'prtr'. Under a CMYK / Gray intent RGB content is mapped through a calibrated default space.",
         properties: {
-            iccProfileBase64: { type: 'string', minLength: 1, maxLength: 11_000_000, description: 'ICC profile bytes, base64 (RGB, ≤ 8 MiB).' },
+            iccProfileBase64: { type: 'string', minLength: 1, maxLength: 11_000_000, description: 'ICC profile bytes, base64 (RGB, CMYK or Gray; ≤ 8 MiB).' },
             outputConditionIdentifier: { type: 'string', minLength: 1, maxLength: 200, description: 'e.g. "sRGB IEC61966-2.1".' },
             registryName: { type: 'string', maxLength: 200, description: 'Default "http://www.color.org".' },
             outputCondition: { type: 'string', maxLength: 200 },
@@ -122,6 +138,7 @@ const PrintSchema = z
                     length: z.number().min(1).max(100).optional(),
                     offset: z.number().min(0).max(100).optional(),
                     weight: z.number().min(0.05).max(5).optional(),
+                    colourBars: z.union([z.boolean(), z.strictObject({ tints: z.boolean().optional(), size: z.number().min(4).max(72).optional() })]).optional(),
                 }),
             ])
             .optional(),
@@ -186,6 +203,7 @@ export function toPrintOptions(p: PrintInput): PrintOptions {
             ...(p.marks.length !== undefined ? { length: p.marks.length } : {}),
             ...(p.marks.offset !== undefined ? { offset: p.marks.offset } : {}),
             ...(p.marks.weight !== undefined ? { weight: p.marks.weight } : {}),
+            ...(p.marks.colourBars !== undefined ? { colourBars: toColourBars(p.marks.colourBars) } : {}),
         };
     }
     const trimBox = box(p.trimBox);
@@ -203,18 +221,23 @@ export function toPrintOptions(p: PrintInput): PrintOptions {
     };
 }
 
+function toColourBars(bars: boolean | { tints?: boolean | undefined; size?: number | undefined }): boolean | ColourBarOptions {
+    if (typeof bars === 'boolean') return bars;
+    return {
+        ...(bars.tints !== undefined ? { tints: bars.tints } : {}),
+        ...(bars.size !== undefined ? { size: bars.size } : {}),
+    };
+}
+
 export function toOutputIntent(o: OutputIntentInput): CustomOutputIntent {
-    let icc: Buffer;
-    try {
-        icc = Buffer.from(o.iccProfileBase64, 'base64');
-    } catch {
-        throw new ToolError('VALIDATION_ERROR', 'outputIntent.iccProfileBase64 is not valid base64.');
-    }
+    // Buffer.from(…, 'base64') never throws — it silently drops what it cannot read — so the
+    // boundary helper does the checking (data: URIs, PEM armour, stray characters).
+    const icc = decodeBase64Field(o.iccProfileBase64, 'outputIntent.iccProfileBase64');
     if (icc.byteLength === 0 || icc.byteLength > 8 * 1024 * 1024) {
         throw new ToolError('VALIDATION_ERROR', 'outputIntent.iccProfileBase64 must decode to 1 byte .. 8 MiB.');
     }
     return {
-        iccProfile: new Uint8Array(icc),
+        iccProfile: icc,
         outputConditionIdentifier: o.outputConditionIdentifier,
         ...(o.registryName !== undefined ? { registryName: o.registryName } : {}),
         ...(o.outputCondition !== undefined ? { outputCondition: o.outputCondition } : {}),

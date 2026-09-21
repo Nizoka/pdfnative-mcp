@@ -1749,6 +1749,27 @@
            "type": "number",
            "minimum": 0.05,
            "maximum": 5
+          },
+          "colourBars": {
+           "anyOf": [
+            {
+             "type": "boolean"
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "tints": {
+               "type": "boolean"
+              },
+              "size": {
+               "type": "number",
+               "minimum": 4,
+               "maximum": 72
+              }
+             }
+            }
+           ]
           }
          }
         }
@@ -2174,6 +2195,12 @@
        }
       }
      }
+    },
+    "pdfx": {
+     "type": "string",
+     "enum": [
+      "pdfx4"
+     ]
     },
     "strict": {
      "type": "boolean",
@@ -2398,6 +2425,27 @@
            "type": "number",
            "minimum": 0.05,
            "maximum": 5
+          },
+          "colourBars": {
+           "anyOf": [
+            {
+             "type": "boolean"
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "tints": {
+               "type": "boolean"
+              },
+              "size": {
+               "type": "number",
+               "minimum": 4,
+               "maximum": 72
+              }
+             }
+            }
+           ]
           }
          }
         }
@@ -2823,6 +2871,12 @@
        }
       }
      }
+    },
+    "pdfx": {
+     "type": "string",
+     "enum": [
+      "pdfx4"
+     ]
     },
     "strict": {
      "type": "boolean",
@@ -3364,6 +3418,27 @@
            "type": "number",
            "minimum": 0.05,
            "maximum": 5
+          },
+          "colourBars": {
+           "anyOf": [
+            {
+             "type": "boolean"
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "tints": {
+               "type": "boolean"
+              },
+              "size": {
+               "type": "number",
+               "minimum": 4,
+               "maximum": 72
+              }
+             }
+            }
+           ]
           }
          }
         }
@@ -3789,6 +3864,12 @@
        }
       }
      }
+    },
+    "pdfx": {
+     "type": "string",
+     "enum": [
+      "pdfx4"
+     ]
     },
     "strict": {
      "type": "boolean",
@@ -4310,6 +4391,27 @@
            "type": "number",
            "minimum": 0.05,
            "maximum": 5
+          },
+          "colourBars": {
+           "anyOf": [
+            {
+             "type": "boolean"
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "tints": {
+               "type": "boolean"
+              },
+              "size": {
+               "type": "number",
+               "minimum": 4,
+               "maximum": 72
+              }
+             }
+            }
+           ]
           }
          }
         }
@@ -4736,6 +4838,12 @@
       }
      }
     },
+    "pdfx": {
+     "type": "string",
+     "enum": [
+      "pdfx4"
+     ]
+    },
     "strict": {
      "type": "boolean",
      "default": false
@@ -5003,6 +5111,27 @@
            "type": "number",
            "minimum": 0.05,
            "maximum": 5
+          },
+          "colourBars": {
+           "anyOf": [
+            {
+             "type": "boolean"
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "tints": {
+               "type": "boolean"
+              },
+              "size": {
+               "type": "number",
+               "minimum": 4,
+               "maximum": 72
+              }
+             }
+            }
+           ]
           }
          }
         }
@@ -5649,6 +5778,27 @@
            "type": "number",
            "minimum": 0.05,
            "maximum": 5
+          },
+          "colourBars": {
+           "anyOf": [
+            {
+             "type": "boolean"
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "tints": {
+               "type": "boolean"
+              },
+              "size": {
+               "type": "number",
+               "minimum": 4,
+               "maximum": 72
+              }
+             }
+            }
+           ]
           }
          }
         }
@@ -6075,6 +6225,12 @@
       }
      }
     },
+    "pdfx": {
+     "type": "string",
+     "enum": [
+      "pdfx4"
+     ]
+    },
     "strict": {
      "type": "boolean",
      "default": false
@@ -6385,6 +6541,27 @@
            "type": "number",
            "minimum": 0.05,
            "maximum": 5
+          },
+          "colourBars": {
+           "anyOf": [
+            {
+             "type": "boolean"
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "tints": {
+               "type": "boolean"
+              },
+              "size": {
+               "type": "number",
+               "minimum": 4,
+               "maximum": 72
+              }
+             }
+            }
+           ]
           }
          }
         }
@@ -7667,6 +7844,27 @@
            "type": "number",
            "minimum": 0.05,
            "maximum": 5
+          },
+          "colourBars": {
+           "anyOf": [
+            {
+             "type": "boolean"
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "tints": {
+               "type": "boolean"
+              },
+              "size": {
+               "type": "number",
+               "minimum": 4,
+               "maximum": 72
+              }
+             }
+            }
+           ]
           }
          }
         }
@@ -9998,6 +10196,27 @@
            "type": "number",
            "minimum": 0.05,
            "maximum": 5
+          },
+          "colourBars": {
+           "anyOf": [
+            {
+             "type": "boolean"
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "tints": {
+               "type": "boolean"
+              },
+              "size": {
+               "type": "number",
+               "minimum": 4,
+               "maximum": 72
+              }
+             }
+            }
+           ]
           }
          }
         }
@@ -10423,6 +10642,12 @@
        }
       }
      }
+    },
+    "pdfx": {
+     "type": "string",
+     "enum": [
+      "pdfx4"
+     ]
     },
     "strict": {
      "type": "boolean",

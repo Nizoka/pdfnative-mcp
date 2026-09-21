@@ -34,6 +34,7 @@ import {
 } from '../doc-features.js';
 import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
 import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, assertLayoutPdfACompatible, toLayoutOptions } from '../layout.js';
+import { PDFX_INPUT_PROPERTIES, PdfXInputShape, assertPdfXCompatible, toPdfXLayout } from '../pdfx.js';
 import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 // This tool always embeds the Noto fonts it renders with, so `embedFonts` is not exposed.
@@ -139,6 +140,7 @@ export const ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA = {
         viewerPreferences: VIEWER_PREFERENCES_INPUT_SCHEMA,
         ...PRINT_INPUT_PROPERTIES,
         ...LAYOUT_INPUT_PROPERTIES,
+        ...PDFX_INPUT_PROPERTIES,
         strict: STRICT_PROPERTY,
         includeDiagnostics: INCLUDE_DIAGNOSTICS_PROPERTY,
         outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
@@ -162,6 +164,7 @@ const InputSchema = z.strictObject({
     viewerPreferences: ViewerPreferencesSchema.optional(),
     ...PrintInputShape,
     ...LayoutInputShape,
+    ...PdfXInputShape,
     strict: StrictShape,
     includeDiagnostics: IncludeDiagnosticsShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
@@ -196,9 +199,10 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, lang, paragraphs, pdfA, normalize, viewerPreferences, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt, strict, includeDiagnostics, outputMode, outputPath } = parsed.data;
+    const { title, lang, paragraphs, pdfA, normalize, viewerPreferences, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt, pdfx, strict, includeDiagnostics, outputMode, outputPath } = parsed.data;
     assertPrintPdfACompatible(print, pdfA);
     assertLayoutPdfACompatible({ encrypt }, pdfA);
+    assertPdfXCompatible({ pdfx, pdfA, encrypt, outputIntent, metadata, print });
 
     const langs = normaliseLangs(lang);
     // Auto-register Noto Sans Latin fallback under PDF/A so non-WinAnsi Latin (smart
@@ -237,6 +241,7 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
                 ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
                 ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt }),
+                ...toPdfXLayout(pdfx),
                 ...collector.layout,
             },
         );

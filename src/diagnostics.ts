@@ -1,24 +1,26 @@
 /**
- * Shared PDF/A conformance-diagnostics plumbing (pdfnative ≥ 1.7).
+ * Shared conformance-diagnostics plumbing (pdfnative ≥ 1.7; nine codes since 1.8).
  *
- * pdfnative 1.7 surfaces configurations that would break a declared PDF/A
- * level (no embedded fonts, unembedded AcroForm fonts, DeviceCMYK images) as
- * *diagnostics*: by default it `console.warn`s once per code, `strict: true`
- * throws before any bytes are produced, and an `onDiagnostic` sink receives
- * every one of them.
+ * pdfnative surfaces configurations that would break a declared PDF/A or
+ * PDF/X claim (no embedded fonts, unembedded AcroForm fonts, DeviceCMYK
+ * content, an ICC profile too new for the level, annotations on a print page)
+ * — and typography requests that cannot take effect — as *diagnostics*: by
+ * default it `console.warn`s once per code, `strict: true` throws before any
+ * bytes are produced, and an `onDiagnostic` sink receives every one of them.
  *
  * This server always installs a sink (so the engine never writes to the
  * console, which keeps the stdio transport's streams clean) and exposes three
  * opt-in inputs on every PDF/A-capable tool:
  *
- *   - `strict`             → escalate any diagnostic to `PDF_A_COMPLIANCE_VIOLATION`
+ *   - `strict`             → escalate any diagnostic to a stable error code, chosen
+ *                            from the diagnostic's own code (see {@link escalate})
  *   - `includeDiagnostics` → echo the collected diagnostics in `structuredContent`
  *   - `embedFonts`         → embed Noto Sans (Latin) so base-14 Helvetica text
  *                            no longer voids the PDF/A claim (ISO 19005 §6.2.11.4.1)
  *
  * All three default to off, keeping default outputs byte-identical.
  */
-import { loadFontData, registerFont, type FontEntry, type PdfDiagnostic, type PdfDiagnosticHandler } from 'pdfnative';
+import { loadFontData, registerFont, type FontEntry, type PdfDiagnostic, type PdfDiagnosticCode, type PdfDiagnosticHandler } from 'pdfnative';
 import { z } from 'zod';
 
 import { ToolError } from './errors.js';
@@ -31,25 +33,44 @@ export interface ToolDiagnostic {
     readonly severity: 'warning';
 }
 
+/**
+ * Every diagnostic code the engine can raise. The `Record` is a compile-time
+ * witness: a code added to (or removed from) pdfnative's `PdfDiagnosticCode`
+ * union breaks the build until this table — and the agent documentation that
+ * tests hold to it — is updated.
+ */
+const DIAGNOSTIC_CODE_TABLE: Record<PdfDiagnosticCode, true> = {
+    PDFA_NO_FONT_ENTRIES: true,
+    PDFA_DEVICE_CMYK_IMAGE: true,
+    PDFA_UNEMBEDDED_FORM_FONT: true,
+    PDFA_DEVICE_CMYK_CONTENT: true,
+    PDFA_ICC_PROFILE_VERSION: true,
+    PDFX_NO_FONT_ENTRIES: true,
+    PDFX_DEVICE_CMYK: true,
+    PDFX_ANNOTATIONS: true,
+    TYPOGRAPHY_FEATURE_INEFFECTIVE: true,
+};
+export const DIAGNOSTIC_CODES = Object.keys(DIAGNOSTIC_CODE_TABLE) as readonly PdfDiagnosticCode[];
+
 /** JSON Schema fragments — spread into a tool's `properties`. */
 export const DIAGNOSTIC_INPUT_PROPERTIES = {
     strict: {
         type: 'boolean',
         default: false,
         description:
-            "Fail with PDF_A_COMPLIANCE_VIOLATION instead of producing a non-conformant PDF/A file (e.g. PDFA_NO_FONT_ENTRIES without embedFonts). Pair with embedFonts=true.",
+            "Fail instead of producing a file the engine warns about: a PDFA_* diagnostic → PDF_A_COMPLIANCE_VIOLATION (e.g. PDFA_NO_FONT_ENTRIES without embedFonts), a PDFX_* one → PDF_X_COMPLIANCE_VIOLATION, any other → DIAGNOSTIC_ESCALATED. Pair with embedFonts=true.",
     },
     includeDiagnostics: {
         type: 'boolean',
         default: false,
         description:
-            'Return the PDF/A diagnostics raised while building as `diagnostics[]` (possibly empty).',
+            'Return the diagnostics raised while building (PDFA_*, PDFX_*, TYPOGRAPHY_*) as `diagnostics[]` (possibly empty).',
     },
     embedFonts: {
         type: 'boolean',
         default: false,
         description:
-            'Embed Noto Sans Latin instead of the viewer base-14 Helvetica. REQUIRED for a valid PDF/A claim (ISO 19005 §6.2.11.4.1) and for strict=true; adds ~0.3 MiB.',
+            'Embed Noto Sans Latin instead of the viewer base-14 Helvetica. REQUIRED for a valid PDF/A or PDF/X claim (every font embedded) and for strict=true; adds ~0.3 MiB.',
     },
 } as const;
 
@@ -64,7 +85,7 @@ export const DiagnosticInputShape = {
 export const DIAGNOSTICS_OUTPUT_PROPERTY = {
     diagnostics: {
         type: 'array',
-        description: 'PDF/A diagnostics (when includeDiagnostics=true).',
+        description: 'Engine diagnostics (when includeDiagnostics=true).',
         items: {
             type: 'object',
             additionalProperties: false,
@@ -80,25 +101,38 @@ export const DIAGNOSTICS_OUTPUT_PROPERTY = {
 
 export interface DiagnosticCollector {
     /** Layout options to spread into the pdfnative build call. */
-    readonly layout: { readonly onDiagnostic: PdfDiagnosticHandler; readonly strict?: boolean };
+    readonly layout: { readonly onDiagnostic: PdfDiagnosticHandler };
     /** Diagnostics collected so far (in emission order). */
     readonly diagnostics: ToolDiagnostic[];
 }
 
 /**
+ * The error a diagnostic becomes under `strict`. The class is read from the
+ * diagnostic's own code, which is why `strict` is handled here and not handed
+ * to the engine: the engine's strict mode throws a bare `Error` carrying the
+ * message only, and a message cannot be classified reliably (a PDF/X message
+ * also says "conformance").
+ */
+export function escalate(d: PdfDiagnostic): ToolError {
+    if (d.code.startsWith('PDFA_')) return new ToolError('PDF_A_COMPLIANCE_VIOLATION', d.message);
+    if (d.code.startsWith('PDFX_')) return new ToolError('PDF_X_COMPLIANCE_VIOLATION', d.message);
+    return new ToolError('DIAGNOSTIC_ESCALATED', `[${d.code}] ${d.message}`);
+}
+
+/**
  * Create a per-call diagnostics sink. The sink is always installed so the
- * engine never falls back to `console.warn`; `strict` is forwarded so the
- * engine throws before producing bytes.
+ * engine never falls back to `console.warn`. Under `strict` it throws at the
+ * first diagnostic — the engine raises them before producing bytes and does
+ * not catch what a handler throws, so the build stops exactly where the
+ * engine's own strict mode would stop it.
  */
 export function collectDiagnostics(strict: boolean | undefined): DiagnosticCollector {
     const diagnostics: ToolDiagnostic[] = [];
     const onDiagnostic: PdfDiagnosticHandler = (d: PdfDiagnostic) => {
+        if (strict === true) throw escalate(d);
         diagnostics.push({ code: d.code, message: d.message, severity: d.severity });
     };
-    return {
-        layout: { onDiagnostic, ...(strict === true ? { strict: true } : {}) },
-        diagnostics,
-    };
+    return { layout: { onDiagnostic }, diagnostics };
 }
 
 const LATIN_FONT_LANG = 'latin';
@@ -134,13 +168,25 @@ export async function latinFontEntries(embedFonts: boolean | undefined, fontRef 
 export function mapBuildError(err: unknown, toolName: string): ToolError {
     if (err instanceof ToolError) return err;
     const message = err instanceof Error ? err.message : String(err);
-    if (message.startsWith('pdfnative: ') && /PDF\/A|ISO 19005|conformance/i.test(message)) {
+    // Order matters: a PDF/X coherence message also mentions the OutputIntent
+    // ("PDF/X-4 requires layout.outputIntent…"), so the PDF/X prefixes are tested
+    // first. These are argument errors — assertPdfXCompatible() catches most of
+    // them before the build; the ICC device-class one can only be seen here.
+    if (message.startsWith('layout.pdfx') || message.startsWith('PDF/X')) {
+        return new ToolError('VALIDATION_ERROR', message);
+    }
+    if (message.startsWith('typography.')) {
+        return new ToolError('VALIDATION_ERROR', message);
+    }
+    // Defence in depth: `strict` is classified by escalate() and no longer reaches
+    // the engine, but a bare engine throw about PDF/A keeps its stable code.
+    if (message.startsWith('pdfnative: ') && /PDF\/A|ISO 19005/i.test(message)) {
         return new ToolError('PDF_A_COMPLIANCE_VIOLATION', message.slice('pdfnative: '.length));
     }
     if (message.startsWith('chart:')) {
         return new ToolError('CHART_ERROR', message);
     }
-    if (message.startsWith('print.') || /OutputIntent|ICC profile/i.test(message)) {
+    if (message.startsWith('print.') || message.startsWith('outputIntent.') || /OutputIntent|ICC profile/i.test(message)) {
         return new ToolError('PRINT_ERROR', message);
     }
     return new ToolError('GENERATION_FAILED', `${toolName}: ${message}`);
