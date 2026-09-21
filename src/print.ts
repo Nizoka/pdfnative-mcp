@@ -58,14 +58,14 @@ export const PRINT_INPUT_PROPERTIES = {
                             offset: { type: 'number', minimum: 0, maximum: 100, description: 'Gap between TrimBox and marks in points. Default 5.' },
                             weight: { type: 'number', minimum: 0.05, maximum: 5, description: 'Stroke width in points. Default 0.25.' },
                             colourBars: {
-                                description: 'Colour control strip in the bleed (C M Y K + overprints, tints): true for defaults. Off by default; needs a bleed of about 5 mm (14.17 pt) and is skipped when the strip would not fit.',
+                                description: 'Colour control strip in the bleed (C M Y K solids + their 50 % tints): true for defaults. Off by default; needs a bleed of about 5 mm (14.17 pt) and is skipped when the strip would not fit.',
                                 anyOf: [
                                     { type: 'boolean' },
                                     {
                                         type: 'object',
                                         additionalProperties: false,
                                         properties: {
-                                            tints: { type: 'boolean', description: 'Add the 75 / 50 / 25 % tint patches. Default true.' },
+                                            tints: { type: 'boolean', description: 'Add the four 50 % tint patches. Default true.' },
                                             size: { type: 'number', minimum: 4, maximum: 72, description: 'Patch size in points. Default 12.' },
                                         },
                                     },
