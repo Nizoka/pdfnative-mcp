@@ -1,6 +1,6 @@
 {
     "name": "pdfnative-mcp",
-    "version": "1.6.0",
+    "version": "1.7.0",
     "description": "Model Context Protocol (MCP) server for PDF: generate PDF/A documents with tables, images, charts, barcodes, SVG and forms; sign and verify PAdES signatures (B-B to B-LTA, RFC 3161, OCSP/CRL); fill AcroForms; merge, split, encrypt; extract text; preview layout. 28 tools on the pdfnative engine, no network by default, for Claude, Cursor, ChatGPT and any MCP client.",
     "mcpName": "io.github.Nizoka/pdfnative-mcp",
     "keywords": [

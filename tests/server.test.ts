@@ -25,7 +25,7 @@ describe('server', () => {
 
     it('exposes stable metadata', () => {
         expect(__serverMetadata.name).toBe('pdfnative-mcp');
-        expect(__serverMetadata.version).toBe('1.6.0');
+        expect(__serverMetadata.version).toBe('1.7.0');
     });
 
     it('advertises a human-readable title and description in serverInfo (MCP Implementation)', () => {
@@ -38,7 +38,8 @@ describe('server', () => {
     });
 
     it('SERVER_INSTRUCTIONS advertises decision tree and pitfalls for AI clients', () => {
-        expect(__serverInstructions).toMatch(/pdfnative.*v1\.7/);
+        expect(__serverInstructions).toMatch(/pdfnative.*v1\.8/);
+        expect(__serverInstructions).toContain('Tool API 1.7.0');
         expect(__serverInstructions).toContain('MCP 2026-07-28');
         expect(__serverInstructions).toContain('NETWORK POLICY');
         expect(__serverInstructions).toContain('DECISION TREE');
@@ -62,9 +63,21 @@ describe('server', () => {
             prompts: Array<{ name: string; title?: string; description?: string }>;
         };
         const promptNames = promptList.prompts.map((p) => p.name).sort();
-        expect(promptNames).toEqual(['draft_issue_workflow', 'governance_contract', 'pades_ladder', 'pdfa_valid', 'print_ready', 'reproducible_output']);
-        // Recipe prompts are self-contained text: every one names the tools it drives.
-        for (const [name, tool] of [['pades_ladder', 'add_ltv'], ['print_ready', 'outputIntent'], ['reproducible_output', 'creationDate'], ['pdfa_valid', 'embedFonts']] as const) {
+        expect(promptNames).toEqual(['draft_issue_workflow', 'governance_contract', 'pades_ladder', 'pdfa_valid', 'print_ready', 'reproducible_output', 'typography']);
+        // Recipe prompts are self-contained text: every one names the tools it drives —
+        // and states its limits (PDF/X is not a certified preflight; no hyphenation dictionary).
+        const expectations = [
+            ['pades_ladder', 'add_ltv'],
+            ['print_ready', 'outputIntent'],
+            ['print_ready', 'pdfx4'],
+            ['print_ready', 'NOT a certified preflight'],
+            ['reproducible_output', 'creationDate'],
+            ['reproducible_output', 'SOURCE_DATE_EPOCH'],
+            ['pdfa_valid', 'embedFonts'],
+            ['typography', 'splitParagraphs'],
+            ['typography', 'NO dictionary is installed'],
+        ] as const;
+        for (const [name, tool] of expectations) {
             const recipe = (await rpc('prompts/get', { name })) as { messages: Array<{ content: { text: string } }> };
             expect(recipe.messages[0]?.content.text).toContain(tool);
         }
@@ -118,7 +131,7 @@ describe('server', () => {
 
         // Every tool advertises _meta.apiVersion and at least one example.
         for (const t of response.tools) {
-            expect(t._meta?.apiVersion).toBe('1.6.0');
+            expect(t._meta?.apiVersion).toBe('1.7.0');
             expect(Array.isArray(t._meta?.examples)).toBe(true);
             expect((t._meta?.examples ?? []).length).toBeGreaterThan(0);
         }

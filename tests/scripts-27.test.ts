@@ -110,6 +110,19 @@ describe('text survives a round trip in logical order', () => {
     }
 });
 
+describe('tagged output extracts the SOURCE text: extract_text honours /ActualText (pdfnative 1.8.0)', () => {
+    // Under a PDF/A claim the engine tags the content and attaches the original string to each
+    // marked span; extractText() 1.8.0 reads it back. So the scripts whose untagged extraction is
+    // in visual order (above) round-trip exactly once the document is tagged.
+    it.each(Object.keys(EXTRACTION_LIMITS))('%s', async (code) => {
+        const sample = (SCRIPT_SAMPLES[code] ?? ALIAS_SAMPLES[code])!;
+        const out = await render(code, sample.text, { pdfA: 'pdfa2u' });
+        expect(latin1(out)).toContain('/ActualText');
+        const { fullText } = await extractText({ pdfBase64: out.base64! });
+        expect(squash(fullText)).toContain(squash(sample.text));
+    }, 60_000);
+});
+
 describe('the five scripts added by pdfnative 1.8.0', () => {
     it.each(NEW_IN_1_8)('%s holds a PDF/A-2u claim under strict (every font embedded, Unicode mapped)', async (code) => {
         const out = await render(code, SCRIPT_SAMPLES[code]!.text, { pdfA: 'pdfa2u', strict: true, includeDiagnostics: true });
@@ -122,6 +135,21 @@ describe('the five scripts added by pdfnative 1.8.0', () => {
         const { fullText } = await extractText({ pdfBase64: out.base64! });
         for (const code of NEW_IN_1_8.filter((c) => EXTRACTION_LIMITS[c] === undefined)) expect(squash(fullText), code).toContain(squash(SCRIPT_SAMPLES[code]!.text));
         expect(fullText).toContain('Tai Tham');
+    }, 60_000);
+});
+
+describe('colour emoji — skin-tone sequences (pdfnative 1.8.0: 150 bundled sequences)', () => {
+    it('each of the five Fitzpatrick tones of one gesture draws its own glyph', async () => {
+        const tones = ['🏻', '🏼', '🏽', '🏾', '🏿'];
+        const outputs = new Set<string>();
+        for (const tone of tones) {
+            const out = await addInternationalText({ title: 'Tone', lang: ['latin', 'emoji'], paragraphs: [`Wave 👋${tone}`], creationDate: PINNED });
+            assertValidPdf(bytesOf(out));
+            outputs.add(out.base64!);
+        }
+        expect(outputs.size).toBe(5);
+        const plain = await addInternationalText({ title: 'Tone', lang: ['latin', 'emoji'], paragraphs: ['Wave 👋'], creationDate: PINNED });
+        expect(outputs.has(plain.base64!)).toBe(false);
     }, 60_000);
 });
 

@@ -220,7 +220,7 @@ const SERVER_DESCRIPTION =
  * make a cached response unsafe to serve. Independent from SERVER_VERSION
  * (which tracks the npm package).
  */
-const TOOL_API_VERSION = '1.6.0';
+const TOOL_API_VERSION = '1.7.0';
 
 /**
  * MCP 2026-07-28 cache hints (`ttlMs` / `cacheScope`) emitted on the cacheable
@@ -631,7 +631,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: EXTRACT_TEXT_NAME,
         title: 'Extract plain text from PDF',
         description:
-            "Plain-text extraction: decodes Tj/TJ operands through each font's /ToUnicode CMap, /Encoding /Differences or base encoding and returns pages[] + fullText (positioned runs with includeRuns:true; `pages` selects 0-based pages). `extractable` is false only when a page decoded ENTIRELY to U+FFFD (a font with no usable mapping — expected for some subset fonts, not an error; extractableReason explains). Encrypted sources: pass `password` (PASSWORD_REQUIRED / PASSWORD_INVALID otherwise). Token-frugal: verbosity:'summary', fields:[…].",
+            "Plain-text extraction: decodes Tj/TJ operands through each font's /ToUnicode CMap, /Encoding /Differences or base encoding and returns pages[] + fullText (positioned runs with includeRuns:true; `pages` selects 0-based pages). `extractable` is false only when a page decoded ENTIRELY to U+FFFD (a font with no usable mapping — expected for some subset fonts, not an error; extractableReason explains). Tagged content carrying /ActualText (every pdfA document this server writes) returns that SOURCE text, in logical order; untagged right-to-left and Indic runs come back in the order their glyphs were drawn — generate with pdfA when faithful extraction of complex scripts matters. Encrypted sources: pass `password` (PASSWORD_REQUIRED / PASSWORD_INVALID otherwise). Token-frugal: verbosity:'summary', fields:[…].",
         inputSchema: EXTRACT_TEXT_INPUT_SCHEMA,
         outputSchema: projectableOutputSchema(
             EXTRACT_TEXT_OUTPUT_SCHEMA,
@@ -884,7 +884,7 @@ const TOOLS: readonly ToolDefinition[] = [
 
 const TOOL_INDEX: ReadonlyMap<string, ToolDefinition> = new Map(TOOLS.map((t) => [t.name, t]));
 
-const SERVER_INSTRUCTIONS = `pdfnative-mcp: 28 tools over the pdfnative v1.7 PDF engine. Tool API 1.6.0. MCP 2026-07-28 (stateless) with automatic fallback to the 2025-era handshake. Every tool has typed input/output schemas and executable _meta.examples; read-only tools never modify input; document tools are byte-identical by default and every new option is opt-in.
+const SERVER_INSTRUCTIONS = `pdfnative-mcp: 28 tools over the pdfnative v1.8 PDF engine. Tool API 1.7.0. MCP 2026-07-28 (stateless) with automatic fallback to the 2025-era handshake. Every tool has typed input/output schemas and executable _meta.examples; read-only tools never modify input; document tools are byte-identical by default and every new option is opt-in.
 
 DECISION TREE:
   • Any document (headings, paragraphs, lists, tables, images, links, toc, barcodes, svg, form fields, charts) → generate_basic_pdf
@@ -899,7 +899,9 @@ DECISION TREE:
   • Encrypt / decrypt → encrypt_pdf / decrypt_pdf (both rebuild the page tree: signatures + AcroForm are dropped)
   • Combine / carve → merge_pdfs (many → one), split_pdf (one → many), extract_pages (subset → one)
   • Will it fit / where do page breaks fall? → inspect_layout (dry run of the same blocks, no PDF produced)
-  • Facts / CI assertions → inspect_pdf (check:[…], annotations:true to list existing annotations); signatures → verify_pdf; PDF/UA structure → validate_pdf; text → extract_text
+  • Print exchange → pdfx:'pdfx4' + outputIntent (the printer's ICC profile) + embedFonts:true on the document tools; CMYK colours ('C M Y K' or [c, m, y, k] %) on every colour input; check with validate_pdf standard:'pdf-x-4' (structural prerequisites, not a certified preflight)
+  • Book-quality text → the typography object (paragraph breaking, widows / orphans, keep headings with text, justify, French spacing, kerning, OpenType features) — see the typography prompt
+  • Facts / CI assertions → inspect_pdf (check:[…], annotations:true to list existing annotations); signatures → verify_pdf; PDF/UA or PDF/X-4 structure → validate_pdf; text → extract_text
   • Propose an upstream change → draft_governance_issue (local draft, never submitted)
 
 NETWORK POLICY & HUMAN-IN-THE-LOOP:
@@ -909,7 +911,7 @@ NETWORK POLICY & HUMAN-IN-THE-LOOP:
 COMMON PITFALLS:
   • Page indices and ranges are 0-based everywhere (pages, ranges.start/end, annotations[].page, pageIndex); only viewerPreferences.printPageRange is 1-based (PDF spec).
   • Keys and certificates are DER base64, never PEM: openssl x509 -in cert.pem -outform DER | base64 -w0; openssl pkey -in key.pem -outform DER | base64 -w0 (RSA PKCS#1 or PKCS#8, EC SEC1 or PKCS#8). pdfBase64 is the raw PDF, not a data: URI.
-  • PDF/A claim ≠ PDF/A validity: Latin text uses the unembedded base-14 Helvetica unless embedFonts:true (add_international_text always embeds). Pass embedFonts:true with pdfA for a claim veraPDF accepts; strict:true fails instead of producing a non-conformant file; includeDiagnostics:true echoes the engine diagnostics. pdfa2b is the most compatible level; attachments need pdfa3b; an unsigned placeholder is only conformant once signed.
+  • PDF/A claim ≠ PDF/A validity: Latin text uses the unembedded base-14 Helvetica unless embedFonts:true (add_international_text always embeds). Pass embedFonts:true with pdfA for a claim veraPDF accepts; strict:true fails instead of producing a non-conformant file (PDF_A_COMPLIANCE_VIOLATION, PDF_X_COMPLIANCE_VIOLATION, or DIAGNOSTIC_ESCALATED for any other engine diagnostic); includeDiagnostics:true echoes the engine diagnostics. pdfa2b is the most compatible level; attachments need pdfa3b; an unsigned placeholder is only conformant once signed.
   • Page-tree tools (merge / split / extract) and encrypt / decrypt drop signatures and AcroForm; page-tree tools also drop XMP (re-declare PDF/A on generation); page boxes survive. To READ an encrypted PDF pass password to the read tools instead of decrypting.
   • inspect_pdf check:'signed' is structural (a signed field exists) — use verify_pdf for validity. checks lists only the keys you requested.
   • verbosity:'summary' keeps scalars (inspect: docTimestampCount/trapped/checksPassed when present; verify: ltvLevel with ltv:true) and drops arrays; use fields:[…] for dot-path projection — unmatched paths are reported in _meta.unmatchedFields.
@@ -922,7 +924,7 @@ COMMON PITFALLS:
 
 REPRODUCIBILITY: outputs differ on every call because /CreationDate (and /ID) follow the wall clock. For byte-identical output pass creationDate (document tools), signingTime (sign_pdf / prepare_signature_placeholder) and modDate (update_metadata) as fixed ISO-8601 instants — every date is written in UTC, so the bytes are identical on every host whatever its time zone. The {date} placeholder of header/footer templates follows creationDate. The operator can pin the instant for the whole server (PDFNATIVE_MCP_CREATION_DATE, else SOURCE_DATE_EPOCH); a call's own creationDate still wins. Timestamps (TSA tokens), encryption (fresh keys / IVs) and ECDSA signatures are never reproducible.
 
-TOKEN-FRUGAL READS & RESOURCES: read tools accept verbosity:'summary' and fields:[…]. Generated PDFs arrive as an embedded resource block (not duplicated in structuredContent); in file mode the result carries a resource_link and the file is listed under resources/list as pdfnative://output/<path>. Prompts: governance_contract, draft_issue_workflow, pades_ladder, print_ready, reproducible_output, pdfa_valid. Docs: docs/AI_GUIDE.md, docs/guides/*.md.`;
+TOKEN-FRUGAL READS & RESOURCES: read tools accept verbosity:'summary' and fields:[…]. Generated PDFs arrive as an embedded resource block (not duplicated in structuredContent); in file mode the result carries a resource_link and the file is listed under resources/list as pdfnative://output/<path>. Prompts: governance_contract, draft_issue_workflow, pades_ladder, print_ready, reproducible_output, typography, pdfa_valid. Docs: docs/AI_GUIDE.md, docs/guides/*.md.`;
 
 function buildDraftGovernanceIssueResult(output: DraftGovernanceIssueResult, toolName: string): CallToolResult {
     const where = output.outputMode === 'file' ? ` and written to ${output.filePath}` : '';
@@ -1215,9 +1217,12 @@ const PADES_LADDER_RECIPE = `PAdES ladder with pdfnative-mcp (ETSI EN 319 142-1)
 Verify at any step: verify_pdf { pdfBase64, ltv:true, trustedRootsDerBase64:[root] } → signatures[].profile / timestamp / revocation and ltvLevel ('B-B' | 'B-T' | 'B-LT' | 'B-LTA'). Caveats: revocation status is read from embedded /DSS material only; TSA trust is evaluated only when its root is in trustedRootsDerBase64. Keep the document unencrypted until the ladder is complete (encryption rebuilds the page tree and drops signatures).`;
 
 const PRINT_READY_RECIPE = `Print-ready output with any document tool (generate_basic_pdf, add_table, add_chart, …):
-• print: { bleed: 8.5 } (3 mm; TrimBox = MediaBox inset, BleedBox = MediaBox) or explicit trimBox / bleedBox / artBox / cropBox as [x0, y0, x1, y1] points; marks: true (or { crop, registration, length, offset, weight }) needs a TrimBox; userUnit for pages over 14400 pt (raises the header to PDF 1.7, not allowed under pdfa1b).
+• print: { bleed: 8.5 } (3 mm; TrimBox = MediaBox inset, BleedBox = MediaBox) or explicit trimBox / bleedBox / artBox / cropBox as [x0, y0, x1, y1] points; marks: true (or { crop, registration, length, offset, weight, colourBars }) needs a TrimBox; colourBars: true (or { tints, size }) adds the C M Y K control strip and wants a bleed of about 5 mm (14.17 pt); userUnit for pages over 14400 pt (raises the header to PDF 1.7, not allowed under pdfa1b).
 • metadata: { author, subject, keywords, trapped:'True' | 'False' | 'Unknown' } → /Info (+ XMP under PDF/A).
-• outputIntent: { iccProfileBase64 (RGB ICC), outputConditionIdentifier:'sRGB IEC61966-2.1', registryName?, outputCondition?, info? } replaces the built-in sRGB intent under PDF/A; CMYK profiles are rejected (PRINT_ERROR).
+• outputIntent: { iccProfileBase64, outputConditionIdentifier, registryName?, outputCondition?, info? } replaces the built-in sRGB intent under pdfA or pdfx. RGB, CMYK and Gray ICC profiles are accepted; a file that is not an ICC profile (no 'acsp' signature, inconsistent size) is PRINT_ERROR. No press profile is bundled: ask the printer for theirs (ISO Coated v2, GRACoL, …).
+• CMYK colours: every colour input takes 'C M Y K' (0.0–1.0) or [c, m, y, k] (percent) beside its usual form — watermark, templates, chart series, table borders, links, svg, annotations. Under a CMYK intent RGB content is mapped through a calibrated default space; CMYK content under an RGB or Gray intent is reported (PDFA_DEVICE_CMYK_CONTENT / PDFX_DEVICE_CMYK).
+• PDF/X-4 (ISO 15930-7): pdfx:'pdfx4' on generate_basic_pdf, add_table, add_chart, add_barcode, embed_image and add_international_text. Prerequisites: outputIntent with a printer-class ('prtr') profile, embedFonts:true, metadata.trapped 'True' or 'False' (omitted = 'False'), a TrimBox (print.bleed / trimBox; the MediaBox otherwise) or an ArtBox — not both. Exclusive with pdfA and encrypt (VALIDATION_ERROR). Link and formField blocks are annotations on the printed area (PDFX_ANNOTATIONS). strict:true fails on any PDFX_* diagnostic (PDF_X_COMPLIANCE_VIOLATION).
+• Verify with validate_pdf { standard:'pdf-x-4' }: a valid result means the structural prerequisites hold — it is NOT a certified preflight. Confirm a press job with callas pdfToolbox or Acrobat Preflight; veraPDF does not cover PDF/X. inspect_pdf check:['pdfx'] asserts the claim only.
 • viewerPreferences: { duplex:'DuplexFlipLongEdge', pickTrayByPDFSize:true, printPageRange:[[1, 4]], numCopies:2 } for print-dialog defaults (printPageRange is 1-based).
 • Check the result with inspect_pdf { pages:true } (trimBox / bleedBox / artBox / cropBox / userUnit per page) and check:['trapped'].
 • Page boxes and /UserUnit survive merge_pdfs / split_pdf / extract_pages; XMP and PDF/A claims do not.`;
@@ -1230,13 +1235,23 @@ const REPRODUCIBLE_OUTPUT_RECIPE = `Byte-identical output across calls:
 • Operator pin: PDFNATIVE_MCP_CREATION_DATE (ISO-8601 with a time zone), else SOURCE_DATE_EPOCH (seconds), pins every generated document for the whole server — no per-call argument needed, and creationDate still wins when given. It does not cover signingTime, modDate, timestamps or encryption.
 • Proof: call twice and compare structuredContent.sizeBytes and the resource blob, or hash the bytes on the host. With PDFNATIVE_MCP_CACHE_DIR set, a repeated call may be served from cache (_meta.cached:true) — the bytes are the earlier render.`;
 
+const TYPOGRAPHY_RECIPE = `Fine typography with the \`typography\` object (every document tool + inspect_layout; all opt-in — omitted, the bytes are unchanged):
+1. Embed a font first: embedFonts:true (or add_international_text, which always embeds). kerning, fontFeatures and the 'fr' narrow no-break space need it; base-14 Helvetica has no GPOS / GSUB and no U+202F.
+2. Page breaks: splitParagraphs:true lets a paragraph break at a line boundary (it is atomic by default, and one taller than a page overflows); orphans / widows (default 2) keep at least that many lines on each side. keepHeadingsWithNext:true (or { minLines: 3 }) never strands a heading at the foot of a page. Per block on generate_basic_pdf: heading keepWithNext, paragraph keepWithNext (a lead-in line before a table) and splittable override the document setting.
+3. Justification: paragraph align:'justify' (also 'left' | 'right' | 'center'); opticalMargins:true hangs punctuation and hyphens slightly into the margin. A line that would need an implausible stretch is left ragged.
+4. Hyphenation: NO dictionary is installed on this server (the engine seam is a function, which JSON cannot carry), so hyphenationLanguage has no effect here. Put soft hyphens (U+00AD) in long words: they are honoured as break opportunities and never drawn mid-word.
+5. Micro-typography (converts EXISTING plain spaces only, never inserts one): unitBinding:true keeps '150 €', '12 kg', '30 %' together (ISO 80000-1 §7.1; { units:[…] } replaces the list); bindShortWords:true never ends a line on a one-letter word — orthography in Polish, Czech, Slovak, Russian, Ukrainian, Hungarian ({ maxLength: 1–3 } or { words:[…] }); punctuationSpacing:'fr' sets a narrow no-break space before ; ! ? and a no-break space before ':' and inside « », 'fr-CA' only the colon and the guillemets, or pass explicit rules [{ char, side:'before'|'after', space:'nbsp'|'narrow' }].
+6. Figures and small caps: fontFeatures in order, later wins — onum (old-style), pnum (proportional), smcp / c2sc (small caps), sups / subs, ordn, zero, case. tnum and lnum change nothing on the bundled Noto Sans (its default figures already are tabular and lining): the engine reports TYPOGRAPHY_FEATURE_INEFFECTIVE, and strict:true turns it into DIAGNOSTIC_ESCALATED. kerning:true applies the font's pair kerning.
+7. Base-14 only: metrics:'exact' measures Helvetica with the Adobe Core 14 AFM widths (right / centre alignment lands exactly; lines may wrap differently).
+8. Preview before building: inspect_layout takes the same blocks and the same typography and returns where every block lands — the page count matches generate_basic_pdf.`;
+
 const PDFA_VALID_RECIPE = `A PDF/A claim that a reference validator (veraPDF) accepts:
 1. Choose the level: pdfa2b (widest compatibility), pdfa2u (Unicode mapping guaranteed), pdfa1b (simple text + images; no transparency, no /UserUnit), pdfa3b only when embedding files (add_attachment sets it automatically).
 2. ALWAYS pass embedFonts:true on Latin document tools — without it text is rendered through the unembedded base-14 Helvetica and the claim fails ISO 19005 §6.2.11.4.1 (PDFA_NO_FONT_ENTRIES). add_international_text always embeds its fonts.
 3. Use strict:true to make the call fail (PDF_A_COMPLIANCE_VIOLATION) instead of producing a non-conformant file, or includeDiagnostics:true to read the engine diagnostics in structuredContent.diagnostics.
-4. Avoid watermark opacity < 1 under pdfa1b; keep encryption off (mutually exclusive with PDF/A); prefer a custom outputIntent only with an RGB ICC profile.
-5. Under a PDF/A claim a CMYK JPEG reports PDFA_DEVICE_CMYK_IMAGE (the OutputIntent is sRGB) — keep images RGB. Forms (add_form, formField blocks) are archival with embedFonts:true: the field font is embedded too; without it they report PDFA_UNEMBEDDED_FORM_FONT.
-6. inspect_pdf reports the CLAIM (pdfA:'2B'), not its validity; validate_pdf checks PDF/UA structure, not PDF/A. An unsigned signature placeholder (prepare_signature_placeholder) is not yet conformant — it becomes conformant once signed with sign_pdf profile:'pades'.
+4. Avoid watermark opacity < 1 under pdfa1b; keep encryption off (mutually exclusive with PDF/A). A custom outputIntent may be RGB, CMYK or Gray; under pdfa1b it must be an ICC v2 profile (a v4 one reports PDFA_ICC_PROFILE_VERSION).
+5. Colour must match the OutputIntent: against the default sRGB intent a CMYK JPEG reports PDFA_DEVICE_CMYK_IMAGE and a CMYK colour ('C M Y K', [c, m, y, k]) reports PDFA_DEVICE_CMYK_CONTENT — keep them RGB, or supply a CMYK outputIntent. Forms (add_form, formField blocks) are archival with embedFonts:true: the field font is embedded too; without it they report PDFA_UNEMBEDDED_FORM_FONT.
+6. inspect_pdf reports the CLAIM (pdfA:'2B'), not its validity; validate_pdf checks PDF/UA (default) or PDF/X-4 structure, not PDF/A. An unsigned signature placeholder (prepare_signature_placeholder) is not yet conformant — it becomes conformant once signed with sign_pdf profile:'pades'.
 7. merge_pdfs / split_pdf / extract_pages drop the XMP packet: re-declare PDF/A on the generating tools, not after carving.`;
 
 
@@ -1268,8 +1283,8 @@ const PROMPTS: readonly PromptDefinition[] = [
     },
     {
         name: 'print_ready',
-        title: 'Print-ready PDF (bleed, marks, OutputIntent)',
-        description: 'Recipe for a press-ready document: page boxes / bleed, printer marks, /UserUnit, metadata and a custom OutputIntent, with the PDF/A interactions that matter.',
+        title: 'Print-ready PDF (bleed, marks, CMYK, PDF/X-4)',
+        description: 'Recipe for a press-ready document: page boxes / bleed, printer marks and colour bars, /UserUnit, metadata, CMYK colours, an RGB / CMYK / Gray OutputIntent and PDF/X-4 — with what validate_pdf can and cannot establish.',
         text: PRINT_READY_RECIPE,
     },
     {
@@ -1277,6 +1292,12 @@ const PROMPTS: readonly PromptDefinition[] = [
         title: 'Byte-identical, reproducible output',
         description: 'How to obtain the same bytes from repeated calls: which inputs to pin (creationDate, signingTime, modDate), what stays non-deterministic (timestamps, encryption), and how to prove it.',
         text: REPRODUCIBLE_OUTPUT_RECIPE,
+    },
+    {
+        name: 'typography',
+        title: 'Fine typography (page breaks, justification, French spacing, OpenType features)',
+        description: 'Recipe for book-quality text: paragraph breaking with widows and orphans, keeping headings with their text, justification with optical margins, unit and short-word binding, French punctuation spacing, kerning and OpenType features — with what needs an embedded font and what is not available (no hyphenation dictionary).',
+        text: TYPOGRAPHY_RECIPE,
     },
     {
         name: 'pdfa_valid',
