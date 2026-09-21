@@ -64,6 +64,7 @@ export const INSPECT_LAYOUT_INPUT_SCHEMA = {
         margins: LAYOUT_INPUT_PROPERTIES.margins,
         headerTemplate: LAYOUT_INPUT_PROPERTIES.headerTemplate,
         footerTemplate: LAYOUT_INPUT_PROPERTIES.footerTemplate,
+        typography: LAYOUT_INPUT_PROPERTIES.typography,
         verbosity: {
             type: 'string',
             enum: ['summary', 'full'],
@@ -142,6 +143,7 @@ const InputSchema = z.strictObject({
     margins: LayoutInputShape.margins,
     headerTemplate: LayoutInputShape.headerTemplate,
     footerTemplate: LayoutInputShape.footerTemplate,
+    typography: LayoutInputShape.typography,
     verbosity: z.enum(['summary', 'full']).optional(),
     fields: z.array(z.string().min(1)).max(16).optional(),
 });
@@ -198,7 +200,7 @@ export async function inspectLayout(rawInput: unknown): Promise<InspectLayoutRes
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, blocks, footerText, pdfA, normalize, embedFonts, pageSize, margins, headerTemplate, footerTemplate } = parsed.data;
+    const { title, blocks, footerText, pdfA, normalize, embedFonts, pageSize, margins, headerTemplate, footerTemplate, typography } = parsed.data;
 
     const docBlocks = toDocumentBlocks(blocks);
     const fontEntries = await latinFontEntries(embedFonts);
@@ -215,7 +217,7 @@ export async function inspectLayout(rawInput: unknown): Promise<InspectLayoutRes
             {
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
                 ...(normalize !== undefined ? { normalize } : {}),
-                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography }),
             },
         );
     } catch (err) {

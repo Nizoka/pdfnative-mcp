@@ -64,7 +64,7 @@ export async function addBarcode(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { format, data, caption, title, width, height, ecLevel, pdfA, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
+    const { format, data, caption, title, width, height, ecLevel, pdfA, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
     assertPrintPdfACompatible(print, pdfA);
     assertLayoutPdfACompatible({ encrypt }, pdfA);
 
@@ -91,7 +91,7 @@ export async function addBarcode(rawInput: unknown): Promise<OutputResult> {
             {
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
-                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt }),
                 ...collector.layout,
             },
         );

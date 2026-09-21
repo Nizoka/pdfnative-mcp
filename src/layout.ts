@@ -24,6 +24,7 @@
 import type { PageTemplate, PdfLayoutOptions } from 'pdfnative';
 import { z } from 'zod';
 import { colorSchema, colorZod, toEngineColor } from './color.js';
+import { TYPOGRAPHY_INPUT_SCHEMA, TypographySchema, toTypographyOptions, type TypographyInput } from './typography.js';
 
 import { ENCRYPT_INPUT_SCHEMA, EncryptSchema, toEncryptionOptions } from './encryption.js';
 import { ToolError } from './errors.js';
@@ -87,6 +88,7 @@ export const LAYOUT_INPUT_PROPERTIES = {
     },
     headerTemplate: TEMPLATE_SCHEMA('top'),
     footerTemplate: TEMPLATE_SCHEMA('bottom'),
+    typography: TYPOGRAPHY_INPUT_SCHEMA,
     compress: {
         type: 'boolean',
         description: 'FlateDecode the streams (smaller file, different bytes; PDF/A unaffected, XMP stays plain). Default false.',
@@ -122,6 +124,7 @@ export const LayoutInputShape = {
     margins: MarginsSchema.optional(),
     headerTemplate: TemplateSchema.optional(),
     footerTemplate: TemplateSchema.optional(),
+    typography: TypographySchema.optional(),
     compress: z.boolean().optional(),
     debug: z.boolean().optional(),
     encrypt: EncryptSchema.optional(),
@@ -135,6 +138,7 @@ export interface LayoutInput {
     margins?: MarginsInput;
     headerTemplate?: TemplateInput;
     footerTemplate?: TemplateInput;
+    typography?: TypographyInput;
     compress?: boolean;
     debug?: boolean;
     encrypt?: z.infer<typeof EncryptSchema>;
@@ -147,7 +151,7 @@ export function assertLayoutPdfACompatible(layout: Pick<LayoutInput, 'encrypt'>,
     }
 }
 
-type LayoutFragment = Pick<PdfLayoutOptions, 'pageWidth' | 'pageHeight' | 'margins' | 'headerTemplate' | 'footerTemplate' | 'compress' | 'debug' | 'encryption'>;
+type LayoutFragment = Pick<PdfLayoutOptions, 'pageWidth' | 'pageHeight' | 'margins' | 'headerTemplate' | 'footerTemplate' | 'typography' | 'compress' | 'debug' | 'encryption'>;
 
 function toTemplate(t: TemplateInput): PageTemplate {
     return {
@@ -176,6 +180,8 @@ export function toLayoutOptions(input: LayoutInput): LayoutFragment {
     }
     if (input.headerTemplate !== undefined) out.headerTemplate = toTemplate(input.headerTemplate);
     if (input.footerTemplate !== undefined) out.footerTemplate = toTemplate(input.footerTemplate);
+    const typography = toTypographyOptions(input.typography);
+    if (typography !== undefined) out.typography = typography;
     if (input.compress !== undefined) out.compress = input.compress;
     if (input.debug !== undefined) out.debug = input.debug;
     if (input.encrypt !== undefined) out.encryption = toEncryptionOptions(input.encrypt);

@@ -44,6 +44,9 @@ import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, 
 
 export const GENERATE_BASIC_PDF_NAME = 'generate_basic_pdf';
 
+/** Paragraph alignment — JSON Schema and Zod share the list ('justify' since pdfnative 1.8). */
+const PARAGRAPH_ALIGN = ['left', 'right', 'center', 'justify'] as const;
+
 export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
     type: 'object',
     additionalProperties: false,
@@ -69,6 +72,7 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
                             type: { const: 'heading' },
                             text: { type: 'string', minLength: 1, maxLength: 500 },
                             level: { type: 'integer', enum: [1, 2, 3] },
+                            keepWithNext: { type: 'boolean', description: 'Keep this heading on the same page as the block that follows. Overrides typography.keepHeadingsWithNext for this block, either way.' },
                         },
                     },
                     {
@@ -83,6 +87,9 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
                                 maxLength: 50000,
                                 description: "Paragraph text. Embedded newlines ('\\n') are automatically split into separate paragraphs — no need to pre-split; never emit a literal newline expecting a soft line break.",
                             },
+                            align: { type: 'string', enum: [...PARAGRAPH_ALIGN], description: "Text alignment (default left). 'justify' spans every line but the last across the measure; pair it with typography.opticalMargins." },
+                            keepWithNext: { type: 'boolean', description: 'Keep this paragraph on the same page as the block that follows (a lead-in line before a table or figure). Default false.' },
+                            splittable: { type: 'boolean', description: 'Allow / forbid this paragraph breaking across pages, overriding typography.splitParagraphs for this block.' },
                         },
                     },
                     {
@@ -182,10 +189,14 @@ const InputSchema = z.strictObject({
                     type: z.literal('heading'),
                     text: z.string().min(1).max(500),
                     level: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+                    keepWithNext: z.boolean().optional(),
                 }),
                 z.strictObject({
                     type: z.literal('paragraph'),
                     text: z.string().min(1).max(50000),
+                    align: z.enum(PARAGRAPH_ALIGN).optional(),
+                    keepWithNext: z.boolean().optional(),
+                    splittable: z.boolean().optional(),
                 }),
                 z.strictObject({
                     type: z.literal('list'),
@@ -232,9 +243,20 @@ export function toDocumentBlocks(blocks: DocumentBlocksInput): DocumentBlock[] {
     const docBlocks: DocumentBlock[] = blocks.flatMap((block, index): DocumentBlock[] => {
         switch (block.type) {
             case 'heading':
-                return [{ type: 'heading', text: block.text, level: block.level }];
-            case 'paragraph':
-                return splitParagraphSegments(block.text).map((text) => ({ type: 'paragraph', text }));
+                return [{ type: 'heading', text: block.text, level: block.level, ...(block.keepWithNext !== undefined ? { keepWithNext: block.keepWithNext } : {}) }];
+            case 'paragraph': {
+                // One input paragraph may become several engine paragraphs (split on newlines): alignment and
+                // splittability describe each of them, keepWithNext only the last — it is the one that must
+                // stay with whatever follows the input block.
+                const segments = splitParagraphSegments(block.text);
+                return segments.map((text, i) => ({
+                    type: 'paragraph' as const,
+                    text,
+                    ...(block.align !== undefined ? { align: block.align } : {}),
+                    ...(block.splittable !== undefined ? { splittable: block.splittable } : {}),
+                    ...(block.keepWithNext !== undefined && i === segments.length - 1 ? { keepWithNext: block.keepWithNext } : {}),
+                }));
+            }
             case 'list':
                 return [{ type: 'list', items: toListItems(block.items), style: block.style }];
             case 'pageBreak':
@@ -266,7 +288,7 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
     }
     const {
         title, blocks, footerText, pdfA, watermark, normalize, outline, pageLabels, viewerPreferences,
-        print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt, strict, includeDiagnostics, embedFonts, outputMode, outputPath,
+        print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt, strict, includeDiagnostics, embedFonts, outputMode, outputPath,
     } = parsed.data;
     assertWatermarkPdfACompatible(watermark, pdfA);
     assertPrintPdfACompatible(print, pdfA);
@@ -295,7 +317,7 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
                 ...(normalize !== undefined ? { normalize } : {}),
                 ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
-                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt }),
                 ...collector.layout,
             },
         );

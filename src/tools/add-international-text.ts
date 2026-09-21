@@ -196,7 +196,7 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, lang, paragraphs, pdfA, normalize, viewerPreferences, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt, strict, includeDiagnostics, outputMode, outputPath } = parsed.data;
+    const { title, lang, paragraphs, pdfA, normalize, viewerPreferences, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt, strict, includeDiagnostics, outputMode, outputPath } = parsed.data;
     assertPrintPdfACompatible(print, pdfA);
     assertLayoutPdfACompatible({ encrypt }, pdfA);
 
@@ -236,7 +236,7 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
                 ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
-                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt }),
                 ...collector.layout,
             },
         );
