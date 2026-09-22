@@ -82,7 +82,7 @@ export const SIGN_PDF_INPUT_SCHEMA = {
         },
         certDerBase64: {
             type: 'string',
-            description: 'Base64 of the signer X.509 certificate in DER form. Convert from PEM with: openssl x509 -in cert.pem -outform DER | base64 -w0',
+            description: 'Base64 of the signer X.509 certificate in DER form. Convert from PEM with: openssl x509 -in cert.pem -outform DER | openssl base64 -A',
             minLength: 4,
         },
         certChainDerBase64: {
@@ -93,7 +93,7 @@ export const SIGN_PDF_INPUT_SCHEMA = {
         },
         rsaKeyPkcs1DerBase64: {
             type: 'string',
-            description: 'Base64 of the RSA private key in DER form — PKCS#1 RSAPrivateKey (openssl rsa -in key.pem -outform DER -traditional | base64 -w0) or PKCS#8 PrivateKeyInfo (openssl pkey -in key.pem -outform DER | base64 -w0). NOT PEM. Required for the rsa-* algorithms.',
+            description: 'Base64 of the RSA private key in DER form — PKCS#1 RSAPrivateKey (openssl rsa -in key.pem -outform DER -traditional | openssl base64 -A) or PKCS#8 PrivateKeyInfo (openssl pkey -in key.pem -outform DER | openssl base64 -A). NOT PEM. Required for the rsa-* algorithms.',
         },
         ecPrivateScalarHex: {
             type: 'string',
@@ -102,7 +102,7 @@ export const SIGN_PDF_INPUT_SCHEMA = {
         },
         ecPrivateKeyDerBase64: {
             type: 'string',
-            description: 'Base64 of an ECDSA P-256 private key in SEC1 (RFC 5915) or PKCS#8 (RFC 5208) DER form. Convert from PEM with: openssl pkey -in key.pem -outform DER | base64 -w0  Mutually exclusive with ecPrivateScalarHex.',
+            description: 'Base64 of an ECDSA P-256 private key in SEC1 (RFC 5915) or PKCS#8 (RFC 5208) DER form. Convert from PEM with: openssl pkey -in key.pem -outform DER | openssl base64 -A  Mutually exclusive with ecPrivateScalarHex.',
             minLength: 4,
         },
         autoInjectPlaceholder: {

@@ -100,9 +100,9 @@ Input validation is strict: unknown top-level or nested keys are rejected with `
 ### Digital signing
 - `sign_pdf` **auto-injects** a `/Sig` placeholder when missing (since v1.0.0). You can sign **any** PDF in a single call — no need to run `prepare_signature_placeholder` first.
 - All key/cert material is **DER, base64-encoded** (no PEM). Convert with:
-  - cert: `openssl x509 -in cert.pem -outform DER | base64 -w0` → `certDerBase64`
-  - RSA key (PKCS#1 or PKCS#8 DER): `openssl rsa -in key.pem -outform DER -traditional | base64 -w0` (or `openssl pkey -in key.pem -outform DER | base64 -w0`) → `rsaKeyPkcs1DerBase64`
-  - ECDSA key (PKCS#8 or SEC1): `openssl pkey -in key.pem -outform DER | base64 -w0` → `ecPrivateKeyDerBase64`
+  - cert: `openssl x509 -in cert.pem -outform DER | openssl base64 -A` → `certDerBase64`
+  - RSA key (PKCS#1 or PKCS#8 DER): `openssl rsa -in key.pem -outform DER -traditional | openssl base64 -A` (or `openssl pkey -in key.pem -outform DER | openssl base64 -A`) → `rsaKeyPkcs1DerBase64`
+  - ECDSA key (PKCS#8 or SEC1): `openssl pkey -in key.pem -outform DER | openssl base64 -A` → `ecPrivateKeyDerBase64`
   - ECDSA scalar form: `ecPrivateScalarHex` = 64 hex chars (raw P-256 `d`)
 - Base64 inputs (`pdfBase64` and every DER field) tolerate a `data:…;base64,` prefix. PEM where DER is expected → `VALIDATION_ERROR` with the exact `openssl` remedy; double-encoded base64, PEM text or a nested `data:` URI passed as a PDF → `PDF_PARSE_FAILED` with a hint; an empty payload → `VALIDATION_ERROR`.
 - After signing, call `verify_pdf` to confirm. Without `trustedRootsDerBase64`, `chainTrust` is `'self-signed'` or `'unverified'` — that is expected.

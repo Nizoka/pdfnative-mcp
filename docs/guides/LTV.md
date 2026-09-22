@@ -138,6 +138,41 @@ network access and no environment variables:
   in online mode `{ mode, signatures }`.
 - Worked example: [`examples/ltv-offline.json`](../../examples/ltv-offline.json).
 
+### Producing the DER material with OpenSSL
+
+Fetch where the network is, embed where it is not: the OCSP responses are obtained on a
+connected machine, then carried to the air-gapped one with the CRLs and the issuing
+chain. Every input is DER, base64-encoded on one line; `openssl base64 -A` is the
+portable encoder (GNU `base64 -w0` does not exist on macOS / BSD).
+
+```bash
+# Issuing chain — one entry per certificate, intermediates first, the root last
+openssl x509 -in intermediate.pem -outform DER -out intermediate.der
+openssl x509 -in root.pem -outform DER -out root.der
+
+# CRL published by the CA (PEM or DER as downloaded → DER)
+openssl crl -in ca.crl -inform PEM -outform DER -out ca-crl.der
+
+# OCSP response for the signer certificate, fetched from the CA's responder
+# (the URL is in the certificate's Authority Information Access extension)
+openssl ocsp -issuer intermediate.pem -cert signer.pem \
+  -url http://ocsp.example.com -respout signer-ocsp.der
+# A response received some other way (a file, an HTTP capture) is re-encoded the same way:
+openssl ocsp -respin received.ocsp -respout signer-ocsp.der
+
+# One-line base64 for the tool inputs
+openssl base64 -A -in intermediate.der   # → certificatesDerBase64[0]
+openssl base64 -A -in root.der           # → certificatesDerBase64[1]
+openssl base64 -A -in signer-ocsp.der    # → ocspResponsesDerBase64[0]
+openssl base64 -A -in ca-crl.der         # → crlsDerBase64[0]
+```
+
+The server parses each blob before it writes anything (`LTV_MATERIAL_INVALID` names the
+field and the index that failed), so a PEM file, a truncated download or an OCSP
+response for another certificate is refused before it can reach `/DSS`. The response
+must be fresh enough for the verifier's policy: `verify_pdf { ltv: true }` reports what
+was embedded, it does not judge its age.
+
 Online mode (`addValidationInfo`) walks every signed signature and the TSA
 certificates inside embedded timestamp tokens, asks the provider for OCSP (preferred,
 `preferOcsp: true`) then CRL material, and merges an existing `/DSS`. Self-signed
@@ -235,7 +270,7 @@ carries; it is not a full trust-anchor validator. Use `inspect_pdf` with
 | `LTV_ERROR` | `add_ltv`, `timestamp_pdf` | Any other engine failure; the message carries the engine text. |
 | `PLACEHOLDER_AMBIGUOUS` / `SIGNATURE_FIELD_NOT_FOUND` | `sign_pdf` | Pass / fix `fieldName`. |
 | `ENCRYPTED_SOURCE` | `add_ltv`, `timestamp_pdf` | Unencrypted PDFs only. Do **not** reach for `decrypt_pdf` here — it rebuilds the page tree and would destroy the signatures. Sign, add LTV and timestamp the unencrypted document, then `encrypt_pdf` last. |
-| `VALIDATION_ERROR` | `sign_pdf`, `verify_pdf` | A certificate / chain / key / root blob is PEM where DER is expected, empty, or malformed; the message carries the `openssl … -outform DER \| base64 -w0` remedy. A `data:…;base64,` prefix is tolerated. |
+| `VALIDATION_ERROR` | `sign_pdf`, `verify_pdf` | A certificate / chain / key / root blob is PEM where DER is expected, empty, or malformed; the message carries the `openssl … -outform DER \| openssl base64 -A` remedy. A `data:…;base64,` prefix is tolerated. |
 
 ## Caching
 

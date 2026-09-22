@@ -349,10 +349,10 @@ PAdES-compatible CMS signature. Algorithm: `'rsa-sha256'`, `'rsa-sha384'`, `'rsa
 |-------|------|----------|-------|
 | `pdfBase64` | string | Yes | Any PDF — placeholder auto-injected when missing |
 | `algorithm` | enum | Yes | — |
-| `certDerBase64` | string | Yes | X.509 cert in DER, base64. PEM → DER: `openssl x509 -in cert.pem -outform DER \| base64 -w0` |
-| `rsaKeyPkcs1DerBase64` | string | Cond. | Required for RSA. PKCS#1 DER (`openssl rsa -in key.pem -outform DER -traditional \| base64 -w0`) or PKCS#8 DER (`openssl pkey -in key.pem -outform DER \| base64 -w0`). NOT PEM. |
+| `certDerBase64` | string | Yes | X.509 cert in DER, base64. PEM → DER: `openssl x509 -in cert.pem -outform DER \| openssl base64 -A` |
+| `rsaKeyPkcs1DerBase64` | string | Cond. | Required for RSA. PKCS#1 DER (`openssl rsa -in key.pem -outform DER -traditional \| openssl base64 -A`) or PKCS#8 DER (`openssl pkey -in key.pem -outform DER \| openssl base64 -A`). NOT PEM. |
 | `ecPrivateScalarHex` | string | Cond. | OR. 64 hex chars (raw P-256 scalar `d`). |
-| `ecPrivateKeyDerBase64` | string | Cond. | OR. SEC1 or PKCS#8 DER. `openssl pkey -in key.pem -outform DER \| base64 -w0`. |
+| `ecPrivateKeyDerBase64` | string | Cond. | OR. SEC1 or PKCS#8 DER. `openssl pkey -in key.pem -outform DER \| openssl base64 -A`. |
 | `autoInjectPlaceholder` | bool | No | Default `true` |
 | `signerName` / `reason` / `location` / `contactInfo` | string | No | Embedded in `/Sig` |
 | `signingTime` | ISO-8601 | No | Defaults to now (never the operator's creation-date pin). Timezone offsets accepted (`2026-01-15T10:00:00+01:00`); written in UTC, so a pinned value gives the same `/M` bytes on every host (RSA only — ECDSA signatures are randomised). |

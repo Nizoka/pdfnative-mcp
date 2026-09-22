@@ -911,7 +911,7 @@ NETWORK POLICY & HUMAN-IN-THE-LOOP:
 
 COMMON PITFALLS:
   • Page indices and ranges are 0-based everywhere (pages, ranges.start/end, annotations[].page, pageIndex); only viewerPreferences.printPageRange is 1-based (PDF spec).
-  • Keys and certificates are DER base64, never PEM: openssl x509 -in cert.pem -outform DER | base64 -w0; openssl pkey -in key.pem -outform DER | base64 -w0 (RSA PKCS#1 or PKCS#8, EC SEC1 or PKCS#8). pdfBase64 is the raw PDF, not a data: URI.
+  • Keys and certificates are DER base64, never PEM: openssl x509 -in cert.pem -outform DER | openssl base64 -A; openssl pkey -in key.pem -outform DER | openssl base64 -A (RSA PKCS#1 or PKCS#8, EC SEC1 or PKCS#8). pdfBase64 is the raw PDF, not a data: URI.
   • PDF/A claim ≠ PDF/A validity: Latin text uses the unembedded base-14 Helvetica unless embedFonts:true (add_international_text always embeds). Pass embedFonts:true with pdfA for a claim veraPDF accepts; strict:true fails instead of producing a non-conformant file (PDF_A_COMPLIANCE_VIOLATION, PDF_X_COMPLIANCE_VIOLATION, or DIAGNOSTIC_ESCALATED for any other engine diagnostic); includeDiagnostics:true echoes the engine diagnostics. pdfa2b is the most compatible level; attachments need pdfa3b; an unsigned placeholder is only conformant once signed.
   • Page-tree tools (merge / split / extract) and encrypt / decrypt drop signatures and AcroForm; page-tree tools also drop XMP (re-declare PDF/A on generation); page boxes survive. To READ an encrypted PDF pass password to the read tools instead of decrypting.
   • inspect_pdf check:'signed' is structural (a signed field exists) — use verify_pdf for validity. checks lists only the keys you requested.
@@ -1239,7 +1239,7 @@ interface PromptDefinition {
 }
 
 const PADES_LADDER_RECIPE = `PAdES ladder with pdfnative-mcp (ETSI EN 319 142-1):
-1. B-B — sign_pdf { pdfBase64, algorithm:'rsa-sha256' | 'rsa-sha384' | 'rsa-sha512' | 'ecdsa-sha256', certDerBase64, certChainDerBase64:[intermediates], rsaKeyPkcs1DerBase64 | ecPrivateKeyDerBase64, profile:'pades', signerName, reason, signingTime }. Keys/certs are DER base64 (openssl … -outform DER | base64 -w0). The placeholder is injected automatically.
+1. B-B — sign_pdf { pdfBase64, algorithm:'rsa-sha256' | 'rsa-sha384' | 'rsa-sha512' | 'ecdsa-sha256', certDerBase64, certChainDerBase64:[intermediates], rsaKeyPkcs1DerBase64 | ecPrivateKeyDerBase64, profile:'pades', signerName, reason, signingTime }. Keys/certs are DER base64 (openssl … -outform DER | openssl base64 -A). The placeholder is injected automatically.
 2. B-T — same call with timestamp:true. Requires the operator to set PDFNATIVE_MCP_TSA_URL (and PDFNATIVE_MCP_TSA_AUTH if the TSA needs it); otherwise TSA_NOT_CONFIGURED and no network request is made.
 3. B-LT — add_ltv { pdfBase64 }. mode:'online' (default) needs PDFNATIVE_MCP_REVOCATION=ocsp,crl + PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS listing the OCSP/CRL hosts; mode:'offline' takes certificatesDerBase64 / ocspResponsesDerBase64 / crlsDerBase64 you exported yourself (zero network). Existing /DSS is merged.
 4. B-LTA — timestamp_pdf { pdfBase64 } (operator TSA again). Re-run before the TSA certificate expires to extend the chain.

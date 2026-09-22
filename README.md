@@ -440,9 +440,9 @@ For ECDSA P-256: use `algorithm: "ecdsa-sha256"` and supply either `ecPrivateKey
 PEM → DER conversion:
 
 ```bash
-openssl x509 -in cert.pem -outform DER | base64 -w0                 # cert
-openssl rsa  -in key.pem  -outform DER -traditional | base64 -w0    # RSA PKCS#1
-openssl pkey -in key.pem  -outform DER | base64 -w0                 # ECDSA
+openssl x509 -in cert.pem -outform DER | openssl base64 -A                 # cert
+openssl rsa  -in key.pem  -outform DER -traditional | openssl base64 -A    # RSA PKCS#1
+openssl pkey -in key.pem  -outform DER | openssl base64 -A                 # ECDSA
 ```
 
 > Use `prepare_signature_placeholder` only when you need to customize the placeholder (e.g. larger `placeholderBytes` for >4096-bit RSA keys, `subFilter: 'ETSI.CAdES.detached'`, `reserveTimestamp: true`). Otherwise call `sign_pdf` directly.
