@@ -49,7 +49,18 @@ export interface StdioSession {
  * `env` is merged over a copy of the parent environment with every operator
  * knob removed, so a developer's shell cannot change what the server does.
  */
-export function runStdioSession(messages: Array<Record<string, unknown>>, expectIds: number[], env: Readonly<Record<string, string>> = {}): Promise<StdioSession> {
+/**
+ * `messages` are written one per line: an object is JSON-encoded, a string is
+ * written verbatim (a malformed or truncated frame, for the transport tests).
+ * With `closeStdin`, stdin is ended after the last write and the session
+ * resolves on the child's own exit — the EOF contract — instead of SIGTERM.
+ */
+export function runStdioSession(
+    messages: Array<Record<string, unknown> | string>,
+    expectIds: number[],
+    env: Readonly<Record<string, string>> = {},
+    closeStdin = false,
+): Promise<StdioSession> {
     return new Promise((resolve, reject) => {
         const base: NodeJS.ProcessEnv = { ...process.env };
         for (const key of Object.keys(base)) {
@@ -84,7 +95,7 @@ export function runStdioSession(messages: Array<Record<string, unknown>>, expect
                 } catch {
                     /* non-JSON line — asserted by the test */
                 }
-                if (pending.size === 0) {
+                if (pending.size === 0 && !closeStdin) {
                     child.kill('SIGTERM');
                 }
             }
@@ -97,7 +108,8 @@ export function runStdioSession(messages: Array<Record<string, unknown>>, expect
         // A server that refuses to start closes its stdin first: EPIPE here is the
         // expected outcome of that scenario, and the `exit` event carries the verdict.
         child.stdin.on('error', () => undefined);
-        for (const m of messages) child.stdin.write(`${JSON.stringify(m)}\n`);
+        for (const m of messages) child.stdin.write(`${typeof m === 'string' ? m : JSON.stringify(m)}\n`);
+        if (closeStdin) child.stdin.end();
     });
 }
 

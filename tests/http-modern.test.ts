@@ -219,6 +219,18 @@ describe('HTTP transport — MCP 2026-07-28 hardening (header/body agreement, fr
         expect(errorOf(legacy).code).toBe(-32700);
     });
 
+    it('unknown method → a JSON-RPC error with the request id echoed, on both eras (−32601 legacy; the 2026-07-28 router answers −32602)', async () => {
+        // The 2026-07-28 handler routes on the Mcp-Method header and reports a method it
+        // does not serve as Invalid params (SDK behaviour); the legacy dispatcher answers
+        // the JSON-RPC Method-not-found code. Both are coded errors, never an isError result.
+        const modern = await send(fx.port, { headers: { ...JSON_HEADERS, 'mcp-protocol-version': '2026-07-28', 'mcp-method': 'no/such_method' }, body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'no/such_method', params: { _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' } } }) });
+        expect(errorOf(modern).code).toBe(-32602);
+        expect(modern.json?.['id']).toBe(9);
+        const legacy = await send(fx.port, { headers: JSON_HEADERS, body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'no/such_method', params: {} }) });
+        expect(errorOf(legacy).code).toBe(-32601);
+        expect(legacy.json?.['id']).toBe(9);
+    });
+
     it('body without a jsonrpc member → 400 / −32600 on both eras', async () => {
         const body = JSON.stringify({ id: 1, method: 'tools/list', params: {} });
         const modern = await send(fx.port, { headers: { ...JSON_HEADERS, 'mcp-protocol-version': '2026-07-28', 'mcp-method': 'tools/list' }, body });

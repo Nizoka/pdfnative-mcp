@@ -13,7 +13,7 @@ For an agent calling the tools, every new input is opt-in and described where it
 
 For the repository, this release adopts the engineering standard of pdfnative 1.8.0 and pdfnative-cli 1.5.0: one quality gate (`scripts/gate.ts`, fast / ci / publish profiles, the built server driven over stdio with stdout purity enforced), nine hardened workflows with blocking veraPDF, SBOM and provenance attestation and Trusted Publishing, a 96-sample byte baseline, a 41-file conformance corpus checked by veraPDF and by the in-process PDF/X validator, an engine-surface traceability matrix (85 engine changelog bullets → 34 tested, 51 waived in writing), a seeded fuzz suite, docs-as-code (`docs/assets/ecosystem.json` + `npm run verify:docs`, 24 rules), a committed agent layer (settings, fail-closed guard hook on Bash and PowerShell, generated rules, release-audit skill) and `scripts/release-prepare.ts`. ROADMAP items delivered: engine #74 (AcroForm font under PDF/A) and #75 (`toc` height in `inspect_layout`) closed upstream and adopted; veraPDF blocking; reproducible output; CMYK / PDF/X-4; the 27-script surface.
 
-Counts (`docs/assets/ecosystem.json`): 28 tools, 7 prompts (6 → 7), 47 error codes (45 → 47), 12 operator variables (10 → 12); examples 32 → 43; samples in the baseline 0 → 96 (first baseline); conformance corpus 26 → 41 files; tests 937 → 1624 across 96 files.
+Counts (`docs/assets/ecosystem.json`): 28 tools, 7 prompts (6 → 7), 47 error codes (45 → 47), 12 operator variables (10 → 12); examples 32 → 43; samples in the baseline 0 → 96 (first baseline); conformance corpus 26 → 41 files; tests 937 → 1631 across 96 files.
 
 ## What changed
 
@@ -59,14 +59,15 @@ What actually ran on the release branch (Windows 11, Node v22.17.0, veraPDF 1.30
 
 | Command | Result |
 |---|---|
-| `npx tsx scripts/gate.ts --publish --require-all` | `gate: 15 passed, 0 skipped in 437.6 s (re-run after the parity commits; 453.2 s before them)` |
-| `npm run test:coverage` — tests | 1609 passed, 13 expected fail (pinned upstream limits), 2 skipped = 1624 across 96 files |
+| `npx tsx scripts/gate.ts --publish --require-all` | `gate: 15 passed, 0 skipped in 522.5 s` (final run, after the transport tests and the catalogue budget; the two earlier full runs took 437.6 s and 453.2 s) |
+| `npm run test:coverage` — tests | 1616 passed, 13 expected fail (pinned upstream limits), 2 skipped = 1631 across 96 files |
 | `npm run test:coverage` — coverage | 93.53 % statements / 86.08 % branches / 98.88 % functions / 95.45 % lines (thresholds 89 / 82 / 94 / 91) |
 | `npm run build && npm run test:generate && npm run verify:samples` | `96 tracked samples match the baseline (94 byte-exact, 2 semantic)` |
 | `npm run corpus:pdfa && npm run validate:pdfa` | `27 PASS, 6 XFAIL, 0 FAIL, 0 XPASS, 0 INFRA, 8 SKIP (of 33 validated)` — veraPDF 1.30.2 |
 | `npm run validate:pdfx` | `4 PASS, 2 XFAIL, 0 FAIL, 0 XPASS (of 6 validated)` |
 | `npm run verify:docs` | `24 rules passed across 33 files (88 warnings: eol-lf ×88)` — the CRLF warnings clear with the renormalisation commit |
 | `npm audit --audit-level=high` | `found 0 vulnerabilities` |
+| `npm pack --dry-run` | `total files: 143`, `package size: 361.4 kB`, `unpacked size: 1.6 MB` — `dist/`, LICENSE, THIRD-PARTY-NOTICES.md, README, CHANGELOG, `server.json`, `llms.txt`; no test, script or fixture |
 | Built server over stdio (`node dist/cli.js`) | gate `smoke`: handshake answered, `tools/list` = 28 tools, `serverInfo.version` = 1.7.0, stdout carried JSON-RPC frames only, clean exit |
 
 Independent audit: `/release-audit release-notes/v1.7.0.md v1.6.0` — **GO** (ledger under `.audit/1.7.0/`, git-ignored). Two auditors (60 + 38 rows), one adversarial verifier: 10 findings confirmed (0 blocker, 1 major, 9 minor), 0 downgraded, 0 rejected, 2 duplicates; the four rows left unverified by the auditors were re-run by the verifier and hold. Every confirmed finding is fixed on the branch: the major one (the `pades_ladder` prompt named a `PDFNATIVE_MCP_REVOCATION` value the server refuses — pre-existing since 1.6.0) in `ff97b81`; the nine minor ones (wording of the `pdfx` prerequisite, `check` vs `checks`, the UTC qualification of the byte-identity claim, the `.mjs` sentence, a stale example description, an exit-code sentence, an invisible U+00AD in a guide, illustrative A4 boxes, a catalogue size) in `4785f97` / `ff97b81`. No waiver.
@@ -95,9 +96,9 @@ Independent audit: `/release-audit release-notes/v1.7.0.md v1.6.0` — **GO** (l
 
 Agents stop at this draft; everything below is done by the maintainer (`.github/AGENT_RULES.md`).
 
-1. The LF renormalisation commit (`git add --renormalize .`, then flip `EOL_LF_MODE` to `'fail'` in `scripts/lib/agent-config.ts`) — 87 tracked text files (plus one with mixed endings) are still CRLF in the index.
+1. The LF renormalisation commit (`git add --renormalize .`, then flip `EOL_LF_MODE` to `'fail'` in `scripts/lib/agent-config.ts` **and** `expect(EOL_LF_MODE).toBe('fail')` in `tests/tools/agent-config.test.ts` in the same commit) — 87 tracked text files (plus one with mixed endings) are still CRLF in the index. Not a release blocker: pdfnative and pdfnative-cli tagged their current releases with `'warn'` and their own CRLF blobs; the commit can land before or after the tag.
 2. Push the branch, open the pull request with this body, wait for `ci (22)`, `ci (24)` and `sample-regression`, merge. First run: confirm `harden-runner` behaves on `windows-latest` (the `windows` job).
-3. Tag `v1.7.0` on the merge commit and publish the GitHub Release (title `v1.7.0 - Fine typography, CMYK, PDF/X-4, 27 scripts, reproducible output, pdfnative 1.8`, body = `release-notes/v1.7.0.md`).
+3. Tag `v1.7.0` on the merge commit and publish the GitHub Release — `publish.yml` runs on the Release *publication* (`release: published`), not on the tag push, and checks that the tag equals the version in `package.json` (title `v1.7.0 - Fine typography, CMYK, PDF/X-4, 27 scripts, reproducible output, pdfnative 1.8`, body = `release-notes/v1.7.0.md`).
 4. Before approving: create the protected `npm-publish` environment and bind the npm Trusted Publisher to it. Then approve: `publish.yml` re-runs the publish gate and publishes through npm Trusted Publishing, then attaches the SBOM and the attestation to the release. Confirm with `npm view pdfnative-mcp version`.
 5. Validate and publish `server.json` to the MCP registry (`npx -y @modelcontextprotocol/publisher@latest validate server.json`, then the registry publication).
 6. Import the rulesets (`.github/rulesets/main.json`, `.github/rulesets/tags.json`) — CONTRIBUTING §Branch protection.

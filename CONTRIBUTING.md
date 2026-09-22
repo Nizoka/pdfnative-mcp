@@ -16,7 +16,7 @@ Requirements: Node.js ≥ 22 (CI runs 22 and 24 on Linux, plus a `windows` job t
 
 For the full local-verification workflow — quality gate, examples-as-tests, checking that generated PDFs are actually valid, opening output in a viewer, external PDF/A validation, and the MCP Inspector — see [docs/guides/LOCAL_TESTING.md](docs/guides/LOCAL_TESTING.md).
 
-Windows notes: the Bash one-liners run under Git Bash; PowerShell swallows a bare `--` after `npm run`, so pass script flags by calling the script directly (`npx tsx scripts/gate.ts --fast`). Every file the project writes uses LF line endings (`.gitattributes`); do not run `git add --renormalize` in a feature branch — the maintainer does that in one dedicated commit.
+Windows notes: the Bash one-liners run under Git Bash; PowerShell swallows a bare `--` after `npm run`, so pass script flags by calling the script directly (`npx tsx scripts/gate.ts --fast`). Every file the project writes uses LF line endings (`.gitattributes`); do not run `git add --renormalize` in a feature branch — the maintainer does that in one dedicated commit, flipping `EOL_LF_MODE` to `'fail'` in `scripts/lib/agent-config.ts` and its assertion in `tests/tools/agent-config.test.ts` at the same time.
 
 ## Workflow
 

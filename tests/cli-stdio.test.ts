@@ -146,6 +146,45 @@ describe.skipIf(!hasDist)('dist/cli.js over stdio — large frames', () => {
     }, 60_000);
 });
 
+/**
+ * Frames outside the happy path — the stdio server's untrusted boundary. The
+ * contract pinned here is the SDK's, observed on the built server: a line
+ * that is not JSON is dropped without a reply (HTTP answers −32700, stdio
+ * cannot address a reply to a frame it could not parse), an unknown method
+ * is answered −32601, and a truncated frame followed by EOF ends the process
+ * cleanly with nothing but JSON-RPC frames on stdout.
+ */
+describe.skipIf(!hasDist)('dist/cli.js over stdio — frames outside the happy path', () => {
+    const INIT = { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'hostile', version: '0' } } };
+    const INITIALIZED = { jsonrpc: '2.0', method: 'notifications/initialized' };
+
+    it('drops a line that is not JSON without a reply and keeps serving the session', async () => {
+        const session = await runStdioSession([INIT, INITIALIZED, '{not json', 'null', '[]', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }], [1, 2]);
+        expect(session.frames.map((f) => f.id)).toEqual([1, 2]);
+        expect(session.stdoutLines.length).toBe(session.frames.length); // every stdout line parsed as a frame
+        expect((session.frames[1]?.result as { tools?: unknown[] } | undefined)?.tools?.length).toBe(28);
+        expectCleanExit(session);
+    });
+
+    it('answers an unknown method with −32601 and no isError result', async () => {
+        const session = await runStdioSession([INIT, INITIALIZED, { jsonrpc: '2.0', id: 2, method: 'no/such_method', params: {} }, { jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} }], [1, 2, 3]);
+        const unknown = session.frames.find((f) => f.id === 2);
+        expect(unknown?.error?.code).toBe(-32601);
+        expect(unknown?.result).toBeUndefined();
+        expect(session.frames.find((f) => f.id === 3)?.result).toBeDefined();
+        expectCleanExit(session);
+    });
+
+    it('exits 0 with a pure stdout when the last frame is truncated and stdin closes', async () => {
+        const truncated = '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"inspect_pdf","arguments":{"pdfBase64":"JVBERi0x"}';
+        const session = await runStdioSession([INIT, INITIALIZED, truncated], [1], {}, true);
+        expect(session.frames.map((f) => f.id)).toEqual([1]);
+        for (const line of session.stdoutLines) expect(() => JSON.parse(line)).not.toThrow();
+        expect(session.signal).toBeNull();
+        expect(session.exitCode, `stderr: ${session.stderr}`).toBe(0);
+    });
+});
+
 describe.skipIf(!hasDist)('dist/cli.js — PDFNATIVE_MCP_MAX_INFLATE_BYTES', () => {
     function spawnWithCap(value: string): Promise<{ code: number | null; stderr: string }> {
         return new Promise((resolve, reject) => {
