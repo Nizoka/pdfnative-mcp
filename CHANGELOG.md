@@ -60,7 +60,7 @@ catalogue proves nothing was removed or narrowed.
 - **registry:** `server.json` follows the `2025-12-11` registry schema and declares all twelve operator variables, `SOURCE_DATE_EPOCH` included.
 - **tooling:** the three `.mjs` maintenance scripts are TypeScript run by `tsx` (`verify-issue.mjs` stays `.mjs`: it is documented as a standalone command). `.npmrc` sets `ignore-scripts=true`, so the build runs through the gate or `npm run build`, never through an install hook.
 - **test:** 1624 tests across 96 files (1.6.0: 937). Coverage measured at 93.53 % statements / 86.08 % branches / 98.88 % functions / 95.45 % lines; the enforced thresholds rise to 89 / 82 / 94 / 91 (branches +2, functions +4).
-- **catalogue size:** `tools/list` grows from about 246 kB to about 305 kB (the typography fragment and the widened colour schemas are inlined in every tool that carries them). Hosts that cache `tools/list` are unaffected; the descriptions of the new fragments were kept terse and the long form lives in the `typography` prompt and the guides.
+- **catalogue size:** `tools/list` grows from about 246 kB to about 306 kB (the typography fragment and the widened colour schemas are inlined in every tool that carries them); `scripts/tool-shape.ts --check` now fails above a 320 KiB catalogue or 8 KiB instructions budget, and holds `declared.toolsListBytes` of the ecosystem manifest to the measurement. Hosts that cache `tools/list` are unaffected; the descriptions of the new fragments were kept terse and the long form lives in the `typography` prompt and the guides.
 
 ### Fixed
 

@@ -53,3 +53,45 @@ export function toolShape(tools: readonly ListedTool[]): ToolShape[] {
 export function serializeShape(tools: readonly ListedTool[]): string {
     return `${JSON.stringify(toolShape(tools), null, 1)}\n`;
 }
+
+// ── Size budget ──────────────────────────────────────────────────────
+
+/**
+ * Every shared fragment is inlined in every tool that carries it (no `$ref`,
+ * for host compatibility), so the catalogue grows with each fragment:
+ * ≈ 108 kB in 1.5.0, ≈ 246 kB in 1.6.0, ≈ 306 kB in 1.7.0. A host forwards
+ * it to the model on every session, so the growth is budgeted here and the
+ * measured figure is held to the manifest (`declared.toolsListBytes`) so the
+ * documents quote a number `--check` has seen.
+ */
+export const TOOLS_LIST_BUDGET_BYTES = 320 * 1024;
+export const INSTRUCTIONS_BUDGET_BYTES = 8 * 1024;
+/** `declared.toolsListBytes` may drift this far from the measurement before the manifest must move. */
+export const TOOLS_LIST_TOLERANCE = 0.02;
+
+export interface CatalogueSize {
+    /** UTF-8 bytes of the `tools/list` result as a host receives it. */
+    readonly toolsBytes: number;
+    /** UTF-8 bytes of `serverInfo.instructions`. */
+    readonly instructionsBytes: number;
+    /** `declared.toolsListBytes` of docs/assets/ecosystem.json, or null when the manifest is absent. */
+    readonly declaredToolsBytes: number | null;
+}
+
+/** Failure lines, empty when every budget holds. Pure, so tests feed it figures directly. */
+export function judgeCatalogueBudget(size: CatalogueSize): string[] {
+    const failures: string[] = [];
+    if (size.toolsBytes > TOOLS_LIST_BUDGET_BYTES) {
+        failures.push(`tools/list is ${size.toolsBytes} bytes — the budget is ${TOOLS_LIST_BUDGET_BYTES} (docs/API_STABILITY.md §5: trim a shared fragment or raise the budget deliberately)`);
+    }
+    if (size.instructionsBytes > INSTRUCTIONS_BUDGET_BYTES) {
+        failures.push(`serverInfo.instructions is ${size.instructionsBytes} bytes — the budget is ${INSTRUCTIONS_BUDGET_BYTES}; move detail to a prompt or a guide`);
+    }
+    if (size.declaredToolsBytes !== null) {
+        const drift = Math.abs(size.toolsBytes - size.declaredToolsBytes) / size.declaredToolsBytes;
+        if (drift > TOOLS_LIST_TOLERANCE) {
+            failures.push(`declared.toolsListBytes says ${size.declaredToolsBytes} but tools/list measures ${size.toolsBytes} — update docs/assets/ecosystem.json (and the documents quoting it), not the code`);
+        }
+    }
+    return failures;
+}

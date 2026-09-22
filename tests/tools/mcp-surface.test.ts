@@ -26,7 +26,8 @@ import {
     toolNameConstant,
     toolNames,
 } from '../../scripts/lib/mcp-surface.js';
-import { listToolsPayload } from '../../src/server.js';
+import { INSTRUCTIONS_BUDGET_BYTES, TOOLS_LIST_BUDGET_BYTES, judgeCatalogueBudget } from '../../scripts/lib/tool-shape.js';
+import { __serverInstructions, listToolsPayload } from '../../src/server.js';
 import { connectLegacy } from '../_mcp-harness.js';
 
 const ROOT = resolve(import.meta.dirname, '..', '..');
@@ -146,5 +147,29 @@ describe('mcp-surface: the real tree agrees with the live server', () => {
         const derived = computeDerived(ROOT);
         for (const [key, value] of Object.entries(derived)) expect(value, key).toBeGreaterThan(0);
         expect(derived.pdfaSamples + derived.pdfxSamples).toBeLessThanOrEqual(derived.corpusFiles);
+    });
+});
+
+describe('tool-shape: the catalogue size budget', () => {
+    it('passes a catalogue under both budgets whose manifest figure is current', () => {
+        expect(judgeCatalogueBudget({ toolsBytes: 306_000, instructionsBytes: 7_500, declaredToolsBytes: 306_512 })).toEqual([]);
+        expect(judgeCatalogueBudget({ toolsBytes: 306_000, instructionsBytes: 7_500, declaredToolsBytes: null })).toEqual([]);
+    });
+
+    it('fails above the tools/list budget, above the instructions budget, and when the manifest figure drifted', () => {
+        expect(judgeCatalogueBudget({ toolsBytes: TOOLS_LIST_BUDGET_BYTES + 1, instructionsBytes: 100, declaredToolsBytes: null })).toEqual([expect.stringMatching(/tools\/list is \d+ bytes — the budget is 327680/)]);
+        expect(judgeCatalogueBudget({ toolsBytes: 100, instructionsBytes: INSTRUCTIONS_BUDGET_BYTES + 1, declaredToolsBytes: null })).toEqual([expect.stringMatching(/instructions is \d+ bytes — the budget is 8192/)]);
+        expect(judgeCatalogueBudget({ toolsBytes: 306_000, instructionsBytes: 100, declaredToolsBytes: 280_000 })).toEqual([expect.stringMatching(/declared\.toolsListBytes says 280000 but tools\/list measures 306000/)]);
+    });
+
+    it('holds the live catalogue and instructions to the budgets and the manifest', () => {
+        const manifest = JSON.parse(readFileSync(resolve(ROOT, 'docs', 'assets', 'ecosystem.json'), 'utf8')) as { declared: { toolsListBytes: number } };
+        const size = {
+            toolsBytes: Buffer.byteLength(JSON.stringify(listToolsPayload()), 'utf8'),
+            instructionsBytes: Buffer.byteLength(__serverInstructions, 'utf8'),
+            declaredToolsBytes: manifest.declared.toolsListBytes,
+        };
+        expect(judgeCatalogueBudget(size)).toEqual([]);
+        expect(size.toolsBytes).toBeGreaterThan(100_000);
     });
 });

@@ -57,7 +57,7 @@ A bump of `_meta.apiVersion` happens **only** in the cases listed in §3.
 > `$schema` keyword** by policy: MCP ≥ 2025-11-25 defaults to JSON Schema 2020-12, and some
 > hosts forward `inputSchema` verbatim to LLM function-calling APIs that reject unknown
 > keywords. Likewise there is no `$ref` / `$defs`, which is why the 13-kind block union is
-> repeated inline in `inspect_layout` and `tools/list` weighs ≈ 305 kB (≈ 246 kB in 1.6.0: the
+> repeated inline in `inspect_layout` and `tools/list` weighs ≈ 306 kB, under a 320 KiB budget enforced by `scripts/tool-shape.ts --check` (≈ 246 kB in 1.6.0: the
 > `typography` fragment and the widened colour schemas of 1.7.0 are inlined in every tool that
 > carries them).
 

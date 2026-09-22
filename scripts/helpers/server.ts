@@ -36,6 +36,8 @@ export interface BuiltServer {
     readonly callToolDirect: (name: string, args: unknown) => Promise<ToolResult>;
     readonly ensureCompressionReady: () => Promise<void>;
     readonly listToolsPayload: () => { readonly tools: readonly ToolListing[] };
+    /** `SERVER_INSTRUCTIONS`, re-exported for the size budget of `scripts/tool-shape.ts --check`. */
+    readonly __serverInstructions: string;
 }
 
 /** Null when `dist/` is absent — callers print the build hint and exit 2. */

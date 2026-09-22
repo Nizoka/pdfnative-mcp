@@ -62,7 +62,7 @@
 - 🐛 **Fixes** — a 0–1 RGB triple (`watermark.color`, the `annotate_pdf` colours) now renders the colour it names (`[1, 0, 0]` used to render almost black); any unexpected failure of a tool that takes PDF input is classified `PDF_PARSE_FAILED` instead of surfacing uncoded.
 - ✅ **Closed upstream** — a PDF/A form built with `embedFonts: true` now validates under veraPDF (the AcroForm font is embedded), and `inspect_layout` measures a `toc` block exactly as the build lays it out.
 - 🧪 **One gate, hardened CI, verified docs** — `npm run gate` is the single definition of green (the built server is driven over stdio and stdout must carry JSON-RPC frames only); veraPDF is **blocking** over a 41-file conformance corpus; a 96-sample byte baseline guards the output; `npm run verify:docs` holds every count, version, tool, error code and operator variable quoted in the docs to [`docs/assets/ecosystem.json`](docs/assets/ecosystem.json) and the source tree.
-- 🧾 **Catalogue** — `tools/list` grows to ≈ 305 kB (the typography fragment and the widened colour schemas are inlined in every tool that carries them); `_meta.apiVersion` is `1.7.0`.
+- 🧾 **Catalogue** — `tools/list` grows to ≈ 306 kB (the typography fragment and the widened colour schemas are inlined in every tool that carries them; `npx tsx scripts/tool-shape.ts --check` holds it under 320 KiB and the instructions under 8 KiB); `_meta.apiVersion` is `1.7.0`.
 - ⬆ **Engine upgrade** — [pdfnative **v1.8.0**](https://github.com/Nizoka/pdfnative). No breaking change to the tool API; the bytes that do change (embedded TrueType subsets, `print.marks`, shaped text with mark positioning, UTC dates) are listed under *Upgrade* in [`release-notes/v1.7.0.md`](release-notes/v1.7.0.md).
 
 **New in v1.6.0:**

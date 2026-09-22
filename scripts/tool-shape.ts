@@ -4,7 +4,8 @@
  * ========================================================
  *   npx tsx scripts/tool-shape.ts            # print the fingerprint
  *   npx tsx scripts/tool-shape.ts --write    # refresh tests/_fixtures/tool-shape.json
- *   npx tsx scripts/tool-shape.ts --check    # exit 1 when dist/ differs from the fixture
+ *   npx tsx scripts/tool-shape.ts --check    # exit 1 when dist/ differs from the fixture,
+ *                                            # or the catalogue exceeds its size budget
  *
  * `tests/catalogue-parity.test.ts` asserts the live catalogue matches the
  * committed fixture, so wording can be tuned freely (descriptions, examples,
@@ -22,9 +23,24 @@ import { join } from 'node:path';
 
 import { REPO_ROOT } from './helpers/io.js';
 import { loadBuiltServer } from './helpers/server.js';
-import { serializeShape, type ListedTool } from './lib/tool-shape.js';
+import { judgeCatalogueBudget, serializeShape, type CatalogueSize, type ListedTool } from './lib/tool-shape.js';
 
 const FIXTURE = join(REPO_ROOT, 'tests', '_fixtures', 'tool-shape.json');
+const MANIFEST = join(REPO_ROOT, 'docs', 'assets', 'ecosystem.json');
+
+/** What a host receives: the whole `tools/list` result and the instructions, in UTF-8 bytes. */
+function measure(server: { listToolsPayload: () => unknown; __serverInstructions: string }): CatalogueSize {
+    let declaredToolsBytes: number | null = null;
+    if (existsSync(MANIFEST)) {
+        const declared = (JSON.parse(readFileSync(MANIFEST, 'utf8')) as { declared?: { toolsListBytes?: unknown } }).declared?.toolsListBytes;
+        declaredToolsBytes = typeof declared === 'number' ? declared : null;
+    }
+    return {
+        toolsBytes: Buffer.byteLength(JSON.stringify(server.listToolsPayload()), 'utf8'),
+        instructionsBytes: Buffer.byteLength(server.__serverInstructions, 'utf8'),
+        declaredToolsBytes,
+    };
+}
 
 async function main(): Promise<number> {
     const args = process.argv.slice(2);
@@ -48,12 +64,18 @@ async function main(): Promise<number> {
     }
     if (args.includes('--check')) {
         const committed = existsSync(FIXTURE) ? readFileSync(FIXTURE, 'utf8').replace(/\r\n/g, '\n') : '';
-        if (committed === json) {
-            process.stdout.write(`tools/list matches tests/_fixtures/tool-shape.json (${tools.length} tools)\n`);
-            return 0;
+        if (committed !== json) {
+            process.stderr.write('tools/list (dist/) differs from tests/_fixtures/tool-shape.json — see docs/API_STABILITY.md §5 before refreshing it.\n');
+            return 1;
         }
-        process.stderr.write('tools/list (dist/) differs from tests/_fixtures/tool-shape.json — see docs/API_STABILITY.md §5 before refreshing it.\n');
-        return 1;
+        const size = measure(server);
+        const failures = judgeCatalogueBudget(size);
+        if (failures.length > 0) {
+            for (const f of failures) process.stderr.write(`${f}\n`);
+            return 1;
+        }
+        process.stdout.write(`tools/list matches tests/_fixtures/tool-shape.json (${tools.length} tools, ${size.toolsBytes} bytes; instructions ${size.instructionsBytes} bytes)\n`);
+        return 0;
     }
     process.stdout.write(json);
     return 0;
