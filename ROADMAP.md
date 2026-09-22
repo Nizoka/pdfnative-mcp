@@ -185,6 +185,12 @@ this project's faithful, thin-wrapper philosophy.
 - [ ] **`windows` CI job as a required check** — it builds and tests on every pull request today but is not in `.github/rulesets/main.json`; add it once a release cycle has shown it stable.
 - [ ] **`harden-runner` from audit to block mode** — switch the Linux jobs to `egress-policy: block` with an allow-list once the audited egress is known (Windows runners support audit mode only).
 - [ ] **Automated MCP registry publication** — publishing `server.json` to the MCP registry is a manual maintainer step after the npm publication; move it into the publish workflow (the gate already validates `server.json` offline against the vendored schema).
+- [ ] **Attest the published tarball** — `publish.yml` packs once, publishes that tarball and hands the same bytes to the `attest` job (today the attestation job rebuilds and re-packs its own copy); a `pack-manifest` gate step compares `npm pack --dry-run --json` with a committed file list, and a double pack proves the tarball is byte-reproducible. Deferred from 1.7.0 because a publish-workflow change can only be exercised by a real publication.
+- [ ] **Least-privilege details in the workflows** — `codeql.yml` grants `security-events: write` per job instead of at the top level; the four `${{ }}` interpolations inside `run:` (`sample-regression.yml`, `verapdf.yml`) move to `env:` blocks, the form the veraPDF composite action already uses.
+- [ ] **`governance-embed` rule in `verify:docs`** — hold the contract embedded in `src/governance.ts` to `.github/ai-governance.json` and `.github/AGENT_RULES.md` byte for byte (the rule pdfnative-cli carries).
+- [ ] **Transport-layer fuzz** — seeded malformed / oversize / truncated JSON-RPC frames over stdio and HTTP: invalid JSON answers `-32700`, an unknown method `-32601`, a truncated frame then EOF exits 0 with a pure stdout, an oversize HTTP body answers 413. The current fuzz suite stops at tool arguments.
+- [ ] **A ceiling on `tools/list`** — `scripts/tool-shape.ts --check` fails when the catalogue exceeds a measured budget (≈ 305 kB today, up from 108 kB in 1.5.0) or `SERVER_INSTRUCTIONS` exceeds 8 KiB.
+- [ ] **Smaller parity items** — `examples/README.md` (an index of the 43 examples, read by `verify:docs`), a unit test for `scripts/lib/synthetic-icc.ts`, `THIRD-PARTY-NOTICES.md` in the verified document set, a DCO paragraph in CONTRIBUTING, ORCID / DOI in `CITATION.cff`, `verification.validator_covered_by` in `.github/ai-governance.json`.
 
 ### Long-Term
 

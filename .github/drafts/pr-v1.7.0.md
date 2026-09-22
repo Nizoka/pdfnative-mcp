@@ -39,6 +39,7 @@ Counts (`docs/assets/ecosystem.json`): 28 tools, 7 prompts (6 → 7), 47 error c
 - Nine workflows (`ci` with Node 22 / 24 and a `windows` job, `publish` with the protected `npm-publish` environment, tag = version check, SBOM + attestation, `sample-regression`, `verapdf` blocking, `docs`, `codeql`, `scorecard`, `dependency-review`, `audit`); `harden-runner`, `persist-credentials: false`, `npm ci --ignore-scripts`, one SHA per action; `.github/rulesets/{main,tags}.json`; `dependabot`, `CODEOWNERS`, PR template mirrored in CONTRIBUTING.
 - `.npmrc` (`ignore-scripts=true`), `.node-version`, `.gitattributes`, `.githooks/` + `hooks:install`, `.vscode/settings.json`, `tsconfig.scripts.json`, vitest under `TZ=UTC` with forks and the gate reporters; `package.json` scripts named like the siblings, description and keywords extended; version lock-step (`package.json`, `src/version.ts`, `server.json` ×2, `CITATION.cff`, `SECURITY.md`).
 - Coverage thresholds raised: branches 80 → 82, functions 90 → 94 (statements 89 and lines 91 unchanged).
+- Parity with the siblings, after the final review: `no-console` (warn / error allowed — stdout is the JSON-RPC channel) and `@typescript-eslint/no-shadow` in `eslint.config.js` (the latter found one real shadowing in `verify_pdf`'s P-256 verifier, renamed); `esbuild` pinned through `overrides` to the resolved `0.28.2`; `.gitignore` (`.env.*`, `*.tgz`, the scheduled-tasks lock) and `.editorconfig` (Markdown keeps trailing spaces) in the siblings' form; `THIRD-PARTY-NOTICES.md` shipped in the package (`files`).
 
 ### Agent layer
 - `AGENTS.md` (≤ 120 lines, repository rules), `CLAUDE.md` = `@AGENTS.md` + addendum, `docs/AGENT_CONTRACT.md` (the former §1–§6), `.claude/settings.json` (no commit attribution, Read denies, HITL denies for Bash and PowerShell), `.claude/hooks/guard.mjs` (verbatim from the siblings, wired to both matchers), `.claude/rules/` generated from `.github/instructions/`, `.claude/skills/release-audit/`, `.github/prompts/{quality-gate,compliance-audit}`, `.github/ai-governance.json` 1.1.0 with the `claude_code` block, `.github/copilot-instructions.md` rewritten.
@@ -50,7 +51,7 @@ Counts (`docs/assets/ecosystem.json`): 28 tools, 7 prompts (6 → 7), 47 error c
 - First sample baseline: `tests/_fixtures/samples.sha256.json`, 96 entries anchored at 1.7.0 (94 by bytes, 2 semantic: one encrypted, one signed).
 
 ### Documentation
-- README, llms.txt, `docs/AGENT_CONTRACT.md`, `docs/AI_GUIDE.md`, `docs/KNOWLEDGE_BASE.md`, `docs/API_STABILITY.md` (1.7.0 matrix, accepted deltas, engine-inherited byte changes 1.7 → 1.8), new `docs/guides/TYPOGRAPHY.md` and `docs/guides/REPRODUCIBLE.md`, every existing guide, `SECURITY.md` (reproducible builds, supply chain), `CONTRIBUTING.md` (the gate, samples, corpus, manifest, agent contract, release, engine pin, branch protection), `ROADMAP.md` (1.7.0 released, next, blocked upstream), `CHANGELOG.md` (mirror + compare-link ladder), `CITATION.cff`, `release-notes/v1.7.0.md`, `release-notes/{TEMPLATE,PR_TEMPLATE}.md`, `.github/drafts/{TEMPLATE,README}.md`.
+- README, llms.txt, `docs/AGENT_CONTRACT.md`, `docs/AI_GUIDE.md`, `docs/KNOWLEDGE_BASE.md`, `docs/API_STABILITY.md` (1.7.0 matrix, accepted deltas, engine-inherited byte changes 1.7 → 1.8), new `docs/guides/TYPOGRAPHY.md` and `docs/guides/REPRODUCIBLE.md`, every existing guide, `SECURITY.md` (cryptographic verification scope of `verify_pdf`, reproducible builds, supply chain), `THIRD-PARTY-NOTICES.md` (new), `CONTRIBUTING.md` (the gate, samples, corpus, manifest, agent contract, release, engine pin, branch protection), `ROADMAP.md` (1.7.0 released, next, blocked upstream), `CHANGELOG.md` (mirror + compare-link ladder), `CITATION.cff`, `release-notes/v1.7.0.md`, `release-notes/{TEMPLATE,PR_TEMPLATE}.md`, `.github/drafts/{TEMPLATE,README}.md`.
 
 ## Verification
 
@@ -58,13 +59,13 @@ What actually ran on the release branch (Windows 11, Node v22.17.0, veraPDF 1.30
 
 | Command | Result |
 |---|---|
-| `npx tsx scripts/gate.ts --publish --require-all` | `gate: 15 passed, 0 skipped in 453.2 s` |
+| `npx tsx scripts/gate.ts --publish --require-all` | `gate: 15 passed, 0 skipped in 437.6 s (re-run after the parity commits; 453.2 s before them)` |
 | `npm run test:coverage` — tests | 1609 passed, 13 expected fail (pinned upstream limits), 2 skipped = 1624 across 96 files |
 | `npm run test:coverage` — coverage | 93.53 % statements / 86.08 % branches / 98.88 % functions / 95.45 % lines (thresholds 89 / 82 / 94 / 91) |
 | `npm run build && npm run test:generate && npm run verify:samples` | `96 tracked samples match the baseline (94 byte-exact, 2 semantic)` |
 | `npm run corpus:pdfa && npm run validate:pdfa` | `27 PASS, 6 XFAIL, 0 FAIL, 0 XPASS, 0 INFRA, 8 SKIP (of 33 validated)` — veraPDF 1.30.2 |
 | `npm run validate:pdfx` | `4 PASS, 2 XFAIL, 0 FAIL, 0 XPASS (of 6 validated)` |
-| `npm run verify:docs` | `24 rules passed across 33 files (89 warnings: eol-lf ×89)` — the CRLF warnings clear with the renormalisation commit |
+| `npm run verify:docs` | `24 rules passed across 33 files (88 warnings: eol-lf ×88)` — the CRLF warnings clear with the renormalisation commit |
 | `npm audit --audit-level=high` | `found 0 vulnerabilities` |
 | Built server over stdio (`node dist/cli.js`) | gate `smoke`: handshake answered, `tools/list` = 28 tools, `serverInfo.version` = 1.7.0, stdout carried JSON-RPC frames only, clean exit |
 
@@ -82,7 +83,7 @@ Independent audit: `/release-audit release-notes/v1.7.0.md v1.6.0` — **GO** (l
 
 - Default responses of existing tools: byte-identical, with one server-side correction — a 0–1 RGB triple on `watermark.color` and the `annotate_pdf` colours now renders the colour it names (the previous output was wrong).
 - Bytes inherited from the engine (each a correction, listed in `release-notes/v1.7.0.md` → Upgrade): documents embedding a TrueType subset (hinting tables kept, `checkSumAdjustment` computed), documents drawing `print.marks` (marks stop 0.5 pt short of the trim line), shaped text in every script with mark positioning, dates written in UTC, `{date}` following `creationDate`, `/ActualText` returned by `extract_text`, hand-made ICC stubs rejected (`PRINT_ERROR`). Documents on base-14 fonts without those features are byte-identical.
-- `tests/_fixtures/samples.sha256.json`: first baseline — 96 entries anchored at 1.7.0 (`since: "1.7.0"`), provenance note in the manifest; no earlier baseline existed to rebaseline from.
+- `tests/_fixtures/samples.sha256.json`: first baseline — 96 entries anchored at 1.7.0 (`since: "1.7.0"`), the forced output of `chainSince` when no previous manifest exists and the convention pdfnative-cli followed for its own first baseline (91/91 at 1.5.0); provenance note in the manifest; declared in the release note. No earlier baseline existed to rebaseline from.
 - Every item above is declared in the Upgrade section of `release-notes/v1.7.0.md`.
 
 ## Out of scope (tracked in ROADMAP.md)
@@ -94,7 +95,7 @@ Independent audit: `/release-audit release-notes/v1.7.0.md v1.6.0` — **GO** (l
 
 Agents stop at this draft; everything below is done by the maintainer (`.github/AGENT_RULES.md`).
 
-1. The LF renormalisation commit (`git add --renormalize .`, then flip `EOL_LF_MODE` to `'fail'` in `scripts/lib/agent-config.ts`) — 89 tracked text files are still CRLF in the index.
+1. The LF renormalisation commit (`git add --renormalize .`, then flip `EOL_LF_MODE` to `'fail'` in `scripts/lib/agent-config.ts`) — 87 tracked text files (plus one with mixed endings) are still CRLF in the index.
 2. Push the branch, open the pull request with this body, wait for `ci (22)`, `ci (24)` and `sample-regression`, merge. First run: confirm `harden-runner` behaves on `windows-latest` (the `windows` job).
 3. Tag `v1.7.0` on the merge commit and publish the GitHub Release (title `v1.7.0 - Fine typography, CMYK, PDF/X-4, 27 scripts, reproducible output, pdfnative 1.8`, body = `release-notes/v1.7.0.md`).
 4. Before approving: create the protected `npm-publish` environment and bind the npm Trusted Publisher to it. Then approve: `publish.yml` re-runs the publish gate and publishes through npm Trusted Publishing, then attaches the SBOM and the attestation to the release. Confirm with `npm view pdfnative-mcp version`.
