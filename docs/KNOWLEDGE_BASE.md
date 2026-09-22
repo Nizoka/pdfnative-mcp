@@ -718,7 +718,7 @@ PowerShell swallows a bare `--` after `npm run`, so flags are passed by calling 
 
 Inline steps (no npm script behind them): `dist-check` (the expected files exist under `dist/` and `dist/cli.js` starts with the node shebang), `dist-probe` (no `console.log` in emitted JavaScript, only `src/` under `dist/`), `smoke` (the **built** server over stdio: handshake, tool count, version, and stdout purity — any line that is not a JSON-RPC frame fails) and `server-json` (offline validation of `server.json` against the vendored MCP registry schema, with a validator that fails on any keyword it does not implement). Exit codes: 0 green (or skipped with a reason), 1 a step failed or would have skipped under `--require-all`, 2 usage.
 
-`npm run lint` is `eslint src --max-warnings 0` — warnings fail. CI (`ci.yml`) runs the gate on Linux (Node 22 / 24); a `windows` job builds and tests. Vitest (`TZ=UTC`, `pool: 'forks'`, no shuffle) coverage thresholds live once, in `vitest.config.ts` (`statements 89` / `branches 80` / `functions 90` / `lines 91`), and are enforced by the gate.
+`npm run lint` is `eslint src --max-warnings 0` — warnings fail. CI (`ci.yml`) runs the gate on Linux (Node 22 / 24), Windows and macOS (the pinned Node line); all five jobs are required checks, so the sample baseline is held byte for byte on three operating systems. Vitest (`TZ=UTC`, `pool: 'forks'`, no shuffle) coverage thresholds live once, in `vitest.config.ts` (`statements 89` / `branches 80` / `functions 90` / `lines 91`), and are enforced by the gate.
 
 ### Catalogue fingerprint
 

@@ -47,8 +47,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The job id and the matrix are load-bearing: the main ruleset requires the
-  # status checks `ci (22)` and `ci (24)` (.github/rulesets/main.json).
+  # The job ids and the matrices are load-bearing: the main ruleset requires the
+  # status checks `ci (22)`, `ci (24)`, `os (windows-latest)` and
+  # `os (macos-latest)` (.github/rulesets/main.json).
   ci:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -94,20 +95,30 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # The stdio server is spawned by hosts on Windows too; this job runs the
-  # suite on win32 (TerminateProcess-style SIGTERM, CRLF, path rules). It does
-  # not run the gate: coverage and the sample baseline are enforced by the
-  # Linux matrix, and sample bytes are asserted on one platform only. It is
-  # not a required status check for this release cycle (ROADMAP).
+  # The stdio server is spawned by hosts on Windows and macOS too, so the same
+  # gate runs there, on the pinned Node line: the built server over stdio
+  # (TerminateProcess-style SIGTERM on win32, POSIX signals on macOS, CRLF and
+  # path rules), the coverage run, and the 96-sample byte baseline — which is
+  # how the "byte-identical on every host" promise is proven on three
+  # operating systems rather than asserted on one. Both matrix entries are
+  # required status checks (.github/rulesets/main.json).
   #
   # harden-runner supports Windows runners in audit mode only, so this job
-  # can never move to `egress-policy: block`.
-  windows:
-    runs-on: windows-latest
-    timeout-minutes: 20
+  # can never move to `egress-policy: block`; the action does not support
+  # macOS at all, so the step is skipped there (`if: runner.os != 'macOS'`) —
+  # the one documented exemption to "every job starts with harden-runner".
+  os:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
 
     steps:
       - name: Harden the runner
+        if: runner.os != 'macOS'
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
@@ -125,10 +136,16 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      # .npmrc sets ignore-scripts, so nothing builds on install: the stdio
-      # suites spawn dist/cli.js and fail under CI when it is missing.
-      - name: Build
-        run: npm run build
+      # The same gate as the Linux matrix; `npm audit` stays on Linux (network,
+      # once is enough). The gate builds before the suites that need dist/.
+      - name: Run the quality gate (CI profile)
+        run: npx tsx scripts/gate.ts --ci --require-all
 
-      - name: Test
-        run: npm test
+      - name: Upload the gate logs on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gate-logs-${{ matrix.os }}
+          path: test-output/.gate/
+          retention-days: 7
+          if-no-files-found: ignore

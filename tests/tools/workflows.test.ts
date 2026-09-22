@@ -141,7 +141,7 @@ describe('ci.yml', () => {
             rules: Array<{ type: string; parameters?: { required_status_checks?: Array<{ context: string }> } }>;
         };
         const contexts = ruleset.rules.find((r) => r.type === 'required_status_checks')?.parameters?.required_status_checks?.map((c) => c.context) ?? [];
-        expect(contexts).toEqual(['ci (22)', 'ci (24)', 'sample-regression']);
+        expect(contexts).toEqual(['ci (22)', 'ci (24)', 'os (windows-latest)', 'os (macos-latest)', 'sample-regression']);
     });
 
     it('runs the gate with --require-all and audits outside it', () => {
@@ -151,8 +151,7 @@ describe('ci.yml', () => {
     });
 
     it('lists no gate step by hand', () => {
-        // The `ci` job only: the `windows` job deliberately builds and tests
-        // without the gate (see the next describe).
+        // The `ci` job; the `os` job is held to the same rule in the next describe.
         const gated = (jobSteps(ci).get('ci') ?? []).join('\n');
         expect(gated).toContain('scripts/gate.ts');
         for (const step of ['typecheck:all', 'test:coverage', 'validate:pdfa', 'validate:pdfx', 'verify:samples', 'verify:docs', 'npm run build', 'npm run lint', 'node dist/cli.js']) {
@@ -161,25 +160,29 @@ describe('ci.yml', () => {
     });
 });
 
-describe('ci.yml windows job', () => {
+describe('ci.yml os matrix job (Windows and macOS)', () => {
     const ci = readWorkflow('ci.yml');
-    const steps = jobSteps(ci).get('windows') ?? [];
+    const steps = jobSteps(ci).get('os') ?? [];
 
-    it('runs the suite on windows-latest, outside the required checks', () => {
-        expect(ci).toMatch(/^  windows:\s*\n\s*runs-on:\s*windows-latest/m);
-        const ruleset = readText('.github', 'rulesets', 'main.json');
-        expect(ruleset).not.toContain('"windows"');
-    });
-
-    it('builds before testing, because .npmrc disables the prepare script', () => {
+    it('runs the same gate on windows-latest and macos-latest from the pinned Node line, as required checks', () => {
+        expect(ci).toMatch(/^  os:\s*\n\s*runs-on:\s*\$\{\{ matrix\.os \}\}/m);
+        expect(ci).toMatch(/os:\s*\[windows-latest, macos-latest\]/);
+        expect(steps.some((s) => /node-version-file:\s*\.nvmrc/.test(s)), 'setup-node reads .nvmrc').toBe(true);
         const index = (needle: string): number => steps.findIndex((s) => s.includes(needle));
         expect(index('run: npm ci --ignore-scripts')).toBeGreaterThanOrEqual(0);
-        expect(index('run: npm run build')).toBeGreaterThan(index('run: npm ci --ignore-scripts'));
-        expect(index('run: npm test')).toBeGreaterThan(index('run: npm run build'));
+        expect(index('run: npx tsx scripts/gate.ts --ci --require-all')).toBeGreaterThan(index('run: npm ci --ignore-scripts'));
+        expect(steps.some((s) => /if: failure\(\)[\s\S]*upload-artifact[\s\S]*test-output\/\.gate\//.test(s)), 'gate logs uploaded on failure').toBe(true);
+        expect(steps.join('\n')).not.toMatch(/run: npm (test|run build)\s*$/m); // the gate, never a hand-written subset
+        const ruleset = readText('.github', 'rulesets', 'main.json');
+        expect(ruleset).toContain('"os (windows-latest)"');
+        expect(ruleset).toContain('"os (macos-latest)"');
     });
 
-    it('records that harden-runner is audit-only on Windows runners', () => {
+    it('skips harden-runner on macOS only (the action supports Linux, and Windows in audit mode) and says so', () => {
+        expect(steps[0]).toContain(HARDEN_RUNNER);
+        expect(steps[0]).toMatch(/if: runner\.os != 'macOS'/);
         expect(ci).toMatch(/harden-runner supports Windows runners in audit mode only/);
+        expect(ci).toMatch(/does not support\s+# macOS at all/);
     });
 });
 

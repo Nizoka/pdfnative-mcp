@@ -34,7 +34,7 @@ applyTo: "src/output.ts,src/network.ts,src/http.ts,src/auth.ts,src/image.ts,src/
 ## Dependency and CI security
 - Exactly three runtime dependencies (pdfnative, `@modelcontextprotocol/server`, zod); adding one is a governance blocker.
 - npm publish via OIDC Trusted Publishing only, from the protected `npm-publish` environment, with an exactly pinned npm client, `--provenance`, a CycloneDX SBOM and a build-provenance attestation.
-- Every workflow job: `step-security/harden-runner` first, `persist-credentials: false`, `npm ci --ignore-scripts`, explicit `permissions`, a timeout; one commit SHA per action across the tree. `tests/tools/workflows.test.ts` asserts all of it — update the test in the same change as a workflow.
+- Every workflow job: `step-security/harden-runner` first (skipped on macOS only — the action supports Linux, and Windows in audit mode), `persist-credentials: false`, `npm ci --ignore-scripts`, explicit `permissions`, a timeout; one commit SHA per action across the tree. `tests/tools/workflows.test.ts` asserts all of it — update the test in the same change as a workflow.
 - `.npmrc` sets `ignore-scripts=true`: nothing builds on install, the gate builds.
 - Keep the lockfile committed; `npm audit --audit-level=high` runs in CI and weekly; Dependency Review runs on every pull request; CodeQL and Scorecard run weekly.
 - veraPDF is downloaded at a pinned version and checked against a committed SHA-256 before it is executed (`.github/actions/setup-verapdf`).

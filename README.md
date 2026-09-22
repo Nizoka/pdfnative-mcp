@@ -706,7 +706,7 @@ node dist/cli.js
 - `npx tsx scripts/release-prepare.ts --version X.Y.Z` applies the mechanical part of a version bump (it never commits, tags or publishes); the version moves in lock-step across `package.json`, `src/version.ts`, `server.json` and [`docs/assets/ecosystem.json`](docs/assets/ecosystem.json)
 - A release branch must pass `npx tsx scripts/gate.ts --publish --require-all` — every step, veraPDF included, with no skip
 - npm publication is handled by GitHub Actions Trusted Publishing (OIDC), without `NPM_TOKEN`, from a protected environment: the workflow checks that the tag equals the package version, runs the publish gate and publishes with `--provenance`; a second job attests the tarball (build provenance) together with a CycloneDX SBOM and attaches both to the GitHub Release
-- Every workflow job starts with `step-security/harden-runner`, checks out with `persist-credentials: false`, installs with `npm ci --ignore-scripts` and runs under least-privilege `permissions`; actions are pinned by commit SHA; the veraPDF job is **blocking**
+- Every Linux and Windows job starts with `step-security/harden-runner` (the action does not support macOS; the macOS job is the one documented exemption), checks out with `persist-credentials: false`, installs with `npm ci --ignore-scripts` and runs under least-privilege `permissions`; actions are pinned by commit SHA; the veraPDF job is **blocking**
 - Human-in-the-loop: coding agents prepare and verify; the maintainer pushes, opens the pull request, tags and publishes ([`.github/AGENT_RULES.md`](.github/AGENT_RULES.md))
 
 See `release-notes/TEMPLATE.md` for the canonical structure and publication checklist, and [CONTRIBUTING.md](CONTRIBUTING.md#release) for the release procedure.
@@ -793,7 +793,7 @@ docs/
 examples/                       # 43 executable tools/call sequences (npm run examples:check)
 AGENTS.md, CLAUDE.md            # repository rules for coding agents; .github/instructions/ holds the per-area rules
 .claude/                        # shared agent settings, the fail-closed guard hook, generated rules, the release-audit skill
-.github/workflows/              # ci (Node 22 / 24 run the gate + a Windows job), publish, sample-regression, verapdf (blocking),
+.github/workflows/              # ci (Node 22 / 24 on Linux, plus Windows and macOS, all running the gate, all required), publish, sample-regression, verapdf (blocking),
                                 #   docs, codeql, scorecard, dependency-review, audit
 .github/rulesets/               # branch and tag rulesets to import
 tests/                          # vitest suites (one per tool / module), _fixtures/ (tool shape, sample baseline, engine-surface matrix,

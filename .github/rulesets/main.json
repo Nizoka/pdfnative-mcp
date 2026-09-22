@@ -34,6 +34,8 @@
         "required_status_checks": [
           { "context": "ci (22)", "integration_id": 15368 },
           { "context": "ci (24)", "integration_id": 15368 },
+          { "context": "os (windows-latest)", "integration_id": 15368 },
+          { "context": "os (macos-latest)", "integration_id": 15368 },
           { "context": "sample-regression", "integration_id": 15368 }
         ]
       }

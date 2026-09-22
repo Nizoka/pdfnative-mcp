@@ -77,7 +77,7 @@ the engine; never reimplement one, never over-promise (state engine limits in th
   PDFNATIVE_MCP_NETWORK_TIMEOUT_MS, PDFNATIVE_MCP_CREATION_DATE, SOURCE_DATE_EPOCH.
 - Honest limits: PDF/X validation is structural, not a certified preflight; no ICC press profile is bundled; `kerning` / `fontFeatures` /
   the `'fr'` narrow space need `embedFonts: true`; Tai Tham (`nod`) uses `pdfa2b`, not `pdfa2u`.
-- `npm run lint` is `eslint src --max-warnings 0` — warnings fail the gate. CI runs the gate on Linux (Node 22 / 24); a `windows` job builds and tests.
+- `npm run lint` is `eslint src --max-warnings 0` — warnings fail the gate. CI runs the gate on Linux (Node 22 / 24), Windows and macOS; all five jobs are required checks.
 
 ## Quality gate (all PRs)
 
