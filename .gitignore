@@ -2,9 +2,11 @@ node_modules/
 dist/
 coverage/
 .DS_Store
+Thumbs.db
 *.log
 .env
-.env.local
+.env.*
+!.env.example
 .vscode/*
 !.vscode/settings.json
 .idea/
@@ -14,6 +16,7 @@ test-output/
 
 # Claude Code: machine-local overrides and release-audit ledgers stay local.
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 .audit/
 
 # AI-governance issue drafts are local work-in-progress; never commit ad-hoc
@@ -24,3 +27,6 @@ test-output/
 !.github/drafts/TEMPLATE.md
 !.github/drafts/pr-*.md
 !.github/drafts/issue-*.md
+
+# npm
+*.tgz

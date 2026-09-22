@@ -18,11 +18,15 @@ export default tseslint.config(
             '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports', fixStyle: 'inline-type-imports' }],
             'eqeqeq': ['error', 'always'],
             'no-throw-literal': 'error',
+            'no-shadow': 'off',
+            '@typescript-eslint/no-shadow': 'error',
             'no-var': 'error',
             'prefer-const': 'error',
             'no-eval': 'error',
             'no-implied-eval': 'error',
             'no-new-func': 'error',
+            // On stdio, stdout IS the JSON-RPC channel: a stray console.log corrupts every host.
+            'no-console': ['error', { allow: ['warn', 'error'] }],
         },
     },
     {

@@ -2,9 +2,9 @@ name: Dependency Review
 
 # Blocks a pull request that introduces a dependency with a known high or
 # critical vulnerability, or one under a licence outside the allow-list.
-# pdfnative-mcp has exactly one runtime dependency (pdfnative), so this
-# covers the dev toolchain and any attempt to add a second runtime one — the
-# project's first hard rule.
+# pdfnative-mcp has exactly three runtime dependencies (pdfnative, the MCP SDK,
+# zod), so this covers the dev toolchain and any attempt to add a fourth
+# runtime one — the project's first hard rule.
 #
 # Needs the repository's Dependency graph enabled (Settings → Code security).
 
