@@ -831,7 +831,7 @@ Contributions are very welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md), 
 
 ## 📄 License
 
-[MIT](LICENSE) © 2026 Nizoka
+[MIT](LICENSE) © 2026 Nizoka. Third-party material: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 `pdfnative-mcp` is built on top of [`pdfnative`](https://github.com/Nizoka/pdfnative) and the [Model Context Protocol TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk).
 

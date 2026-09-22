@@ -107,6 +107,7 @@
     "files": [
         "dist/",
         "LICENSE",
+        "THIRD-PARTY-NOTICES.md",
         "README.md",
         "CHANGELOG.md",
         "server.json",

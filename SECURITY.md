@@ -85,6 +85,24 @@ OCSP and CRL URLs come from the AIA / CRL-distribution-point extensions of **unt
 
 The TSA URL is operator-trusted, so only the scheme and credential checks apply to it. Providers are constructed per call and passed through pdfnative's per-call options — the process-wide provider setters are never used, so concurrent requests share nothing. `add_ltv mode: 'offline'` embeds caller-supplied DER material with zero network access (every blob is parsed before it is written). The server's instructions report the egress policy as endpoint kinds only, never URLs or secrets.
 
+## Cryptographic verification scope (`verify_pdf`)
+
+`verify_pdf` verifies, with no network access, for every `/FT /Sig` widget of the document:
+
+- **Byte-range integrity** — the digest of the bytes covered by `/ByteRange` (SHA-256, SHA-384 or SHA-512, as the signer declared) against the CMS `messageDigest` signed attribute.
+- **CMS signature value** — RSA PKCS#1 v1.5 with SHA-256 / 384 / 512, and ECDSA P-256 with SHA-256, over the re-encoded `signedAttrs`; the ECDSA arithmetic is the server's own pure-JavaScript P-256 verifier (the engine exports no `ecdsaVerifyHash` yet — ROADMAP). A signature outside that list (ECDSA with another curve or digest, any other algorithm OID) is reported with `valid: false`, `algorithm: null` and the parse error, never as valid.
+- **Certificate chain and trust** — the chain carried in the CMS is walked with the engine's `verifyCertSignature` against `trustedRootsDerBase64` when the caller supplies roots; otherwise the signer certificate is reported as `self-signed` or `unverified`, never as trusted.
+- **Document timestamps** (`/DocTimeStamp`, PAdES B-LTA) — each RFC 3161 token's `messageImprint` is checked against the covered byte range and the token's own SignerInfo signature is verified with the TSA certificate it carries; reported with `isDocTimestamp: true`.
+- **With `ltv: true`** — the signature timestamp of each signature (imprint and token signature), the embedded `/DSS` revocation material (OCSP matched by serial, CRL by issuer and serial), and a structural `ltvLevel` (B-B / B-T / B-LT / B-LTA).
+
+**Out of scope** — stated in the tool's own `caveats[]` and in [docs/guides/LTV.md](docs/guides/LTV.md); do not rely on `verify_pdf` alone for legal or regulatory non-repudiation:
+
+- responder and CRL signatures are not verified, and chain validity *at signing time* is not evaluated — revocation is read from embedded `/DSS` material only, never fetched;
+- TSA certificate trust is not evaluated unless `trustedRootsDerBase64` includes the TSA's root, and the revocation status of the TSA's own certificate is never checked;
+- `ltvLevel` is a structural classification (verified timestamp, `/VRI` entry, relevant revocation material, covering document timestamp), not an ETSI EN 319 102-1 validation, and a document-timestamp chain is validated token by token, not as a renewal policy over time.
+
+The sign side (`sign_pdf`, `add_ltv`, `timestamp_pdf`) never opens a socket itself: RFC 3161 and online revocation requests go through the operator-configured endpoints described under *Network egress*; `add_ltv mode: 'offline'` embeds caller-supplied DER material after parsing it.
+
 ## Reproducible builds
 
 - **Dates are UTC.** Every date the engine writes — `/CreationDate`, the XMP dates, the `{date}` placeholder of a header or footer — is written in UTC, and the trailer `/ID` is derived from the pinned instant, so the same input produces byte-identical output on every host and in every time zone once an instant is pinned. A consumer can therefore verify a PDF by hash.
@@ -95,7 +113,7 @@ The TSA URL is operator-trusted, so only the scheme and credential checks apply 
 
 ## Supply chain
 
-- **Exactly three runtime dependencies** — `pdfnative`, `@modelcontextprotocol/server` and `zod`, and no new one, ever. `.npmrc` sets `ignore-scripts=true` and `audit-level=high`; every CI install is `npm ci --ignore-scripts`, so no install-time lifecycle script runs, locally or in CI.
+- **Exactly three runtime dependencies** — `pdfnative`, `@modelcontextprotocol/server` and `zod` (all MIT, see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)), and no new one, ever. `.npmrc` sets `ignore-scripts=true` and `audit-level=high`; every CI install is `npm ci --ignore-scripts`, so no install-time lifecycle script runs, locally or in CI.
 - **Hardened workflows** — every job starts with `step-security/harden-runner` (egress audited; block mode is on the ROADMAP), declares least-privilege `permissions` and a timeout, and checks out with `persist-credentials: false`. Every action is pinned to a full commit SHA, one SHA per action across the tree. `dependency-review` gates every dependency change on a pull request, CodeQL and OpenSSF Scorecard run on a schedule, and `npm audit --audit-level=high` runs in CI and weekly.
 - **Trusted Publishing** — `publish.yml` runs from a protected environment (`npm-publish`, approved by the maintainer), checks that the tag equals the package version, re-runs the publish gate, and publishes through npm Trusted Publishing: a short-lived GitHub OIDC token, no long-lived npm token, with provenance. A CycloneDX SBOM (`npm sbom`) and a build-provenance attestation for the tarball and the SBOM are attached to the GitHub release. Verify an install with `npm audit signatures`.
 - **One release gate** — `npx tsx scripts/gate.ts --publish --require-all` runs typecheck, lint, the build, the `dist/` checks (no `console.log` in emitted JavaScript, only `src/` under `dist/`), the built-server smoke test over stdio (stdout must carry JSON-RPC frames only), the catalogue fingerprint, the offline `server.json` validation, the sample generation, the tests with coverage, the docs verifier, the sample baseline, the PDF/X corpus and the PDF/A corpus under veraPDF 1.30.2 — whose installer is pinned by SHA-256 (`.github/checksums/`) and verified before `java -jar` executes it. A skipped step fails the publish. veraPDF is an external CI tool, not a dependency.
