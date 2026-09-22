@@ -51,13 +51,14 @@ export default defineConfig({
             // from; `html` stays for local drill-down.
             reporter: ['text-summary', 'json-summary', 'html'],
             thresholds: {
-                // v1.6.0 measured on the final branch: 93.06 / 84.68 / 98.59 / 95.09 (statements /
-                // branches / functions / lines). Thresholds sit 4–9 points below the measured
-                // values so a regression fails CI while ordinary churn does not.
+                // v1.7.0 measured on the final branch: 93.53 / 86.08 / 98.88 / 95.45 (statements /
+                // branches / functions / lines); v1.6.0 was 93.06 / 84.68 / 98.59 / 95.09.
+                // Thresholds sit about 4 points below the measured values so a regression fails
+                // CI while ordinary churn does not. Branches and functions were raised in 1.7.0.
                 // Never lower these; raise them when a release lifts coverage.
                 statements: 89,
-                branches: 80,
-                functions: 90,
+                branches: 82,
+                functions: 94,
                 lines: 91,
             },
         },
