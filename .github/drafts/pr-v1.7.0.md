@@ -59,13 +59,13 @@ What actually ran on the release branch (Windows 11, Node v22.17.0, veraPDF 1.30
 
 | Command | Result |
 |---|---|
-| `npx tsx scripts/gate.ts --publish --require-all` | `gate: 15 passed, 0 skipped in 522.5 s` (final run, after the transport tests and the catalogue budget; the two earlier full runs took 437.6 s and 453.2 s) |
+| `npx tsx scripts/gate.ts --publish --require-all` | `gate: 15 passed, 0 skipped in 557.2 s` (final run, after the three-OS CI change and the LF renormalisation; the earlier full runs took 522.5 s, 437.6 s and 453.2 s) |
 | `npm run test:coverage` — tests | 1615 passed, 13 expected fail (pinned upstream limits), 2 skipped = 1630 across 96 files |
 | `npm run test:coverage` — coverage | 93.53 % statements / 86.08 % branches / 98.88 % functions / 95.45 % lines (thresholds 89 / 82 / 94 / 91) |
 | `npm run build && npm run test:generate && npm run verify:samples` | `96 tracked samples match the baseline (94 byte-exact, 2 semantic)` |
 | `npm run corpus:pdfa && npm run validate:pdfa` | `27 PASS, 6 XFAIL, 0 FAIL, 0 XPASS, 0 INFRA, 8 SKIP (of 33 validated)` — veraPDF 1.30.2 |
 | `npm run validate:pdfx` | `4 PASS, 2 XFAIL, 0 FAIL, 0 XPASS (of 6 validated)` |
-| `npm run verify:docs` | `24 rules passed across 33 files (88 warnings: eol-lf ×88)` — the CRLF warnings clear with the renormalisation commit |
+| `npm run verify:docs` | `24 rules passed across 33 files.` — no warning: the renormalisation commit rewrote the 88 CRLF blobs and `eol-lf` is an error from now on |
 | `npm audit --audit-level=high` | `found 0 vulnerabilities` |
 | `npm pack --dry-run` | `total files: 143`, `package size: 361.4 kB`, `unpacked size: 1.6 MB` — `dist/`, LICENSE, THIRD-PARTY-NOTICES.md, README, CHANGELOG, `server.json`, `llms.txt`; no test, script or fixture |
 | Built server over stdio (`node dist/cli.js`) | gate `smoke`: handshake answered, `tools/list` = 28 tools, `serverInfo.version` = 1.7.0, stdout carried JSON-RPC frames only, clean exit |
