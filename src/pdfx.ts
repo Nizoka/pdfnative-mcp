@@ -31,7 +31,7 @@ export const PdfXSchema = z.enum(PDF_X_CONFORMANCE_TARGETS as unknown as readonl
 
 /** Shared JSON Schema description with the prerequisites an agent cannot guess. */
 export const PDF_X_FIELD_DESCRIPTION =
-    "PDF/X-4 print exchange (ISO 15930-7). REQUIRES outputIntent with the printer's ICC profile (device class 'prtr'; CMYK or Gray — none is bundled) and embedFonts:true. Exclusive with pdfA and encrypt; metadata.trapped must be 'True' or 'False'; TrimBox or ArtBox, not both. Links and form fields are reported (PDFX_ANNOTATIONS). Check with validate_pdf standard:'pdf-x-4'. See the print_ready prompt.";
+    "PDF/X-4 print exchange (ISO 15930-7). REQUIRES outputIntent with the printer's ICC profile (device class 'prtr'; CMYK or Gray — none is bundled); needs embedFonts:true for a conformant file (PDFX_NO_FONT_ENTRIES otherwise, strict:true refuses). Exclusive with pdfA and encrypt; metadata.trapped must be 'True' or 'False'; TrimBox or ArtBox, not both. Links and form fields are reported (PDFX_ANNOTATIONS). Check with validate_pdf standard:'pdf-x-4'. See the print_ready prompt.";
 
 /** JSON Schema fragment — spread into a tool's `properties`. */
 export const PDFX_INPUT_PROPERTIES = {

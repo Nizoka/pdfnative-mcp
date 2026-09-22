@@ -281,7 +281,7 @@ PDF/X claim.
 
 ```jsonc
 { "tool": "inspect_pdf", "arguments": { "pdfBase64": "<pdf>", "pages": true, "check": ["trapped"] } }
-// perPage[0] → { index: 0, width: 595, height: 842, trimBox: [8.5, 8.5, 586.5, 833.5], bleedBox: [0, 0, 595, 842] }
+// perPage[0] → { index: 0, width: 595.28, height: 841.89, trimBox: [8.5, 8.5, 586.78, 833.39], bleedBox: [0, 0, 595.28, 841.89] }
 ```
 
 ## Error codes

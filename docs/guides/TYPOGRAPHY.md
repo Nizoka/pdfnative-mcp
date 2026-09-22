@@ -191,7 +191,7 @@ Example: [`examples/typography-french.json`](../../examples/typography-french.js
 the trailing mark of justified and right-aligned ones, with conservative offsets.
 Justified lines keep their space glyphs, so `extract_text` and viewer search still see
 word boundaries. Long compounds benefit from soft hyphens (U+00AD) — write them as the
-JSON escape `­`.
+JSON escape `\u00AD`.
 
 ### OpenType features and kerning
 
@@ -278,7 +278,7 @@ pretends otherwise:
 - **No hyphenation dictionary is installed.** The engine's hyphenation seam is a
   function, which a JSON boundary cannot carry, and no dictionary ships with the engine
   or with this server. `hyphenationLanguage` is validated and recorded, and has **no
-  effect** here. Put soft hyphens (U+00AD, `­` in JSON) in long words: they are
+  effect** here. Put soft hyphens (U+00AD, `\u00AD` in JSON) in long words: they are
   honoured as break opportunities and are drawn only when a line breaks there.
 - **`kerning`, `fontFeatures` and the `'fr'` narrow no-break space need
   `embedFonts: true`** (or `add_international_text`, which always embeds its fonts).
