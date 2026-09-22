@@ -673,7 +673,7 @@ npm run gate              # the CI profile: build, dist checks, stdio smoke test
 npx tsx scripts/gate.ts --publish --require-all   # release branches: everything incl. validate:pdfa (veraPDF); a skipped step fails
 ```
 
-`npm run gate` ([`scripts/gate.ts`](scripts/gate.ts)) is the single definition of green — 1631 tests, the coverage thresholds of `vitest.config.ts`, and the **built** server driven over stdio, where stdout must carry JSON-RPC frames only. It prints one line per step and writes the logs to `test-output/.gate/<step>.log`; `--only <step>` runs one step and `--json` gives machine output (call the script directly to pass flags: `npx tsx scripts/gate.ts --fast`). The individual steps are ordinary npm scripts:
+`npm run gate` ([`scripts/gate.ts`](scripts/gate.ts)) is the single definition of green — 1630 tests, the coverage thresholds of `vitest.config.ts`, and the **built** server driven over stdio, where stdout must carry JSON-RPC frames only. It prints one line per step and writes the logs to `test-output/.gate/<step>.log`; `--only <step>` runs one step and `--json` gives machine output (call the script directly to pass flags: `npx tsx scripts/gate.ts --fast`). The individual steps are ordinary npm scripts:
 
 ```bash
 npm run build && npm run test:generate   # drive the built server under TZ=UTC, operator variables scrubbed -> test-output/samples/

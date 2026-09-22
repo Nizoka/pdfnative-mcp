@@ -14,8 +14,8 @@ import { join } from 'node:path';
 const ROOT = process.cwd();
 const WORKFLOWS = join(ROOT, '.github', 'workflows');
 const workflowFiles = readdirSync(WORKFLOWS).filter((f) => f.endsWith('.yml')).sort();
-// Files may still carry CRLF in a working copy checked out before
-// .gitattributes landed; normalise so the regexes below see one line ending.
+// Every tracked text blob is LF (verify:docs rule eol-lf), but a working copy
+// may still be CRLF on Windows; normalise so the regexes below see one line ending.
 const readWorkflow = (f: string): string => readFileSync(join(WORKFLOWS, f), 'utf8').replace(/\r\n/g, '\n');
 const readText = (...parts: string[]): string => readFileSync(join(ROOT, ...parts), 'utf8').replace(/\r\n/g, '\n');
 /** Escape every regular-expression metacharacter, backslash included, of a literal. */

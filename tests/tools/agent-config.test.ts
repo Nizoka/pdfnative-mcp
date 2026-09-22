@@ -219,9 +219,10 @@ describe('agent-config — eol-lf', () => {
         expect(crlfTextFiles(parseLsFilesEol(LS)).map((e) => e.path)).toEqual(['CHANGELOG.md', 'docs/x.md']);
     });
 
-    it('warns in this release and fails once the mode is flipped', () => {
-        expect(EOL_LF_MODE).toBe('warn');
-        expect(checkEol(LS).map((f) => f.severity)).toEqual(['warn', 'warn']);
+    it('fails since the renormalisation commit; the warn mode stays available for a tree that still carries CRLF blobs', () => {
+        expect(EOL_LF_MODE).toBe('fail');
+        expect(checkEol(LS).map((f) => f.severity)).toEqual(['error', 'error']);
+        expect(checkEol(LS, 'warn').map((f) => f.severity)).toEqual(['warn', 'warn']);
         expect(checkEol(LS, 'fail').map((f) => f.severity)).toEqual(['error', 'error']);
         expect(checkEol(LS)[0]).toMatchObject({ file: 'CHANGELOG.md', message: expect.stringContaining('CRLF') });
         expect(checkEol('')).toEqual([]);

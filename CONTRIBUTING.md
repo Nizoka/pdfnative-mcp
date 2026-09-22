@@ -16,7 +16,7 @@ Requirements: Node.js ≥ 22 (CI runs the gate on Linux with Node 22 and 24, and
 
 For the full local-verification workflow — quality gate, examples-as-tests, checking that generated PDFs are actually valid, opening output in a viewer, external PDF/A validation, and the MCP Inspector — see [docs/guides/LOCAL_TESTING.md](docs/guides/LOCAL_TESTING.md).
 
-Windows notes: the Bash one-liners run under Git Bash; PowerShell swallows a bare `--` after `npm run`, so pass script flags by calling the script directly (`npx tsx scripts/gate.ts --fast`). Every file the project writes uses LF line endings (`.gitattributes`); do not run `git add --renormalize` in a feature branch — the maintainer does that in one dedicated commit, flipping `EOL_LF_MODE` to `'fail'` in `scripts/lib/agent-config.ts` and its assertion in `tests/tools/agent-config.test.ts` at the same time.
+Windows notes: the Bash one-liners run under Git Bash; PowerShell swallows a bare `--` after `npm run`, so pass script flags by calling the script directly (`npx tsx scripts/gate.ts --fast`). Every file the project writes uses LF line endings (`.gitattributes`); every tracked text blob is LF since the 1.7.0 renormalisation commit and `verify:docs` (rule `eol-lf`, `EOL_LF_MODE = 'fail'` in `scripts/lib/agent-config.ts`) fails on any new CRLF blob — the opt-in pre-commit hook refuses one before it is committed.
 
 ## Workflow
 

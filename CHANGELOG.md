@@ -50,6 +50,7 @@ catalogue proves nothing was removed or narrowed.
 - **test(fuzz):** a seeded fuzz suite over the new surface; the only acceptable failure is a `ToolError` with a documented code.
 - **feat(docs-as-code):** `docs/assets/ecosystem.json` is the source of every count and version; `npm run verify:docs` (24 rules) holds the docs, the agent files, the changelog ladder, the rulesets and the workflows to it and to the source tree.
 - **feat(agents):** committed `.claude/settings.json` (no commit attribution, Read denied on generated bulk files, the human-in-the-loop commands denied for Bash and PowerShell), a fail-closed `PreToolUse` guard, `.claude/rules/` generated from `.github/instructions/`, a `release-audit` skill. `AGENTS.md` is now the 120-line repository rule file shared by every coding agent; the consumer contract moved, unchanged in structure, to `docs/AGENT_CONTRACT.md`.
+- **chore(repo):** the 88 tracked text files still committed with CRLF (or mixed) line endings were renormalised to LF in one dedicated commit — no content change, no sample or fixture affected — and `verify:docs` rule `eol-lf` now fails on any new CRLF blob (`EOL_LF_MODE = 'fail'`).
 - **feat(release):** `scripts/release-prepare.ts` applies the mechanical part of a version bump (it never commits, tags or publishes).
 - **docs:** eleven new executable examples (43 in total); new guides `docs/guides/TYPOGRAPHY.md` and `docs/guides/REPRODUCIBLE.md`.
 
@@ -59,7 +60,7 @@ catalogue proves nothing was removed or narrowed.
 - **api:** `TOOL_API_VERSION` `1.6.0` → `1.7.0` (new optional inputs, two new error codes). The response-cache namespace changes with it, so no 1.6.0 cache entry is served.
 - **registry:** `server.json` follows the `2025-12-11` registry schema and declares all twelve operator variables, `SOURCE_DATE_EPOCH` included.
 - **tooling:** the three `.mjs` maintenance scripts are TypeScript run by `tsx` (`verify-issue.mjs` stays `.mjs`: it is documented as a standalone command). `.npmrc` sets `ignore-scripts=true`, so the build runs through the gate or `npm run build`, never through an install hook.
-- **test:** 1631 tests across 96 files (1.6.0: 937). Coverage measured at 93.53 % statements / 86.08 % branches / 98.88 % functions / 95.45 % lines; the enforced thresholds rise to 89 / 82 / 94 / 91 (branches +2, functions +4).
+- **test:** 1630 tests across 96 files (1.6.0: 937). Coverage measured at 93.53 % statements / 86.08 % branches / 98.88 % functions / 95.45 % lines; the enforced thresholds rise to 89 / 82 / 94 / 91 (branches +2, functions +4).
 - **catalogue size:** `tools/list` grows from about 246 kB to about 306 kB (the typography fragment and the widened colour schemas are inlined in every tool that carries them); `scripts/tool-shape.ts --check` now fails above a 320 KiB catalogue or 8 KiB instructions budget, and holds `declared.toolsListBytes` of the ecosystem manifest to the measurement. Hosts that cache `tools/list` are unaffected; the descriptions of the new fragments were kept terse and the long form lives in the `typography` prompt and the guides.
 
 ### Fixed

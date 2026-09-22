@@ -155,7 +155,7 @@ export const OFFLINE_RULES = [
     'claude-rules-sync', // .claude/rules/ equals a fresh render of .github/instructions/ (npm run agents:rules)
     'claude-rules-budget', // CLAUDE.md + its @imports + unscoped rules ≤ 16 KiB; a scoped rule > 32 KiB warns
     'pr-template-parity', // every PR-template checklist item is verbatim in CONTRIBUTING.md; the template mentions npm run gate
-    'eol-lf', // (git checkouts only) tracked text blobs are LF — warn until the renormalisation commit flips EOL_LF_MODE
+    'eol-lf', // (git checkouts only) every tracked text blob is LF — an error since the 1.7.0 renormalisation (EOL_LF_MODE)
     'skills-shape', // every .claude/skills/*/SKILL.md names its directory, has a description, and its referenced files exist
     'internal-links', // every relative Markdown link resolves on disk
     'anchor-parity', // every `#fragment` a Markdown link (or a governance reference) targets is a heading anchor of its target
@@ -1101,8 +1101,8 @@ async function main(): Promise<number> {
         console.log(`             source of truth: ${MANIFEST_REL} (verified ${verifiedOn ?? '?'})`);
         return 0;
     }
-    // On failure, list the errors only: the warnings (one `eol-lf` line per CRLF blob until the
-    // renormalisation commit) would bury them. They stay in --json and in the summary count.
+    // On failure, list the errors only: warnings (a scoped rule over budget, npm drift under
+    // --online) would bury them. They stay in --json and in the summary count.
     const byFile = new Map<string, Problem[]>();
     for (const p of errors) {
         if (!byFile.has(p.file)) byFile.set(p.file, []);
