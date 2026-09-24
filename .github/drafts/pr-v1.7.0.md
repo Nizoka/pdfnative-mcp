@@ -13,7 +13,7 @@ For an agent calling the tools, every new input is opt-in and described where it
 
 For the repository, this release adopts the engineering standard of pdfnative 1.8.0 and pdfnative-cli 1.5.0: one quality gate (`scripts/gate.ts`, fast / ci / publish profiles, the built server driven over stdio with stdout purity enforced), nine hardened workflows with blocking veraPDF, SBOM and provenance attestation and Trusted Publishing, a 96-sample byte baseline, a 41-file conformance corpus checked by veraPDF and by the in-process PDF/X validator, an engine-surface traceability matrix (85 engine changelog bullets → 34 tested, 51 waived in writing), a seeded fuzz suite, docs-as-code (`docs/assets/ecosystem.json` + `npm run verify:docs`, 24 rules), a committed agent layer (settings, fail-closed guard hook on Bash and PowerShell, generated rules, release-audit skill) and `scripts/release-prepare.ts`. ROADMAP items delivered: engine #74 (AcroForm font under PDF/A) and #75 (`toc` height in `inspect_layout`) closed upstream and adopted; veraPDF blocking; reproducible output; CMYK / PDF/X-4; the 27-script surface.
 
-Counts (`docs/assets/ecosystem.json`): 28 tools, 7 prompts (6 → 7), 47 error codes (45 → 47), 12 operator variables (10 → 12); examples 32 → 43; samples in the baseline 0 → 96 (first baseline); conformance corpus 26 → 41 files; tests 937 → 1630 across 96 files.
+Counts (`docs/assets/ecosystem.json`): 28 tools, 7 prompts (6 → 7), 47 error codes (45 → 47), 12 operator variables (10 → 12); examples 32 → 43; samples in the baseline 0 → 96 (first baseline); conformance corpus 26 → 41 files; tests 937 → 1631 across 96 files.
 
 ## What changed
 
@@ -60,9 +60,9 @@ What actually ran on the release branch (Windows 11, Node v22.17.0, veraPDF 1.30
 | Command | Result |
 |---|---|
 | `npx tsx scripts/gate.ts --publish --require-all` | `gate: 15 passed, 0 skipped in 557.2 s` (final run, after the three-OS CI change and the LF renormalisation; the earlier full runs took 522.5 s, 437.6 s and 453.2 s) |
-| `npm run test:coverage` — tests | 1615 passed, 13 expected fail (pinned upstream limits), 2 skipped = 1630 across 96 files |
+| `npm run test:coverage` — tests | 1616 passed, 13 expected fail (pinned upstream limits), 2 skipped = 1631 across 96 files |
 | `npm run test:coverage` — coverage | 93.53 % statements / 86.08 % branches / 98.88 % functions / 95.45 % lines (thresholds 89 / 82 / 94 / 91) |
-| `npm run build && npm run test:generate && npm run verify:samples` | `96 tracked samples match the baseline (94 byte-exact, 2 semantic)` |
+| `npm run build && npm run test:generate && npm run verify:samples` | `96 tracked samples match the baseline (93 byte-exact, 3 semantic)` |
 | `npm run corpus:pdfa && npm run validate:pdfa` | `27 PASS, 6 XFAIL, 0 FAIL, 0 XPASS, 0 INFRA, 8 SKIP (of 33 validated)` — veraPDF 1.30.2 |
 | `npm run validate:pdfx` | `4 PASS, 2 XFAIL, 0 FAIL, 0 XPASS (of 6 validated)` |
 | `npm run verify:docs` | `24 rules passed across 33 files.` — no warning: the renormalisation commit rewrote the 88 CRLF blobs and `eol-lf` is an error from now on |
@@ -84,7 +84,7 @@ Independent audit: `/release-audit release-notes/v1.7.0.md v1.6.0` — **GO** (l
 
 - Default responses of existing tools: byte-identical, with one server-side correction — a 0–1 RGB triple on `watermark.color` and the `annotate_pdf` colours now renders the colour it names (the previous output was wrong).
 - Bytes inherited from the engine (each a correction, listed in `release-notes/v1.7.0.md` → Upgrade): documents embedding a TrueType subset (hinting tables kept, `checkSumAdjustment` computed), documents drawing `print.marks` (marks stop 0.5 pt short of the trim line), shaped text in every script with mark positioning, dates written in UTC, `{date}` following `creationDate`, `/ActualText` returned by `extract_text`, hand-made ICC stubs rejected (`PRINT_ERROR`). Documents on base-14 fonts without those features are byte-identical.
-- `tests/_fixtures/samples.sha256.json`: first baseline — 96 entries anchored at 1.7.0 (`since: "1.7.0"`), the forced output of `chainSince` when no previous manifest exists and the convention pdfnative-cli followed for its own first baseline (91/91 at 1.5.0); provenance note in the manifest; declared in the release note. No earlier baseline existed to rebaseline from.
+- `tests/_fixtures/samples.sha256.json`: first baseline — 96 entries anchored at 1.7.0 (`since: "1.7.0"`; 93 by bytes, 3 semantic — encrypted, signed, and the host-reporting `draft_governance_issue` result, re-anchored after the first three-OS CI run showed it moving), the forced output of `chainSince` when no previous manifest exists and the convention pdfnative-cli followed for its own first baseline (91/91 at 1.5.0); provenance note in the manifest; declared in the release note. No earlier baseline existed to rebaseline from.
 - Every item above is declared in the Upgrade section of `release-notes/v1.7.0.md`.
 
 ## Out of scope (tracked in ROADMAP.md)

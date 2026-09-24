@@ -71,6 +71,17 @@ export const SIGNED_SAMPLES: readonly string[] = ['corpus/signed-pdfa2b-pades.pd
  */
 export const TIMESTAMPED_SAMPLES: readonly string[] = [];
 
+/**
+ * Samples whose content reports the host by design. `draft_governance_issue`
+ * writes the Node version and the operating system into the draft's
+ * Environment section (that is what an issue draft is for), so its bytes
+ * differ between the maintainer's machine and each CI runner — the first run
+ * on three operating systems showed exactly this one sample moving. The
+ * projection replaces those two values with placeholders and hashes
+ * everything else, so a wording change in the draft is still a regression.
+ */
+export const HOST_DEPENDENT_SAMPLES: readonly string[] = ['examples/draft-governance-issue/01-draft_governance_issue.json'];
+
 export type FingerprintMode = 'bytes' | 'semantic';
 
 /** What fingerprinting a sample yields, independent of any baseline. */
@@ -216,12 +227,45 @@ export function semanticProjection(bytes: Uint8Array, password: string | undefin
     });
 }
 
-/** Every sample fingerprinted in `semantic` mode (encrypted + signed). */
-export function semanticSamplePaths(): string[] {
-    return [...Object.keys(ENCRYPTED_SAMPLES), ...SIGNED_SAMPLES, ...TIMESTAMPED_SAMPLES].sort();
+/** The placeholder a host-dependent value is projected to. */
+const HOST_PLACEHOLDER = '<host>';
+
+/**
+ * A canonical projection of a read tool's JSON result that reports the host:
+ * the `environment.node` / `environment.os` values and the `- Node:` / `- OS:`
+ * lines of the draft Markdown become placeholders; everything else — the
+ * title, the compliance report, every other sentence of the draft — is hashed
+ * as is. Refuses a sample with no `environment`: a path listed in
+ * {@link HOST_DEPENDENT_SAMPLES} that stops reporting the host must fail loudly.
+ */
+export function hostProjection(bytes: Uint8Array): string {
+    const parsed = JSON.parse(Buffer.from(bytes).toString('utf8')) as Record<string, unknown>;
+    // draft_governance_issue reports the host under compliance.environment (its output schema).
+    const compliance = parsed['compliance'];
+    const environment = typeof compliance === 'object' && compliance !== null ? (compliance as Record<string, unknown>)['environment'] : undefined;
+    if (typeof environment !== 'object' || environment === null || !('node' in environment) || !('os' in environment)) {
+        throw new Error('listed in HOST_DEPENDENT_SAMPLES but the result carries no compliance.environment.node / .os');
+    }
+    const projected: Record<string, unknown> = {
+        ...parsed,
+        compliance: { ...(compliance as Record<string, unknown>), environment: { ...(environment as Record<string, unknown>), node: HOST_PLACEHOLDER, os: HOST_PLACEHOLDER } },
+    };
+    const markdown = parsed['draftMarkdown'];
+    if (typeof markdown === 'string') {
+        projected['draftMarkdown'] = markdown
+            .replace(/^- Node: .*$/m, `- Node: ${HOST_PLACEHOLDER}`)
+            .replace(/^- OS: .*$/m, `- OS: ${HOST_PLACEHOLDER}`);
+    }
+    if (typeof parsed['sizeBytes'] === 'number') projected['sizeBytes'] = HOST_PLACEHOLDER; // follows the two lines above
+    return canonicalJson(projected);
 }
 
-/** Fingerprint one sample. `rel` selects the mode via {@link ENCRYPTED_SAMPLES} / {@link SIGNED_SAMPLES}. */
+/** Every sample fingerprinted in `semantic` mode (encrypted, signed, timestamped, host-dependent). */
+export function semanticSamplePaths(): string[] {
+    return [...Object.keys(ENCRYPTED_SAMPLES), ...SIGNED_SAMPLES, ...TIMESTAMPED_SAMPLES, ...HOST_DEPENDENT_SAMPLES].sort();
+}
+
+/** Fingerprint one sample. `rel` selects the mode through the explicit tables above. */
 export function fingerprint(absPath: string, rel: string): Fingerprint {
     const bytes = readFileSync(absPath);
     const password = ENCRYPTED_SAMPLES[rel];
@@ -231,13 +275,16 @@ export function fingerprint(absPath: string, rel: string): Fingerprint {
     if (SIGNED_SAMPLES.includes(rel) || TIMESTAMPED_SAMPLES.includes(rel)) {
         return { mode: 'semantic', hash: sha256Hex(semanticProjection(bytes, undefined)), size: bytes.length };
     }
+    if (HOST_DEPENDENT_SAMPLES.includes(rel)) {
+        return { mode: 'semantic', hash: sha256Hex(hostProjection(bytes)), size: bytes.length };
+    }
     return { mode: 'bytes', hash: sha256Hex(bytes), size: bytes.length };
 }
 
 export interface FingerprintRun {
     readonly entries: Record<string, Fingerprint>;
     readonly unreadable: { readonly path: string; readonly error: string }[];
-    /** Paths listed in {@link ENCRYPTED_SAMPLES} or {@link SIGNED_SAMPLES} that were not generated. */
+    /** Paths listed in one of the semantic tables (encrypted, signed, timestamped, host-dependent) that were not generated. */
     readonly missingSemantic: string[];
 }
 

@@ -37,7 +37,7 @@ npm run build && npm run test:generate && npx tsx scripts/verify-samples.ts   # 
 | Module | Used by | What it holds |
 |---|---|---|
 | `lib/example-runner.ts` | generate-samples, tests | Which `examples/*.json` sequences are hermetic, how their `<placeholder>` inputs resolve (an earlier step, a generated document, the synthetic CMYK profile), and the driver over `callToolDirect()` |
-| `lib/sample-fingerprint.ts` | verify-samples, `tests/samples-regression.test.ts` | Bytes / semantic fingerprints, the explicit `ENCRYPTED_SAMPLES` / `SIGNED_SAMPLES` / `TIMESTAMPED_SAMPLES` tables, the baseline chain (`chainSince`), identical groups |
+| `lib/sample-fingerprint.ts` | verify-samples, `tests/samples-regression.test.ts` | Bytes / semantic fingerprints, the explicit `ENCRYPTED_SAMPLES` / `SIGNED_SAMPLES` / `TIMESTAMPED_SAMPLES` / `HOST_DEPENDENT_SAMPLES` tables, the baseline chain (`chainSince`), identical groups |
 | `lib/pdfa-corpus.ts` | generate-pdfa-corpus, validators, verify-docs | The conformance corpus table (claims, negative canaries) |
 | `lib/pdfx.ts`, `lib/verapdf.ts` | validate-pdfx, validate-pdfa, gate (skip condition) | PDF/X verdict plumbing; veraPDF location, invocation and report parsing |
 | `lib/corpus-cert.ts`, `lib/synthetic-icc.ts` | generate-pdfa-corpus, generate-samples, tests | The throw-away signing identity of the corpus; the synthetic RGB / Gray / CMYK ICC profiles (byte-identical to the sibling repositories' fixtures) |

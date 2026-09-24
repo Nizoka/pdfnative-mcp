@@ -27,7 +27,7 @@ paths:
 ## Samples and the byte baseline
 - `npm run build && npm run test:generate` drives the BUILT server and writes `test-output/samples/`; `npm run verify:samples` compares it with `tests/_fixtures/samples.sha256.json`. The baseline is a chain: an unchanged entry keeps its `since`.
 - An intended output change is rebaselined with `npx tsx scripts/verify-samples.ts --update`, explained in the manifest's `provenance` note and declared in the release notes. Never `--update` to silence a surprise.
-- A sample that cannot repeat its bytes (CSPRNG, per-run key, TSA clock) is listed explicitly in `ENCRYPTED_SAMPLES` / `SIGNED_SAMPLES` / `TIMESTAMPED_SAMPLES` (`scripts/lib/sample-fingerprint.ts`) — prove it with a double run first.
+- A sample that cannot repeat its bytes (CSPRNG, per-run key, TSA clock) is listed explicitly in `ENCRYPTED_SAMPLES` / `SIGNED_SAMPLES` / `TIMESTAMPED_SAMPLES` / `HOST_DEPENDENT_SAMPLES` (a result that reports the host, such as `draft_governance_issue`; `scripts/lib/sample-fingerprint.ts`) — prove it with a double run first.
 
 ## Conformance corpus
 - `npm run corpus:pdfa` writes `test-output/pdfa/` from `scripts/lib/pdfa-corpus.ts`; `npm run validate:pdfx` (in-process `validatePdfX()`, never skips) and `npm run validate:pdfa` (veraPDF 1.30.2: set `VERAPDF_HOME`, and `JAVACMD` when Java is not on PATH). Exit codes 0 / 1 (conformance) / 2 (infrastructure).

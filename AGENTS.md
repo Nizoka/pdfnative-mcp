@@ -95,7 +95,7 @@ A tool succeeds with `content` + `structuredContent` (validating against its `ou
 
 ## Counts and versions
 
-28 tools, 7 prompts, 13 block kinds, 47 error codes, 27 Unicode scripts, 43 examples, 1630 tests, 96 samples in the baseline, 41 corpus files.
+28 tools, 7 prompts, 13 block kinds, 47 error codes, 27 Unicode scripts, 43 examples, 1631 tests, 96 samples in the baseline, 41 corpus files.
 `docs/assets/ecosystem.json` is the source of every count and version quoted in the docs; run `npm run verify:docs` after touching any of them.
 Coverage thresholds live once in `vitest.config.ts` and are enforced by the gate. Engine: pdfnative 1.8.0 (`^1.8.0`); Node ≥ 22.
 

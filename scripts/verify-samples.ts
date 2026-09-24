@@ -77,8 +77,9 @@ function saveBaseline(entries: Record<string, Fingerprint>, previous: Baseline |
             + '`npx tsx scripts/verify-samples.ts --update`, and say why in the release notes: a '
             + 'changed hash means existing output changed. Mode `bytes` is a SHA-256 of the file; '
             + 'mode `semantic` is a SHA-256 of a canonical projection of the document, used for '
-            + 'encrypted samples (CSPRNG file key and IVs) and signed samples (a per-revision '
-            + '/ID drawn at signing time), whose bytes can never repeat. '
+            + 'encrypted samples (CSPRNG file key and IVs), signed samples (a per-revision '
+            + '/ID drawn at signing time) and host-dependent results (draft_governance_issue '
+            + 'reports the Node version and the OS), whose bytes can never repeat on every host. '
             + 'Each entry\'s `since` names the release whose output the hash is: it is carried '
             + 'forward untouched while the sample is unchanged, and moves to the release doing '
             + 'the rebaseline when the hash changes, so the chain 1.7.0 -> 1.8.0 -> … stays '
@@ -116,7 +117,7 @@ function main(): number {
     if (update) {
         if (unreadable.length > 0 || missingSemantic.length > 0 || duplicates.length > 0) {
             for (const u of unreadable) console.error(`✗ ${u.path}: ${u.error}`);
-            for (const m of missingSemantic) console.error(`✗ ${m}: listed in ENCRYPTED_SAMPLES / SIGNED_SAMPLES but not generated`);
+            for (const m of missingSemantic) console.error(`✗ ${m}: listed in ENCRYPTED_SAMPLES / SIGNED_SAMPLES / HOST_DEPENDENT_SAMPLES but not generated`);
             for (const g of duplicates) console.error(`✗ ${g.join(' == ')}: identical bytes (list the pair in IDENTICAL_SAMPLE_GROUPS if that is intended)`);
             console.error('\nRefusing to write a baseline while samples are unreadable, missing or unexpectedly identical.');
             return 1;
@@ -146,7 +147,7 @@ function main(): number {
         }, null, 2));
     } else {
         for (const u of unreadable) console.error(`✗ unreadable  ${u.path}: ${u.error}`);
-        for (const m of missingSemantic) console.error(`✗ missing     ${m} (listed in ENCRYPTED_SAMPLES / SIGNED_SAMPLES)`);
+        for (const m of missingSemantic) console.error(`✗ missing     ${m} (listed in ENCRYPTED_SAMPLES / SIGNED_SAMPLES / HOST_DEPENDENT_SAMPLES)`);
         for (const g of duplicates) console.error(`✗ identical   ${g.join(' == ')} (a pair meant to differ emits the same bytes)`);
         for (const p of changed) {
             const b = baseline.entries[p];

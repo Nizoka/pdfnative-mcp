@@ -17,8 +17,8 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
-    BASELINE_PATH, ENCRYPTED_SAMPLES, IDENTICAL_SAMPLE_GROUPS, OUTPUT_DIR, REPO_ROOT, SIGNED_SAMPLES, TIMESTAMPED_SAMPLES,
-    canonicalJson, chainSince, compareToBaseline, fingerprintAll, loadBaseline, relPath, semanticProjection, semanticSamplePaths,
+    BASELINE_PATH, ENCRYPTED_SAMPLES, HOST_DEPENDENT_SAMPLES, IDENTICAL_SAMPLE_GROUPS, OUTPUT_DIR, REPO_ROOT, SIGNED_SAMPLES, TIMESTAMPED_SAMPLES,
+    canonicalJson, chainSince, compareToBaseline, fingerprintAll, hostProjection, loadBaseline, relPath, semanticProjection, semanticSamplePaths,
     sha256Hex, unexpectedDuplicates, walkSamples,
     type Baseline, type Fingerprint,
 } from '../scripts/lib/sample-fingerprint.js';
@@ -60,13 +60,29 @@ describe.skipIf(!haveCorpus)('sample regression baseline', () => {
         }
     });
 
-    it('uses semantic mode for exactly the encrypted, signed and timestamped samples', () => {
+    it('uses semantic mode for exactly the encrypted, signed, timestamped and host-dependent samples', () => {
         const { entries } = fingerprintAll();
         const semantic = Object.entries(entries)
             .filter(([, e]) => e.mode === 'semantic')
             .map(([p]) => p)
             .sort();
         expect(semantic).toEqual(semanticSamplePaths());
+    });
+
+    it('a host-dependent result projects the same on every host and still catches a wording change', () => {
+        const rel = HOST_DEPENDENT_SAMPLES[0]!;
+        const bytes = readFileSync(join(OUTPUT_DIR, rel));
+        const here = hostProjection(bytes);
+        expect(here).not.toContain(process.version);
+        // The same draft written by another host: a different Node and OS, nothing else.
+        const text = bytes.toString('utf8');
+        expect(text).toContain(process.version);
+        const elsewhere = text.split(process.version).join('v99.0.0').replace(/(- OS: |"os":")[^"\\\n]*/g, '$1linux 6.99.0-elsewhere');
+        expect(hostProjection(Buffer.from(elsewhere, 'utf8'))).toBe(here);
+        // A wording change anywhere else is a regression.
+        expect(hostProjection(Buffer.from(text.replace('## Environment', '## Context'), 'utf8'))).not.toBe(here);
+        // A sample listed as host-dependent that no longer reports the host is refused.
+        expect(() => hostProjection(Buffer.from('{"title":"x"}', 'utf8'))).toThrow(/HOST_DEPENDENT_SAMPLES/);
     });
 
     it('a signed sample projects its signature inventory, so a lost signature is a regression', () => {

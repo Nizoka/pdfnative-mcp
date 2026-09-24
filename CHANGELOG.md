@@ -39,7 +39,7 @@ catalogue proves nothing was removed or narrowed.
 #### Reproducible output
 
 - **feat(repro):** `PDFNATIVE_MCP_CREATION_DATE` (ISO 8601 with a time zone) and `SOURCE_DATE_EPOCH` (integer seconds) pin the creation instant of the whole process. Precedence: per-call `creationDate` → `PDFNATIVE_MCP_CREATION_DATE` → `SOURCE_DATE_EPOCH` → the wall clock. Read once at boot; an invalid value refuses to start; the source of the pin is logged on stderr; the response-cache namespace carries the pin. Not covered, by design: `signingTime`, `modDate`, the second `/ID` of incremental writers, RFC 3161 tokens and revocation data, encryption (fresh key, salts, IVs), ECDSA signatures.
-- **test(samples):** `npm run test:generate` drives the **built** server under `TZ=UTC` with every operator variable scrubbed and writes 96 samples; `npm run verify:samples` holds them to `tests/_fixtures/samples.sha256.json` — 94 by bytes, 2 (one encrypted, one signed) by a semantic projection, each listed explicitly with its reason. The baseline is a chain: an unchanged entry keeps the version it was anchored at. This is the first baseline: every entry is anchored at `since: "1.7.0"` — 1.6.0 had no determinism plumbing, so there is no earlier reference to chain from; the manifest's `provenance` records the two-time-zone verification.
+- **test(samples):** `npm run test:generate` drives the **built** server under `TZ=UTC` with every operator variable scrubbed and writes 96 samples; `npm run verify:samples` holds them to `tests/_fixtures/samples.sha256.json` — 93 by bytes, 3 (one encrypted, one signed, and the `draft_governance_issue` result, which reports the Node version and the OS of the host) by a semantic projection, each listed explicitly with its reason. The baseline is a chain: an unchanged entry keeps the version it was anchored at. This is the first baseline: every entry is anchored at `since: "1.7.0"` — 1.6.0 had no determinism plumbing, so there is no earlier reference to chain from; the manifest's `provenance` records the two-time-zone verification.
 
 #### Repository hardening (aligned with pdfnative 1.8.0 and pdfnative-cli 1.5.0)
 
@@ -60,7 +60,7 @@ catalogue proves nothing was removed or narrowed.
 - **api:** `TOOL_API_VERSION` `1.6.0` → `1.7.0` (new optional inputs, two new error codes). The response-cache namespace changes with it, so no 1.6.0 cache entry is served.
 - **registry:** `server.json` follows the `2025-12-11` registry schema and declares all twelve operator variables, `SOURCE_DATE_EPOCH` included.
 - **tooling:** the three `.mjs` maintenance scripts are TypeScript run by `tsx` (`verify-issue.mjs` stays `.mjs`: it is documented as a standalone command). `.npmrc` sets `ignore-scripts=true`, so the build runs through the gate or `npm run build`, never through an install hook.
-- **test:** 1630 tests across 96 files (1.6.0: 937). Coverage measured at 93.53 % statements / 86.08 % branches / 98.88 % functions / 95.45 % lines; the enforced thresholds rise to 89 / 82 / 94 / 91 (branches +2, functions +4).
+- **test:** 1631 tests across 96 files (1.6.0: 937). Coverage measured at 93.53 % statements / 86.08 % branches / 98.88 % functions / 95.45 % lines; the enforced thresholds rise to 89 / 82 / 94 / 91 (branches +2, functions +4).
 - **catalogue size:** `tools/list` grows from about 246 kB to about 306 kB (the typography fragment and the widened colour schemas are inlined in every tool that carries them); `scripts/tool-shape.ts --check` now fails above a 320 KiB catalogue or 8 KiB instructions budget, and holds `declared.toolsListBytes` of the ecosystem manifest to the measurement. Hosts that cache `tools/list` are unaffected; the descriptions of the new fragments were kept terse and the long form lives in the `typography` prompt and the guides.
 
 ### Fixed
@@ -81,6 +81,8 @@ Closed upstream, and therefore closed here (both were listed as blocked in the 1
 ### Upgrade notes
 
 No breaking changes. Drop-in replacement for v1.6.0.
+
+The repository's own sample baseline (`tests/_fixtures/samples.sha256.json`, created in this release) was re-anchored once before publication: the `draft_governance_issue` result reports the Node version and the operating system of the host in its Environment section, so its bytes differ between the maintainer's machine and each CI runner — the first run of the gate on Linux, Windows and macOS showed exactly that one entry moving. It is now fingerprinted semantically (`HOST_DEPENDENT_SAMPLES` in `scripts/lib/sample-fingerprint.ts`: the two host values are projected to a placeholder, everything else is hashed); the other 95 entries are unchanged.
 
 #### Migrating from 1.6.0
 
