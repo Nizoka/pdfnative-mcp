@@ -40,9 +40,13 @@ import {
 } from '../doc-features.js';
 import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
 import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, assertLayoutPdfACompatible, toLayoutOptions } from '../layout.js';
+import { PDFX_INPUT_PROPERTIES, PdfXInputShape, assertPdfXCompatible, toPdfXLayout } from '../pdfx.js';
 import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 export const GENERATE_BASIC_PDF_NAME = 'generate_basic_pdf';
+
+/** Paragraph alignment — JSON Schema and Zod share the list ('justify' since pdfnative 1.8). */
+const PARAGRAPH_ALIGN = ['left', 'right', 'center', 'justify'] as const;
 
 export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
     type: 'object',
@@ -69,6 +73,7 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
                             type: { const: 'heading' },
                             text: { type: 'string', minLength: 1, maxLength: 500 },
                             level: { type: 'integer', enum: [1, 2, 3] },
+                            keepWithNext: { type: 'boolean', description: 'Keep this heading on the same page as the block that follows. Overrides typography.keepHeadingsWithNext for this block, either way.' },
                         },
                     },
                     {
@@ -83,6 +88,9 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
                                 maxLength: 50000,
                                 description: "Paragraph text. Embedded newlines ('\\n') are automatically split into separate paragraphs — no need to pre-split; never emit a literal newline expecting a soft line break.",
                             },
+                            align: { type: 'string', enum: [...PARAGRAPH_ALIGN], description: "Text alignment (default left). 'justify' spans every line but the last across the measure; pair it with typography.opticalMargins." },
+                            keepWithNext: { type: 'boolean', description: 'Keep this paragraph on the same page as the block that follows (a lead-in line before a table or figure). Default false.' },
+                            splittable: { type: 'boolean', description: 'Allow / forbid this paragraph breaking across pages, overriding typography.splitParagraphs for this block.' },
                         },
                     },
                     {
@@ -147,6 +155,7 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
         viewerPreferences: VIEWER_PREFERENCES_INPUT_SCHEMA,
         ...PRINT_INPUT_PROPERTIES,
         ...LAYOUT_INPUT_PROPERTIES,
+        ...PDFX_INPUT_PROPERTIES,
         ...DIAGNOSTIC_INPUT_PROPERTIES,
         outputMode: {
             type: 'string',
@@ -182,10 +191,14 @@ const InputSchema = z.strictObject({
                     type: z.literal('heading'),
                     text: z.string().min(1).max(500),
                     level: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+                    keepWithNext: z.boolean().optional(),
                 }),
                 z.strictObject({
                     type: z.literal('paragraph'),
                     text: z.string().min(1).max(50000),
+                    align: z.enum(PARAGRAPH_ALIGN).optional(),
+                    keepWithNext: z.boolean().optional(),
+                    splittable: z.boolean().optional(),
                 }),
                 z.strictObject({
                     type: z.literal('list'),
@@ -212,6 +225,7 @@ const InputSchema = z.strictObject({
     viewerPreferences: ViewerPreferencesSchema.optional(),
     ...PrintInputShape,
     ...LayoutInputShape,
+    ...PdfXInputShape,
     ...DiagnosticInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
@@ -232,9 +246,20 @@ export function toDocumentBlocks(blocks: DocumentBlocksInput): DocumentBlock[] {
     const docBlocks: DocumentBlock[] = blocks.flatMap((block, index): DocumentBlock[] => {
         switch (block.type) {
             case 'heading':
-                return [{ type: 'heading', text: block.text, level: block.level }];
-            case 'paragraph':
-                return splitParagraphSegments(block.text).map((text) => ({ type: 'paragraph', text }));
+                return [{ type: 'heading', text: block.text, level: block.level, ...(block.keepWithNext !== undefined ? { keepWithNext: block.keepWithNext } : {}) }];
+            case 'paragraph': {
+                // One input paragraph may become several engine paragraphs (split on newlines): alignment and
+                // splittability describe each of them, keepWithNext only the last — it is the one that must
+                // stay with whatever follows the input block.
+                const segments = splitParagraphSegments(block.text);
+                return segments.map((text, i) => ({
+                    type: 'paragraph' as const,
+                    text,
+                    ...(block.align !== undefined ? { align: block.align } : {}),
+                    ...(block.splittable !== undefined ? { splittable: block.splittable } : {}),
+                    ...(block.keepWithNext !== undefined && i === segments.length - 1 ? { keepWithNext: block.keepWithNext } : {}),
+                }));
+            }
             case 'list':
                 return [{ type: 'list', items: toListItems(block.items), style: block.style }];
             case 'pageBreak':
@@ -266,11 +291,12 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
     }
     const {
         title, blocks, footerText, pdfA, watermark, normalize, outline, pageLabels, viewerPreferences,
-        print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt, strict, includeDiagnostics, embedFonts, outputMode, outputPath,
+        print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt, pdfx, strict, includeDiagnostics, embedFonts, outputMode, outputPath,
     } = parsed.data;
     assertWatermarkPdfACompatible(watermark, pdfA);
     assertPrintPdfACompatible(print, pdfA);
     assertLayoutPdfACompatible({ encrypt }, pdfA);
+    assertPdfXCompatible({ pdfx, pdfA, encrypt, outputIntent, metadata, print });
 
     const docBlocks = toDocumentBlocks(blocks);
     const docMetadata = toDocumentMetadata(metadata);
@@ -295,7 +321,8 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
                 ...(normalize !== undefined ? { normalize } : {}),
                 ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
-                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt }),
+                ...toPdfXLayout(pdfx),
                 ...collector.layout,
             },
         );

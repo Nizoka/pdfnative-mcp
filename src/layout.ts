@@ -9,12 +9,13 @@
  * default, so default outputs stay byte-identical (pdfnative applies its A4 /
  * default-margin / uncompressed defaults only when the keys are absent).
  *
- * Engine facts (pdfnative 1.7.0):
+ * Engine facts (pdfnative 1.8.0):
  *   - `PAGE_SIZES` presets live in `src/core/pdf-layout.ts`; A4 is the default.
  *   - `footerTemplate` *replaces* the default footer (`{ left: footerText,
  *     right: '{page}/{pages}' }`) entirely — `footerText` is then ignored.
- *   - `{date}` is the engine's wall-clock date (YYYY-MM-DD, host TZ), not
- *     `creationDate`; it is therefore not reproducible across days.
+ *   - `{date}` is the UTC calendar date (YYYY-MM-DD) of the document instant:
+ *     `creationDate` when pinned (or the operator pin), the wall clock
+ *     otherwise — so a templated footer is reproducible once the date is pinned.
  *   - `compress` needs `initNodeCompression()` (done once at server boot via
  *     `ensureCompressionReady()`); XMP streams stay uncompressed under PDF/A.
  *   - `debug` is honoured by the document backend only; the overlay is plain
@@ -22,6 +23,8 @@
  */
 import type { PageTemplate, PdfLayoutOptions } from 'pdfnative';
 import { z } from 'zod';
+import { colorSchema, colorZod, toEngineColor } from './color.js';
+import { TYPOGRAPHY_INPUT_SCHEMA, TypographySchema, toTypographyOptions, type TypographyInput } from './typography.js';
 
 import { ENCRYPT_INPUT_SCHEMA, EncryptSchema, toEncryptionOptions } from './encryption.js';
 import { ToolError } from './errors.js';
@@ -44,7 +47,7 @@ const MARGIN_SCHEMA = { type: 'number', minimum: 0, maximum: 200 } as const;
 const TEMPLATE_TEXT_SCHEMA = {
     type: 'string',
     maxLength: 200,
-    description: 'Placeholders: {page} {pages} {title} {date} (build-day wall clock, not creationDate).',
+    description: 'Placeholders: {page} {pages} {title} {date} (UTC date of creationDate when pinned, else of the build).',
 } as const;
 
 const TEMPLATE_SCHEMA = (zone: 'top' | 'bottom') =>
@@ -60,7 +63,7 @@ const TEMPLATE_SCHEMA = (zone: 'top' | 'bottom') =>
             center: TEMPLATE_TEXT_SCHEMA,
             right: TEMPLATE_TEXT_SCHEMA,
             fontSize: { type: 'number', minimum: 6, maximum: 14, description: 'Default 7.' },
-            color: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$', description: 'Hex colour.' },
+            color: colorSchema({ type: 'string', pattern: '^#[0-9a-fA-F]{6}$' }, 'Hex colour (#RRGGBB).'),
         },
     }) as const;
 
@@ -85,6 +88,7 @@ export const LAYOUT_INPUT_PROPERTIES = {
     },
     headerTemplate: TEMPLATE_SCHEMA('top'),
     footerTemplate: TEMPLATE_SCHEMA('bottom'),
+    typography: TYPOGRAPHY_INPUT_SCHEMA,
     compress: {
         type: 'boolean',
         description: 'FlateDecode the streams (smaller file, different bytes; PDF/A unaffected, XMP stays plain). Default false.',
@@ -104,7 +108,7 @@ const TemplateSchema = z.strictObject({
     center: z.string().max(200).optional(),
     right: z.string().max(200).optional(),
     fontSize: z.number().min(6).max(14).optional(),
-    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+    color: colorZod(z.string().regex(/^#[0-9a-fA-F]{6}$/)).optional(),
 });
 
 const MarginsSchema = z.strictObject({
@@ -120,6 +124,7 @@ export const LayoutInputShape = {
     margins: MarginsSchema.optional(),
     headerTemplate: TemplateSchema.optional(),
     footerTemplate: TemplateSchema.optional(),
+    typography: TypographySchema.optional(),
     compress: z.boolean().optional(),
     debug: z.boolean().optional(),
     encrypt: EncryptSchema.optional(),
@@ -133,6 +138,7 @@ export interface LayoutInput {
     margins?: MarginsInput;
     headerTemplate?: TemplateInput;
     footerTemplate?: TemplateInput;
+    typography?: TypographyInput;
     compress?: boolean;
     debug?: boolean;
     encrypt?: z.infer<typeof EncryptSchema>;
@@ -145,7 +151,7 @@ export function assertLayoutPdfACompatible(layout: Pick<LayoutInput, 'encrypt'>,
     }
 }
 
-type LayoutFragment = Pick<PdfLayoutOptions, 'pageWidth' | 'pageHeight' | 'margins' | 'headerTemplate' | 'footerTemplate' | 'compress' | 'debug' | 'encryption'>;
+type LayoutFragment = Pick<PdfLayoutOptions, 'pageWidth' | 'pageHeight' | 'margins' | 'headerTemplate' | 'footerTemplate' | 'typography' | 'compress' | 'debug' | 'encryption'>;
 
 function toTemplate(t: TemplateInput): PageTemplate {
     return {
@@ -153,7 +159,7 @@ function toTemplate(t: TemplateInput): PageTemplate {
         ...(t.center !== undefined ? { center: t.center } : {}),
         ...(t.right !== undefined ? { right: t.right } : {}),
         ...(t.fontSize !== undefined ? { fontSize: t.fontSize } : {}),
-        ...(t.color !== undefined ? { color: t.color } : {}),
+        ...(t.color !== undefined ? { color: toEngineColor(t.color) } : {}),
     };
 }
 
@@ -174,6 +180,8 @@ export function toLayoutOptions(input: LayoutInput): LayoutFragment {
     }
     if (input.headerTemplate !== undefined) out.headerTemplate = toTemplate(input.headerTemplate);
     if (input.footerTemplate !== undefined) out.footerTemplate = toTemplate(input.footerTemplate);
+    const typography = toTypographyOptions(input.typography);
+    if (typography !== undefined) out.typography = typography;
     if (input.compress !== undefined) out.compress = input.compress;
     if (input.debug !== undefined) out.debug = input.debug;
     if (input.encrypt !== undefined) out.encryption = toEncryptionOptions(input.encrypt);

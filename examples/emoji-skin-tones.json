@@ -1,0 +1,16 @@
+{
+  "description": "Colour-emoji skin-tone sequences (add_international_text v1.7.0 on pdfnative 1.8): the COLRv1 module bundles 150 modifier sequences — 20 gestures and 10 generic people × the five Fitzpatrick tones — so a base emoji followed by U+1F3FB…U+1F3FF draws as ONE toned glyph instead of two. Flags and ZWJ sequences (1.7) keep working. Combine `emoji` with a text script. Self-contained: runs end-to-end with no placeholders.",
+  "tool": "add_international_text",
+  "arguments": {
+    "title": "Skin tones",
+    "lang": [
+      "latin",
+      "emoji"
+    ],
+    "creationDate": "2026-01-01T00:00:00Z",
+    "paragraphs": [
+      "Wave: 👋🏻 👋🏼 👋🏽 👋🏾 👋🏿",
+      "Thumbs up: 👍🏻 👍🏽 👍🏿 — and a flag: 🇫🇷"
+    ]
+  }
+}

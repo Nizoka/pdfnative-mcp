@@ -1,6 +1,8 @@
 # Encryption guide (for AI agents)
 
-Since pdfnative-mcp v1.5.0 (pdfnative's Standard Security Handler) the server can **read**
+Applies to pdfnative-mcp v1.7.0 · pdfnative 1.8.0.
+
+Since pdfnative-mcp v1.5.0 (pdfnative's Standard Security Handler) the server can **read** <!-- verify-docs:allow version-token -->
 encrypted PDFs, **decrypt** them, and **re-encrypt** with AES. RC4 is decrypted on
 read but **never emitted** for new output.
 
@@ -57,7 +59,14 @@ Seven document tools take the same `encrypt` object (`ownerPassword` required, `
 
 - The AcroForm survives: `read_form_fields` / `fill_form` with `password` work on the result. This is the only way to obtain an encrypted fillable form (`encrypt_pdf` would drop it).
 - `encrypt` and `pdfA` are mutually exclusive → `VALIDATION_ERROR` (ISO 19005-1 §6.3.2).
-- Output is randomised (IV / salt) and never served from the response cache.
+- `encrypt` and `pdfx` are mutually exclusive too → `VALIDATION_ERROR` (v1.7.0): PDF/X
+  forbids encryption (ISO 15930-7). The refusal comes before any work is done.
+- Output is randomised and never served from the response cache: a fresh file key,
+  salts and IVs are drawn for every file, so **encrypted output is never
+  byte-reproducible** — not with a pinned `creationDate`, not with the operator pin
+  (`PDFNATIVE_MCP_CREATION_DATE` / `SOURCE_DATE_EPOCH`). Compare what the document says
+  (decrypt, then inspect or extract) rather than its bytes; see
+  [REPRODUCIBLE.md](REPRODUCIBLE.md).
 - Not offered on `prepare_signature_placeholder` (the placeholder must stay signable — encrypt last, if at all), `add_attachment` (PDF/A-3) or the read-only `inspect_layout`.
 
 ## Round-trip in one call
@@ -110,3 +119,5 @@ file-mode call is ever cached).
   with `VALIDATION_ERROR` (ISO 19005-1 §6.3.2); `encrypt_pdf` (like the page-tree
   `encrypt` option) rebuilds the document without the XMP packet, so any PDF/A claim on
   the source is dropped rather than carried into an encrypted file.
+- PDF/X forbids encryption as well: `encrypt` + `pdfx` is `VALIDATION_ERROR` on the six
+  tools that accept `pdfx`.

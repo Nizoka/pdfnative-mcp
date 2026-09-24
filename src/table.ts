@@ -7,6 +7,7 @@
 import type { CellBorders, TableBlock } from 'pdfnative';
 import { z } from 'zod';
 
+import { freeStringColorSchema, freeStringColorZod, toEngineColor } from './color.js';
 import { ToolError } from './errors.js';
 
 export const CELL_BORDER_STYLES = ['solid', 'dashed', 'dotted'] as const;
@@ -22,7 +23,7 @@ export const CELL_BORDERS_INPUT_SCHEMA = {
         bottom: { type: 'boolean' },
         left: { type: 'boolean' },
         all: { type: 'boolean', description: 'Draw all four edges (overrides the individual side flags).' },
-        color: { type: 'string', description: "Stroke colour as a PDF operator string ('0.8 0.8 0.8') or hex. Default light grey." },
+        color: freeStringColorSchema({ type: 'string' }, "Stroke colour as a PDF operator string ('0.8 0.8 0.8') or hex. Default light grey."),
         width: { type: 'number', minimum: 0, maximum: 10, description: 'Stroke width in points (default 0.5).' },
         style: { type: 'string', enum: [...CELL_BORDER_STYLES], description: "Stroke style (default 'solid')." },
     },
@@ -34,7 +35,7 @@ export const CellBordersSchema = z.strictObject({
     bottom: z.boolean().optional(),
     left: z.boolean().optional(),
     all: z.boolean().optional(),
-    color: z.string().min(1).max(64).optional(),
+    color: freeStringColorZod(z.string().min(1).max(64)).optional(),
     width: z.number().min(0).max(10).optional(),
     style: z.enum(CELL_BORDER_STYLES).optional(),
 });
@@ -46,7 +47,7 @@ export function toCellBorders(value: z.infer<typeof CellBordersSchema>): CellBor
         ...(value.bottom !== undefined ? { bottom: value.bottom } : {}),
         ...(value.left !== undefined ? { left: value.left } : {}),
         ...(value.all !== undefined ? { all: value.all } : {}),
-        ...(value.color !== undefined ? { color: value.color } : {}),
+        ...(value.color !== undefined ? { color: toEngineColor(value.color) } : {}),
         ...(value.width !== undefined ? { width: value.width } : {}),
         ...(value.style !== undefined ? { style: value.style } : {}),
     };

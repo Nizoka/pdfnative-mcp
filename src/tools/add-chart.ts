@@ -22,6 +22,7 @@ import { CHART_BODY_PROPERTIES, ChartBodySchema, toChartBlock } from '../chart.j
 import { PDF_A_ENUM, PDF_A_FIELD_DESCRIPTION, PdfASchema } from '../pdfa.js';
 import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
 import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, assertLayoutPdfACompatible, toLayoutOptions } from '../layout.js';
+import { PDFX_INPUT_PROPERTIES, PdfXInputShape, assertPdfXCompatible, toPdfXLayout } from '../pdfx.js';
 import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
 
 export const ADD_CHART_NAME = 'add_chart';
@@ -44,6 +45,7 @@ export const ADD_CHART_INPUT_SCHEMA = {
         },
         ...PRINT_INPUT_PROPERTIES,
         ...LAYOUT_INPUT_PROPERTIES,
+        ...PDFX_INPUT_PROPERTIES,
         ...DIAGNOSTIC_INPUT_PROPERTIES,
         outputMode: {
             type: 'string',
@@ -60,6 +62,7 @@ const InputSchema = ChartBodySchema.extend({
     pdfA: PdfASchema.optional(),
     ...PrintInputShape,
     ...LayoutInputShape,
+    ...PdfXInputShape,
     ...DiagnosticInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
@@ -70,9 +73,10 @@ export async function addChart(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { intro, pdfA, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt, strict, includeDiagnostics, embedFonts, outputMode, outputPath, ...chartBody } = parsed.data;
+    const { intro, pdfA, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt, pdfx, strict, includeDiagnostics, embedFonts, outputMode, outputPath, ...chartBody } = parsed.data;
     assertPrintPdfACompatible(print, pdfA);
     assertLayoutPdfACompatible({ encrypt }, pdfA);
+    assertPdfXCompatible({ pdfx, pdfA, encrypt, outputIntent, metadata, print });
 
     const blocks: DocumentBlock[] = [];
     if (intro !== undefined) blocks.push({ type: 'paragraph', text: intro });
@@ -94,7 +98,8 @@ export async function addChart(rawInput: unknown): Promise<OutputResult> {
             {
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
-                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug, encrypt }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt }),
+                ...toPdfXLayout(pdfx),
                 ...collector.layout,
             },
         );

@@ -7,6 +7,102 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-21
+
+A minor, backward-compatible release that aligns the server with
+[pdfnative v1.8.0](https://github.com/Nizoka/pdfnative) and brings the repository to the
+engineering standard of pdfnative 1.8.0 and pdfnative-cli 1.5.0. The catalogue stays at
+**28 tools**: fine typography on every document tool, CMYK colours on every colour input,
+PDF/X-4 output with a structural check in `validate_pdf`, 27 Unicode scripts, and output
+that is byte-identical on every host once an instant is pinned — by the caller or by the
+operator. One quality gate, blocking veraPDF, a 96-sample byte baseline, an engine-surface
+traceability matrix and verified documentation. Default tool outputs stay byte-identical
+except where pdfnative 1.8.0 corrected previously-wrong output (see
+`release-notes/v1.7.0.md` → Upgrade); the superset gate against the published 1.5.0
+catalogue proves nothing was removed or narrowed.
+
+### Added
+
+#### Engine 1.8.0 surface
+
+- **feat(typography):** `typography` (12 keys, all off by default) on the nine document tools — `generate_basic_pdf`, `add_table`, `add_chart`, `add_barcode`, `embed_image`, `add_form`, `add_international_text`, `add_attachment`, `prepare_signature_placeholder` — and on `inspect_layout`. Descriptions state what an agent cannot guess: `kerning`, `fontFeatures` and the `'fr'` narrow no-break space need `embedFonts: true` (base-14 Helvetica has no GPOS / GSUB and no U+202F — `'fr'` degrades to `'fr-CA'`); `metrics: 'exact'` acts on base-14 text only; `tnum` / `lnum` change nothing on the bundled Noto Sans (diagnostic `TYPOGRAPHY_FEATURE_INEFFECTIVE`); **no hyphenation dictionary is installed**, so `hyphenationLanguage` has no effect here — soft hyphens (U+00AD) are honoured.
+- **feat(blocks):** `paragraph.align` (`left` | `right` | `center` | `justify`), `paragraph.keepWithNext`, `paragraph.splittable`, `heading.keepWithNext` in `generate_basic_pdf` and `inspect_layout`.
+- **feat(color):** a shared colour module (`src/color.ts`). Every colour input keeps its 1.6.0 form and gains a CMYK operand string (`'0 0.6 1 0'`, components 0–1) and a CMYK percent tuple (`[0, 60, 100, 0]`, components 0–100); `annotate_pdf`, whose colour string was already free-form, gains the tuple.
+- **feat(print):** `pdfx: 'pdfx4'` on `generate_basic_pdf`, `add_table`, `add_chart`, `add_barcode`, `embed_image` and `add_international_text`. It writes a `%PDF-1.6` header, the PDF/X-4 XMP identification, a `/GTS_PDFX` output intent, a TrimBox on every page and `/Trapped`. It requires `outputIntent` with the printer's ICC profile (device class `prtr`; none is bundled) and needs `embedFonts: true` for a conformant file (`PDFX_NO_FONT_ENTRIES` otherwise; `strict: true` refuses); it is exclusive with `pdfA` and `encrypt`; `metadata.trapped` must be known. Five incoherent requests are refused as `VALIDATION_ERROR` before any work is done.
+- **feat(print):** `outputIntent` accepts CMYK and Gray profiles beside RGB; `print.marks` accepts the object form `{ colourBars: true | { tints, size } }` (`size` 4–72 pt) beside `true`.
+- **feat(validate):** `validate_pdf.standard`: `'pdf-ua-1'` (default, unchanged) or `'pdf-x-4'`. The PDF/X result adds `caveats[]`, which states that the check covers structural prerequisites and **is not a certified preflight**. The default response is byte-identical to 1.6.0.
+- **feat(inspect):** `inspect_pdf` reports `pdfX` when the XMP claims PDF/X (absent otherwise) and accepts `'pdfx'` in `check`.
+- **feat(i18n):** `add_international_text.lang` gains `lo` (Lao), `nod` (Tai Tham), `khb` (New Tai Lue), `tdd` (Tai Le), `cjm` (Cham) and the `latin` aliases `ha`, `yo`, `ig`, `sw`.
+- **feat(diagnostics):** the nine engine diagnostic codes are enumerated from the engine's own type, each with an executed trigger. `strict` now escalates by code: `PDFA_*` → `PDF_A_COMPLIANCE_VIOLATION`, `PDFX_*` → **`PDF_X_COMPLIANCE_VIOLATION`** (new), anything else → **`DIAGNOSTIC_ESCALATED`** (new). 1.6.0 lost the diagnostic code under `strict`.
+- **feat(prompts):** a seventh MCP prompt, `typography`; `print_ready`, `reproducible_output` and `pdfa_valid` rewritten for CMYK, PDF/X-4, colour bars and the UTC / operator pin.
+
+#### Reproducible output
+
+- **feat(repro):** `PDFNATIVE_MCP_CREATION_DATE` (ISO 8601 with a time zone) and `SOURCE_DATE_EPOCH` (integer seconds) pin the creation instant of the whole process. Precedence: per-call `creationDate` → `PDFNATIVE_MCP_CREATION_DATE` → `SOURCE_DATE_EPOCH` → the wall clock. Read once at boot; an invalid value refuses to start; the source of the pin is logged on stderr; the response-cache namespace carries the pin. Not covered, by design: `signingTime`, `modDate`, the second `/ID` of incremental writers, RFC 3161 tokens and revocation data, encryption (fresh key, salts, IVs), ECDSA signatures.
+- **test(samples):** `npm run test:generate` drives the **built** server under `TZ=UTC` with every operator variable scrubbed and writes 96 samples; `npm run verify:samples` holds them to `tests/_fixtures/samples.sha256.json` — 93 by bytes, 3 (one encrypted, one signed, and the `draft_governance_issue` result, which reports the Node version and the OS of the host) by a semantic projection, each listed explicitly with its reason. The baseline is a chain: an unchanged entry keeps the version it was anchored at. This is the first baseline: every entry is anchored at `since: "1.7.0"` — 1.6.0 had no determinism plumbing, so there is no earlier reference to chain from; the manifest's `provenance` records the two-time-zone verification.
+
+#### Repository hardening (aligned with pdfnative 1.8.0 and pdfnative-cli 1.5.0)
+
+- **feat(gate):** `scripts/gate.ts` — profiles `--fast`, `--ci` (default), `--publish`; `--require-all` turns a skip into a failure. New inline steps: `dist-probe` (no `console.log` in emitted JavaScript, only `src/` under `dist/`), `smoke` (the built server over stdio: handshake, tool count, version, **stdout purity**), `server-json` (offline validation against the vendored MCP registry schema, with a validator that fails on any keyword it does not implement).
+- **ci:** nine workflows — `ci` (Node 22 / 24 on Linux) and `os` (Windows and macOS on the pinned Node line) run the same gate, and all four are required checks with `sample-regression`, so the byte baseline is held on three operating systems; `publish` (protected environment, tag = version check, the publish gate with veraPDF, CycloneDX SBOM, build-provenance attestation, npm Trusted Publishing), `sample-regression`, `verapdf` (**now blocking**), `docs`, `codeql`, `scorecard`, `dependency-review`, `audit`. Every job: `harden-runner` first (the action does not support macOS, the one documented exemption), `persist-credentials: false`, `npm ci --ignore-scripts`, least-privilege `permissions`, a timeout; one commit SHA per action across the tree. `.github/rulesets/` holds the branch and tag rulesets to import.
+- **test(conformance):** the corpus grows from 26 to 41 files: PDF/A entries for CMYK and Gray output intents, typography, the new scripts and the PDF/A form that pdfnative 1.8.0 fixed; six PDF/X-4 files checked in-process by `npm run validate:pdfx` (never skips). veraPDF 1.30.2: 27 PASS, 6 expected failures (negative canaries), 0 unexpected.
+- **test(matrix):** `tests/_fixtures/engine-surface.json` ties each of the 85 bullets of the engine's 1.8.0 changelog to named tests and examples (34) or to a written waiver (51: library-only seams, tooling, documentation, behaviour tested upstream, upstream limits). The test fails when the `pdfnative` pin moves without the matrix.
+- **test(fuzz):** a seeded fuzz suite over the new surface; the only acceptable failure is a `ToolError` with a documented code.
+- **feat(docs-as-code):** `docs/assets/ecosystem.json` is the source of every count and version; `npm run verify:docs` (24 rules) holds the docs, the agent files, the changelog ladder, the rulesets and the workflows to it and to the source tree.
+- **feat(agents):** committed `.claude/settings.json` (no commit attribution, Read denied on generated bulk files, the human-in-the-loop commands denied for Bash and PowerShell), a fail-closed `PreToolUse` guard, `.claude/rules/` generated from `.github/instructions/`, a `release-audit` skill. `AGENTS.md` is now the 120-line repository rule file shared by every coding agent; the consumer contract moved, unchanged in structure, to `docs/AGENT_CONTRACT.md`.
+- **chore(repo):** the 88 tracked text files still committed with CRLF (or mixed) line endings were renormalised to LF in one dedicated commit — no content change, no sample or fixture affected — and `verify:docs` rule `eol-lf` now fails on any new CRLF blob (`EOL_LF_MODE = 'fail'`).
+- **feat(release):** `scripts/release-prepare.ts` applies the mechanical part of a version bump (it never commits, tags or publishes).
+- **docs:** eleven new executable examples (43 in total); new guides `docs/guides/TYPOGRAPHY.md` and `docs/guides/REPRODUCIBLE.md`.
+
+### Changed
+
+- **deps:** `pdfnative` `^1.7.0` → `^1.8.0`. Still exactly three runtime dependencies.
+- **api:** `TOOL_API_VERSION` `1.6.0` → `1.7.0` (new optional inputs, two new error codes). The response-cache namespace changes with it, so no 1.6.0 cache entry is served.
+- **registry:** `server.json` follows the `2025-12-11` registry schema and declares all twelve operator variables, `SOURCE_DATE_EPOCH` included.
+- **tooling:** the three `.mjs` maintenance scripts are TypeScript run by `tsx` (`verify-issue.mjs` stays `.mjs`: it is documented as a standalone command). `.npmrc` sets `ignore-scripts=true`, so the build runs through the gate or `npm run build`, never through an install hook.
+- **test:** 1631 tests across 96 files (1.6.0: 937). Coverage measured at 93.53 % statements / 86.08 % branches / 98.88 % functions / 95.45 % lines; the enforced thresholds rise to 89 / 82 / 94 / 91 (branches +2, functions +4).
+- **catalogue size:** `tools/list` grows from about 246 kB to about 306 kB (the typography fragment and the widened colour schemas are inlined in every tool that carries them); `scripts/tool-shape.ts --check` now fails above a 320 KiB catalogue or 8 KiB instructions budget, and holds `declared.toolsListBytes` of the ecosystem manifest to the measurement. Hosts that cache `tools/list` are unaffected; the descriptions of the new fragments were kept terse and the long form lives in the `typography` prompt and the guides.
+
+### Fixed
+
+- **fix(color):** an RGB triple documented as 0–1 (`watermark.color`, the `annotate_pdf` colours) was handed to the engine as-is, which reads a three-element tuple as 0–255 — `[1, 0, 0]` rendered almost black. The shared colour module now converts a 0–1 triple to an operand string. Bytes change only for inputs that rendered the wrong colour.
+- **fix(errors):** a damaged PDF could surface an uncoded failure (`inspect_pdf failed: parseDict…`, `extract_text failed: PDF has no /Root`). One net at the `tools/call` boundary now classifies any unexpected failure of a tool that takes PDF input as `PDF_PARSE_FAILED`. Found by the fuzz suite.
+- **fix(errors):** `mapBuildError` classified engine messages only when they arrived with a particular prefix; it now classifies on the bare message, driven by a registry of the engine's build errors (`tests/_fixtures/pdfnative-build-errors.json`). The PDF/X messages are tested before the output-intent pattern that would otherwise have captured them.
+- **fix(strict):** `strict` is no longer forwarded to the engine (whose emitter throws before the diagnostics handler runs, losing the code); the server escalates from its own sink.
+- **fix(docs):** the CHANGELOG compare-link ladder was missing its `[1.6.0]` rung.
+
+### Inherited from pdfnative 1.8.0
+
+Closed upstream, and therefore closed here (both were listed as blocked in the 1.6.0 ROADMAP):
+
+- **#74** — a PDF/A document with form fields embeds the AcroForm default-resources font; `add_form` / a `formField` block with `pdfA` and `embedFonts: true` now validates under veraPDF (corpus entry `form-pdfa2b.pdf`, formerly a negative canary; the variant without `embedFonts` remains one).
+- **#75** — `inspect_layout` and the build share one pagination planner, so a `toc` block reports its real height and the page count matches the built document.
+
+### Upgrade notes
+
+No breaking changes. Drop-in replacement for v1.6.0.
+
+The repository's own sample baseline (`tests/_fixtures/samples.sha256.json`, created in this release) was re-anchored once before publication: the `draft_governance_issue` result reports the Node version and the operating system of the host in its Environment section, so its bytes differ between the maintainer's machine and each CI runner — the first run of the gate on Linux, Windows and macOS showed exactly that one entry moving. It is now fingerprinted semantically (`HOST_DEPENDENT_SAMPLES` in `scripts/lib/sample-fingerprint.ts`: the two host values are projected to a placeholder, everything else is hashed); the other 95 entries are unchanged.
+
+#### Migrating from 1.6.0
+
+1. **Rebaseline once if you compare bytes.** pdfnative 1.8.0 changes the bytes of every document that embeds a TrueType subset (hinting tables kept, `head.checkSumAdjustment` computed), of every document drawing `print.marks` (marks stop 0.5 pt short of the trim line), and of shaped text in every script with mark positioning — in each case the previous output was wrong or incomplete. Documents on base-14 fonts without those features are byte-identical on a UTC host; elsewhere item 2 changes `/CreationDate`, the XMP dates and the trailer `/ID` of every document that pins an instant. The engine's own release note lists every case.
+2. **Dates are UTC.** `/CreationDate` and the XMP dates end in `+00'00'` / `+00:00` whatever the host zone. A consumer that parsed a local offset out of `/CreationDate` sees UTC; the instant is the same.
+3. **`{date}` follows the pinned instant.** A header or footer template using `{date}` on a call that sets `creationDate` now prints that date (it printed the wall-clock date). A call that pins nothing is unchanged.
+4. **Hand-made ICC stubs are rejected.** `outputIntent.iccProfileBase64` must carry the ICC `acsp` signature and a size field no larger than the buffer — real profiles do. The failure is `PRINT_ERROR` (a profile whose device class is not `prtr` under `pdfx` is `VALIDATION_ERROR`).
+5. **`extract_text` returns `/ActualText`.** Text extracted from a tagged PDF is what the writer declared for a marked-content span, not the glyphs inside it; for tagged pdfnative output this makes complex-script extraction exact.
+6. **Two new error codes.** `PDF_X_COMPLIANCE_VIOLATION` and `DIAGNOSTIC_ESCALATED` can only be returned by a call that sets `strict: true`. A client that matched `PDF_A_COMPLIANCE_VIOLATION` for *every* strict failure should match the three.
+7. **A 0–1 RGB triple renders the colour it names** (see *Fixed*).
+8. **Operators:** `PDFNATIVE_MCP_CREATION_DATE` / `SOURCE_DATE_EPOCH` are honoured from this release. A shell that already exports `SOURCE_DATE_EPOCH` (many build environments do) now pins every document's creation date — unset it for the server process if that is not wanted. An invalid value refuses to start.
+
+For maintainers of a fork: the three maintenance `.mjs` scripts are gone (`npx tsx scripts/<name>.ts`; `verify-issue.mjs` stays and `install-git-hooks.mjs` is new), `VERAPDF_REQUIRED=1` is replaced by `--require-all` on the gate, `npm install` no longer runs lifecycle scripts, and `AGENTS.md` §1–§6 now live in `docs/AGENT_CONTRACT.md`.
+
+### Deferred by design
+
+- **Custom fonts** (`PDFNATIVE_MCP_FONT_DIR`) and a **`link` annotation** in `annotate_pdf` are on the ROADMAP, not in this release: the first needs an operator-side font sandbox designed with the same care as the output sandbox, the second needs a `link` member in the engine's `MarkupAnnotation` union. <!-- verify-docs:allow env-var-parity -->
+- **Blocked upstream** (each pinned by an `it.fails` test that goes red the day the engine fixes it, and listed in ROADMAP.md): `ecdsaVerifyHash` is still not exported (`verify_pdf` keeps its local P-256 verifier); `extractText` swallows a decode failure under the inflate cap (a capped content stream yields empty text instead of an error); no helper composes `LtvData` from flat certificate / OCSP / CRL lists (`add_ltv` `mode: 'offline'` keeps its own composition); Tai Tham text under PDF/A-2**u** lacks a `ToUnicode` entry for one glyph (veraPDF 6.2.11.7.2 — use `pdfa2b` for `nod`, as the example and the corpus do); untagged extraction returns visual order for eleven scripts (tagged output round-trips exactly through `/ActualText`).
+- **`redact_pdf`**, per-tool HTTP page streaming, OCR and the opt-in telemetry hook are unchanged. <!-- verify-docs:allow tool-parity -->
+
 ## [1.6.0] - 2026-08-23
 
 A minor, backward-compatible release that aligns the server with
@@ -456,7 +552,9 @@ stability via the new per-tool `_meta.apiVersion` field. Built on top of
 - Strict JSON Schema + Zod validation at every tool boundary.
 - Vitest test suite with sandbox security checks.
 
-[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.6.0...v1.7.0
+[1.6.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.2.0...v1.3.0

@@ -1,0 +1,29 @@
+{
+  "description": "French micro-typography (pdfnative 1.8 via generate_basic_pdf v1.7.0): `punctuationSpacing: \"fr\"` sets a narrow no-break space (U+202F) before ; ! ? and a no-break space before ':' and inside « » — the narrow space needs an embedded font, hence `embedFonts: true` (on base-14 Helvetica the preset degrades to 'fr-CA'); `unitBinding` keeps '150 €' and '12 kg' together (ISO 80000-1) and `bindShortWords` never ends a line on a one-letter word. Only EXISTING plain spaces are converted: the text is written the way a French author types it. Self-contained: runs end-to-end with no placeholders. Use 'fr-CA' for Canadian French (colon and guillemets only), or pass explicit rules for any other convention.",
+  "tool": "generate_basic_pdf",
+  "arguments": {
+    "title": "Typographie française",
+    "embedFonts": true,
+    "creationDate": "2026-01-01T00:00:00Z",
+    "typography": {
+      "punctuationSpacing": "fr",
+      "unitBinding": true,
+      "bindShortWords": true
+    },
+    "blocks": [
+      {
+        "type": "heading",
+        "text": "Espaces insécables",
+        "level": 1
+      },
+      {
+        "type": "paragraph",
+        "text": "Vraiment ? Oui ! Voici la règle : « on ne sépare jamais un signe double du mot qui le précède » ; c'est l'usage de l'Imprimerie nationale."
+      },
+      {
+        "type": "paragraph",
+        "text": "Le colis pèse 12 kg, coûte 150 € et arrive à 30 % du délai prévu. Il y a là un détail que l'on oublie : le nombre et son unité ne se quittent pas."
+      }
+    ]
+  }
+}

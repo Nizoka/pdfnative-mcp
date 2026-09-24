@@ -16,6 +16,7 @@
  */
 import { z } from 'zod';
 import type { WatermarkImage, WatermarkOptions, WatermarkText } from 'pdfnative';
+import { colorSchema, colorZod, toEngineColor } from './color.js';
 import { ToolError } from './errors.js';
 import { IMAGE_BASE64_MAX_CHARS, decodeImageBase64 } from './image.js';
 
@@ -59,13 +60,10 @@ export const WATERMARK_INPUT_SCHEMA = {
             maximum: 360,
             description: 'Text rotation in degrees (counterclockwise). Default -45.',
         },
-        color: {
-            type: 'array',
-            items: { type: 'number', minimum: 0, maximum: 1 },
-            minItems: 3,
-            maxItems: 3,
-            description: 'Text RGB colour as a [r, g, b] triple in the 0.0–1.0 range. Default light gray [0.75, 0.75, 0.75].',
-        },
+        color: colorSchema(
+            { type: 'array', items: { type: 'number', minimum: 0, maximum: 1 }, minItems: 3, maxItems: 3 },
+            'Text colour. RGB as a [r, g, b] triple in the 0.0–1.0 range; default light gray [0.75, 0.75, 0.75].',
+        ),
         image: {
             type: 'object',
             additionalProperties: false,
@@ -130,7 +128,7 @@ export const WatermarkSchema = z
         fontSize: z.number().min(6).max(300).optional(),
         opacity: unitInterval.optional(),
         angle: z.number().min(-360).max(360).optional(),
-        color: z.tuple([unitInterval, unitInterval, unitInterval]).optional(),
+        color: colorZod(z.tuple([unitInterval, unitInterval, unitInterval])).optional(),
         image: WatermarkImageSchema.optional(),
         position: z.enum(['background', 'foreground']).optional(),
     })
@@ -184,7 +182,8 @@ export function toWatermarkOptions(input: WatermarkInput): WatermarkOptions {
         if (input.fontSize !== undefined) text.fontSize = input.fontSize;
         if (input.opacity !== undefined) text.opacity = input.opacity;
         if (input.angle !== undefined) text.angle = input.angle;
-        if (input.color !== undefined) text.color = input.color;
+        // The engine reads a bare three-number tuple as 0–255: hand the 0.0–1.0 triple over as operands.
+        if (input.color !== undefined) text.color = toEngineColor(input.color);
         options.text = text;
     }
     if (input.image !== undefined) {

@@ -66,6 +66,6 @@ export function parseDerOrThrow<T>(field: string, remedy: string, parse: () => T
     }
 }
 
-export const CERT_REMEDY = 'openssl x509 -in cert.pem -outform DER | base64 -w0';
-export const RSA_KEY_REMEDY = 'openssl rsa -in key.pem -outform DER -traditional | base64 -w0 (PKCS#8 DER from `openssl pkey -outform DER` is also accepted)';
-export const EC_KEY_REMEDY = 'openssl pkey -in key.pem -outform DER | base64 -w0';
+export const CERT_REMEDY = 'openssl x509 -in cert.pem -outform DER | openssl base64 -A';
+export const RSA_KEY_REMEDY = 'openssl rsa -in key.pem -outform DER -traditional | openssl base64 -A (PKCS#8 DER from `openssl pkey -outform DER` is also accepted)';
+export const EC_KEY_REMEDY = 'openssl pkey -in key.pem -outform DER | openssl base64 -A';

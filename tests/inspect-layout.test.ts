@@ -121,14 +121,24 @@ describe('inspect_layout — pagination matches generate_basic_pdf', () => {
         expect(layout.totalPages).toBe(await pdfPageCount(doc));
     });
 
-    it("engine gap: a 'toc' block is measured as 0 pt by the dry run (documented; flips when pdfnative passes the headings to estimateBlockHeight)", async () => {
+    it("a 'toc' block is measured by the dry run (one pagination planner shared with the builder, pdfnative 1.8.0)", async () => {
         const doc = { title: 'T', blocks: [{ type: 'toc' }, { type: 'heading', text: 'One', level: 1 }, { type: 'heading', text: 'Two', level: 2 }] };
         const layout = await inspectLayout(doc);
         const toc = layout.pages[0]!.blocks.find((b) => b.type === 'toc');
         expect(toc).toBeDefined();
-        // When this assertion starts failing the engine has fixed the gap: drop the caveat from the
-        // inspect_layout description and the docs, and assert a positive height instead.
-        expect(toc!.height).toBe(0);
+        expect(toc!.height).toBeGreaterThan(0);
+        // More entries, more height: the planner really measures the headings.
+        const longer = await inspectLayout({ ...doc, blocks: [...doc.blocks, { type: 'heading', text: 'Three', level: 1 }, { type: 'heading', text: 'Four', level: 1 }] });
+        expect(longer.pages[0]!.blocks.find((b) => b.type === 'toc')!.height).toBeGreaterThan(toc!.height);
+        expect(layout.totalPages).toBe(await pdfPageCount(doc));
+    });
+
+    it('a toc long enough to push content to the next page paginates like the build', async () => {
+        const headings = Array.from({ length: 70 }, (_, i) => ({ type: 'heading', text: `Section ${i + 1}`, level: 2 }));
+        const doc = { title: 'Long toc', blocks: [{ type: 'toc' }, ...headings] };
+        const layout = await inspectLayout(doc);
+        expect(layout.totalPages).toBeGreaterThan(1);
+        expect(layout.totalPages).toBe(await pdfPageCount(doc));
     });
 
     it('the long table reports more than one page and one slice per page', async () => {

@@ -6,7 +6,9 @@
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { collectDiagnostics, mapBuildError, withDiagnostics } from '../src/diagnostics.js';
+import type { PdfDiagnosticCode } from 'pdfnative';
+
+import { DIAGNOSTIC_CODES, collectDiagnostics, escalate, mapBuildError, withDiagnostics } from '../src/diagnostics.js';
 import { generateBasicPdf } from '../src/tools/generate-basic-pdf.js';
 import { ensureCompressionReady } from '../src/server.js';
 import { ToolError } from '../src/errors.js';
@@ -24,10 +26,28 @@ afterEach(() => {
 const BASE = { title: 'Doc', blocks: [{ type: 'paragraph', text: 'Hello world.' }] } as const;
 
 describe('diagnostics helpers (unit)', () => {
-    it('collectDiagnostics only forwards strict when true', () => {
-        expect(Object.keys(collectDiagnostics(undefined).layout)).toEqual(['onDiagnostic']);
-        expect(Object.keys(collectDiagnostics(false).layout)).toEqual(['onDiagnostic']);
-        expect(collectDiagnostics(true).layout.strict).toBe(true);
+    it('collectDiagnostics never hands strict to the engine: the sink itself escalates, by diagnostic code', () => {
+        for (const strict of [undefined, false, true]) expect(Object.keys(collectDiagnostics(strict).layout)).toEqual(['onDiagnostic']);
+        const sink = collectDiagnostics(true).layout.onDiagnostic;
+        const thrown = (code: PdfDiagnosticCode): unknown => {
+            try {
+                sink({ code, message: 'm', severity: 'warning' });
+            } catch (err) {
+                return err;
+            }
+            return undefined;
+        };
+        expect(thrown('PDFA_NO_FONT_ENTRIES')).toMatchObject({ code: 'PDF_A_COMPLIANCE_VIOLATION', message: 'm' });
+        expect(thrown('PDFX_ANNOTATIONS')).toMatchObject({ code: 'PDF_X_COMPLIANCE_VIOLATION', message: 'm' });
+        expect(thrown('TYPOGRAPHY_FEATURE_INEFFECTIVE')).toMatchObject({ code: 'DIAGNOSTIC_ESCALATED', message: '[TYPOGRAPHY_FEATURE_INEFFECTIVE] m' });
+    });
+
+    it('escalate() classifies every engine diagnostic code, and the table holds all nine', () => {
+        expect(DIAGNOSTIC_CODES).toHaveLength(9);
+        for (const code of DIAGNOSTIC_CODES) {
+            const expected = code.startsWith('PDFA_') ? 'PDF_A_COMPLIANCE_VIOLATION' : code.startsWith('PDFX_') ? 'PDF_X_COMPLIANCE_VIOLATION' : 'DIAGNOSTIC_ESCALATED';
+            expect(escalate({ code, message: 'm', severity: 'warning' }).code, code).toBe(expected);
+        }
     });
 
     it('the sink records diagnostics in emission order', () => {
@@ -50,6 +70,12 @@ describe('diagnostics helpers (unit)', () => {
         expect(mapBuildError(new Error('chart: series is empty'), 't').code).toBe('CHART_ERROR');
         expect(mapBuildError(new Error('print.marks requires a TrimBox'), 't').code).toBe('PRINT_ERROR');
         expect(mapBuildError(new Error('outputIntent.iccProfile is too short to be an ICC profile'), 't').code).toBe('PRINT_ERROR');
+        // A PDF/X coherence message mentions the OutputIntent too: the PDF/X prefix must win.
+        expect(mapBuildError(new Error('PDF/X-4 requires layout.outputIntent: the ICC profile of the printing condition'), 't').code).toBe('VALIDATION_ERROR');
+        expect(mapBuildError(new Error("PDF/X-4 requires an output (printer) profile as layout.outputIntent — the supplied profile's class is 'mntr'"), 't').code).toBe('VALIDATION_ERROR');
+        expect(mapBuildError(new Error("layout.pdfx: unknown target 'pdfx1a' — use one of pdfx4"), 't').code).toBe('VALIDATION_ERROR');
+        expect(mapBuildError(new Error('typography.punctuationSpacing: unknown preset "de".'), 't').code).toBe('VALIDATION_ERROR');
+        expect(mapBuildError(new Error('outputIntent.iccProfile is not an ICC profile (no `acsp` signature at byte 36)'), 't').code).toBe('PRINT_ERROR');
         expect(mapBuildError(new Error('boom'), 'my_tool')).toMatchObject({ code: 'GENERATION_FAILED', message: 'my_tool: boom' });
         expect(mapBuildError('string throw', 't').code).toBe('GENERATION_FAILED');
         const passthrough = new ToolError('X', 'x');

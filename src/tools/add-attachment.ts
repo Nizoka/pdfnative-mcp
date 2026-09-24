@@ -149,7 +149,7 @@ export async function addAttachment(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, blocks, footerText, attachments, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, compress, debug, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
+    const { title, blocks, footerText, attachments, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
 
     const docBlocks: DocumentBlock[] =
         blocks !== undefined && blocks.length > 0
@@ -182,7 +182,7 @@ export async function addAttachment(rawInput: unknown): Promise<OutputResult> {
                 tagged: 'pdfa3b',
                 attachments: pdfAttachments,
                 ...toPrintLayout({ print, outputIntent, creationDate }),
-                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, compress, debug }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug }),
                 ...collector.layout,
             },
         );

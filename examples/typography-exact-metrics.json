@@ -1,0 +1,28 @@
+{
+  "description": "Exact base-14 metrics (pdfnative 1.8 via generate_basic_pdf v1.7.0): without `embedFonts` the text is set in the viewer's Helvetica, which the engine measures with approximate widths by default. `typography.metrics: \"exact\"` switches to the Adobe Core 14 AFM widths, so right-aligned and centred lines land exactly on their margin; lines may wrap differently from the default. It acts on base-14 text only and needs no embedded font. Self-contained: runs end-to-end with no placeholders.",
+  "tool": "generate_basic_pdf",
+  "arguments": {
+    "title": "Exact Helvetica metrics",
+    "creationDate": "2026-01-01T00:00:00Z",
+    "typography": {
+      "metrics": "exact"
+    },
+    "blocks": [
+      {
+        "type": "paragraph",
+        "text": "Invoice total — 12 480,00 EUR",
+        "align": "right"
+      },
+      {
+        "type": "paragraph",
+        "text": "“Measured with the real advance widths”",
+        "align": "center"
+      },
+      {
+        "type": "paragraph",
+        "text": "Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains. Typography is the craft of endowing human language with a durable visual form. A page that breaks in the wrong place, strands a heading at its foot or opens rivers of white between words asks the reader to work; one that is set with care disappears, and only the text remains.",
+        "align": "justify"
+      }
+    ]
+  }
+}

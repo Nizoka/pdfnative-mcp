@@ -16,8 +16,8 @@
  *   - `includeData` (default true) toggles whether the decoded bytes are
  *     returned. Set it false for a cheap "what is attached?" probe.
  *   - `filename` filters to a single attachment by exact name.
- *   - Encrypted PDFs are rejected with `EXTRACTION_UNSUPPORTED` (the reader
- *     cannot decrypt; consistent with `extract_text`).
+ *   - Encrypted PDFs open with `password` (`PASSWORD_REQUIRED` /
+ *     `PASSWORD_INVALID` otherwise; consistent with `extract_text`).
  *   - Each returned payload is capped at 16 MiB; the aggregate at 32 MiB.
  */
 import { openPdf, type PdfReader } from 'pdfnative';

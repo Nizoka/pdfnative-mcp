@@ -533,11 +533,11 @@ function scalarMul(k: bigint, p: Point): Point {
 
 function ecdsaVerifyP256(hash: Uint8Array, r: bigint, s: bigint, pub: { x: bigint; y: bigint }): boolean {
     if (r <= 0n || r >= P256_N || s <= 0n || s >= P256_N) return false;
-    let z = 0n;
-    for (const b of hash) z = (z << 8n) | BigInt(b);
+    let e = 0n;
+    for (const b of hash) e = (e << 8n) | BigInt(b);
     // P-256 nlen = 256 bits = hash length; no truncation needed.
     const w = modInv(s, P256_N);
-    const u1 = mod(z * w, P256_N);
+    const u1 = mod(e * w, P256_N);
     const u2 = mod(r * w, P256_N);
     const G: Point = { x: P256_GX, y: P256_GY, inf: false };
     const Q: Point = { x: pub.x, y: pub.y, inf: false };

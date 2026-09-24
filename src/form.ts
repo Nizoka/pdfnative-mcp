@@ -33,7 +33,7 @@ export const FORM_FIELD_PROPERTIES = {
     value: {
         type: 'string',
         maxLength: 2000,
-        description: 'Default value pre-filled in the field.',
+        description: "Pre-filled value. The key is 'value' (there is no defaultValue).",
     },
     placeholder: {
         type: 'string',

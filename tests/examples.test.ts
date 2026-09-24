@@ -18,6 +18,7 @@ import { buildOcspRequest } from 'pdfnative';
 import { callToolDirect, ensureCompressionReady } from '../src/server.js';
 import { ALLOWED_HOSTS_ENV, REVOCATION_ENV, TSA_AUTH_ENV, TSA_URL_ENV, __setFetchForTests } from '../src/network.js';
 import { buildEcdsaSelfSignedCert } from './_cert-fixtures.js';
+import { CMYK_ICC_BASE64, GRAY_ICC_BASE64 } from './_icc-fixtures.js';
 import { createMockPki, createMockRevocationProvider, MOCK_CRL_URL, MOCK_OCSP_URL, type MockPki } from './_ltv-fixtures.js';
 import { connectLegacy, type McpTestClient } from './_mcp-harness.js';
 import { assertValidPdf } from './_pdf-assert.js';
@@ -77,6 +78,11 @@ describe('examples/*.json', () => {
 
     afterAll(async () => {
         await client.close();
+    });
+
+    it('the Gray ICC profile inlined in pdfx4-gray.json is the generator output, byte for byte', () => {
+        const example = JSON.parse(readFileSync(path.join(EXAMPLES_DIR, 'pdfx4-gray.json'), 'utf8')) as { arguments: { outputIntent: { iccProfileBase64: string } } };
+        expect(example.arguments.outputIntent.iccProfileBase64).toBe(GRAY_ICC_BASE64);
     });
 
     it('discovers at least the four canonical examples', () => {
@@ -200,6 +206,9 @@ async function resolvePlaceholder(token: string, ctx: ChainContext, outputs: Rea
         case 'reviewer EC key PKCS#8 DER, base64':
         case 'your EC private key in PKCS#8 DER, base64':
             return ctx.ec.pkcs8DerBase64;
+        case 'synthetic CMYK prtr ICC, base64':
+            // No press profile is bundled: a synthetic output profile stands in for the printer's.
+            return CMYK_ICC_BASE64;
         case 'CRL DER, base64':
             return ctx.crlDerBase64;
         case 'OCSPResponse DER, base64':

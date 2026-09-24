@@ -56,7 +56,7 @@ const RECT_SCHEMA = {
 } as const;
 const DSS_SCHEMA = DSS_OUTPUT_SCHEMA;
 
-const CHECK_VALUES = ['pdfa', 'signed', 'encrypted', 'placeholder', 'attachments', 'dss', 'docTimestamp', 'trapped', 'annotations'] as const;
+const CHECK_VALUES = ['pdfa', 'signed', 'encrypted', 'placeholder', 'attachments', 'dss', 'docTimestamp', 'trapped', 'annotations', 'pdfx'] as const;
 /** `/Contents` is truncated to this many characters in `annotations[]` to keep responses compact. */
 const ANNOTATION_CONTENTS_MAX = 200;
 type CheckValue = (typeof CHECK_VALUES)[number];
@@ -91,8 +91,8 @@ export const INSPECT_PDF_INPUT_SCHEMA = {
         check: {
             type: 'array',
             description:
-                "CI assertions → checks (requested keys only) + checksPassed (all hold). 'signed' = a signature field with signed content exists (structural; validity is verify_pdf's job), 'placeholder' = an unsigned placeholder exists, 'dss' = /DSS present, 'docTimestamp' = a /DocTimeStamp exists, 'trapped' = /Info /Trapped set, 'annotations' = at least one page annotation exists.",
-            maxItems: 9,
+                "CI assertions → checks (requested keys only) + checksPassed (all hold). 'signed' = a signature field with signed content exists (structural; validity is verify_pdf's job), 'placeholder' = an unsigned placeholder exists, 'dss' = /DSS present, 'docTimestamp' = a /DocTimeStamp exists, 'trapped' = /Info /Trapped set, 'annotations' = at least one page annotation exists, 'pdfx' = the XMP claims PDF/X (the claim, not its validity — validate_pdf standard:'pdf-x-4').",
+            maxItems: 10,
             items: { type: 'string', enum: [...CHECK_VALUES] },
         },
         verbosity: {
@@ -100,7 +100,7 @@ export const INSPECT_PDF_INPUT_SCHEMA = {
             enum: ['summary', 'full'],
             default: 'full',
             description:
-                "'full' (default) or 'summary' (scalars only: version, pageCount, encryption, pdfA, signatureCount, hasSignaturePlaceholder, attachmentCount, + docTimestampCount / trapped / checksPassed when present; arrays and dss dropped).",
+                "'full' (default) or 'summary' (scalars only: version, pageCount, encryption, pdfA, signatureCount, hasSignaturePlaceholder, attachmentCount, + docTimestampCount / trapped / pdfX / checksPassed when present; arrays and dss dropped).",
         },
         fields: {
             type: 'array',
@@ -232,6 +232,10 @@ export const INSPECT_PDF_OUTPUT_SCHEMA = {
             enum: ['True', 'False', 'Unknown'],
             description: '/Info /Trapped flag, present only when the document carries one.',
         },
+        pdfX: {
+            type: 'string',
+            description: "PDF/X claim from XMP (pdfxid:GTS_PDFXVersion, e.g. 'PDF/X-4'), present only when the document makes one. A claim, not a verdict: validate_pdf standard:'pdf-x-4' checks it.",
+        },
         docTimestampCount: {
             type: 'integer',
             minimum: 1,
@@ -268,7 +272,7 @@ const InputSchema = z.strictObject({
     pages: z.boolean().default(false),
     signatures: z.boolean().default(false),
     annotations: z.boolean().default(false),
-    check: z.array(z.enum(CHECK_VALUES)).max(9).optional(),
+    check: z.array(z.enum(CHECK_VALUES)).max(10).optional(),
     verbosity: z.enum(['summary', 'full']).optional(),
     fields: z.array(z.string().min(1)).max(16).optional(),
 });
@@ -330,6 +334,8 @@ export interface InspectPdfResult {
     readonly dss?: DssSummary;
     /** Present only when /Info carries /Trapped. */
     readonly trapped?: 'True' | 'False' | 'Unknown';
+    /** Present only when the XMP carries `pdfxid:GTS_PDFXVersion`. */
+    readonly pdfX?: string;
     /** Present only when at least one /DocTimeStamp field exists. */
     readonly docTimestampCount?: number;
     readonly pageLabels?: ReadonlyArray<{
@@ -467,27 +473,37 @@ function findAcroFormDict(reader: PdfReader): PdfDict | null {
     return isDict(resolved) ? resolved : null;
 }
 
-/** Best-effort PDF/A claim detection by scanning the XMP metadata stream for `pdfaid:part`. */
-function detectPdfAClaim(reader: PdfReader): string | null {
+/** The decoded catalog XMP packet, or null when the document carries none. */
+function readXmp(reader: PdfReader): string | null {
     const catalog = reader.getCatalog();
     const meta = catalog.get('Metadata');
     const resolved = meta !== undefined && isRef(meta) ? reader.resolve(meta) : meta;
     if (resolved === undefined || !isStream(resolved)) return null;
-    let xml: string;
     /* v8 ignore start - decodeStream is robust on pdfnative-produced XMP; defensive guard only. */
     try {
-        const decoded = reader.decodeStream(resolved);
-        xml = Buffer.from(decoded).toString('utf8');
+        return Buffer.from(reader.decodeStream(resolved)).toString('utf8');
     } catch {
         return null;
     }
     /* v8 ignore stop */
+}
+
+/** Best-effort PDF/A claim detection by scanning the XMP metadata stream for `pdfaid:part`. */
+function detectPdfAClaim(xml: string | null): string | null {
+    if (xml === null) return null;
     const partMatch = /pdfaid:part\s*=\s*"(\d+)"|<pdfaid:part>\s*(\d+)\s*<\/pdfaid:part>/.exec(xml);
     const confMatch = /pdfaid:conformance\s*=\s*"([A-Z])"|<pdfaid:conformance>\s*([A-Z])\s*<\/pdfaid:conformance>/.exec(xml);
     if (partMatch === null) return null;
     const part = (partMatch[1] ?? partMatch[2]) as string;
     const conf = confMatch === null ? '' : ((confMatch[1] ?? confMatch[2]) as string);
     return `${part}${conf}`;
+}
+
+/** PDF/X claim (`pdfxid:GTS_PDFXVersion`, attribute or element form), or null when the XMP makes none. */
+function detectPdfXClaim(xml: string | null): string | null {
+    if (xml === null) return null;
+    const match = /pdfxid:GTS_PDFXVersion\s*=\s*"([^"]{1,40})"|<pdfxid:GTS_PDFXVersion>\s*([^<]{1,40}?)\s*<\/pdfxid:GTS_PDFXVersion>/.exec(xml);
+    return match === null ? null : ((match[1] ?? match[2]) as string);
 }
 
 /** Read the /PageLabels number tree (pdfnative v1.5.0), or undefined when absent. */
@@ -575,7 +591,9 @@ export async function inspectPdf(rawInput: unknown): Promise<InspectPdfResult> {
     const encryption = encryptionInfo !== null && encryptionInfo !== undefined
         ? scalarFromEncryptionInfo(encryptionInfo)
         : detectEncryption(reader);
-    const pdfA = detectPdfAClaim(reader);
+    const xmp = readXmp(reader);
+    const pdfA = detectPdfAClaim(xmp);
+    const pdfX = detectPdfXClaim(xmp);
     const info = readInfoDict(reader);
     const { count: signatureCount, hasPlaceholder } = inspectSignatures(reader);
     const attachments = readAttachments(reader);
@@ -630,6 +648,9 @@ export async function inspectPdf(rawInput: unknown): Promise<InspectPdfResult> {
     if (trapped !== null) {
         result.trapped = trapped;
     }
+    if (pdfX !== null) {
+        result.pdfX = pdfX;
+    }
     if (docTimestampCount > 0) {
         result.docTimestampCount = docTimestampCount;
     }
@@ -647,6 +668,7 @@ export async function inspectPdf(rawInput: unknown): Promise<InspectPdfResult> {
             docTimestamp: docTimestampCount > 0,
             trapped: trapped !== null,
             annotations: annotations.length > 0,
+            pdfx: pdfX !== null,
         };
         // Only the requested checks are reported: an unrequested key reading `false`
         // would be indistinguishable from a failed assertion.

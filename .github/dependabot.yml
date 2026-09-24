@@ -22,6 +22,12 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "typescript-eslint"
         update-types: ["version-update:semver-major"]
+      - dependency-name: "tsx"
+        update-types: ["version-update:semver-major"]
+      # engines.node is >= 22 and .nvmrc pins 22: the type definitions follow
+      # the Node line, not the newest major (rule node-pin-parity).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       dev-dependencies:
         patterns:

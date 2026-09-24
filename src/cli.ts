@@ -12,6 +12,10 @@
  *   - stdio (default): suitable for local host integration (Claude Desktop, Cursor, etc.)
  *   - PDFNATIVE_MCP_MAX_INFLATE_BYTES=<n> overrides the engine's 100 MiB per-stream
  *     decompression cap (positive integer bytes; an invalid value refuses to start).
+ *   - PDFNATIVE_MCP_CREATION_DATE=<iso8601> (else SOURCE_DATE_EPOCH=<seconds>) pins the
+ *     creation instant of every generated document for the whole process — reproducible
+ *     bytes without relying on each call's `creationDate` (which still wins). An invalid
+ *     value refuses to start.
  *   - HTTP: set PDFNATIVE_MCP_PORT=<port> to expose the MCP endpoint on that port.
  *           Requests are POST /mcp (2026-07-28 clients send `Mcp-Method` / `Mcp-Name`
  *           headers and the `_meta` envelope; 2025-era clients use `initialize`).
@@ -39,6 +43,7 @@
  */
 import { createServer, ensureCompressionReady } from './server.js';
 import { applyInflateCap, MAX_INFLATE_ENV } from './inflate-cap.js';
+import { applyPinnedCreationDate } from './reproducible.js';
 
 /**
  * Largest single JSON-RPC frame accepted on stdio (256 MiB). Sized for the
@@ -57,6 +62,13 @@ async function main(): Promise<void> {
     // (PDFNATIVE_MCP_MAX_INFLATE_BYTES). Read once; an invalid value throws before serving.
     if (process.env[MAX_INFLATE_ENV] !== undefined && process.env[MAX_INFLATE_ENV] !== '') {
         log(`decompression cap set to ${applyInflateCap()} bytes (${MAX_INFLATE_ENV})`);
+    }
+    // Optional operator pin of the creation instant (PDFNATIVE_MCP_CREATION_DATE, then
+    // SOURCE_DATE_EPOCH). Read once; an invalid value throws before serving. Always logged:
+    // SOURCE_DATE_EPOCH is often inherited from a build shell without anyone noticing.
+    const pinned = applyPinnedCreationDate();
+    if (pinned !== null) {
+        log(`creation date pinned to ${pinned.date.toISOString()} (${pinned.source}) — a call's own creationDate still wins`);
     }
 
     const factory = (): ReturnType<typeof createServer> => createServer();

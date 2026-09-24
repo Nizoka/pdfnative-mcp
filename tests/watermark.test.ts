@@ -104,7 +104,8 @@ describe('watermark schema + mapper', () => {
     it('maps a text-only watermark exactly as before (no image / position keys)', () => {
         expect(toWatermarkOptions({ text: 'DRAFT' })).toEqual({ text: { text: 'DRAFT' } });
         expect(toWatermarkOptions({ text: 'DRAFT', opacity: 0.3, angle: 0, fontSize: 40, color: [1, 0, 0] })).toEqual({
-            text: { text: 'DRAFT', fontSize: 40, opacity: 0.3, angle: 0, color: [1, 0, 0] },
+            // The 0.0–1.0 triple reaches the engine as RGB operands: a bare triple would be read as 0–255.
+            text: { text: 'DRAFT', fontSize: 40, opacity: 0.3, angle: 0, color: '1 0 0' },
         });
     });
 

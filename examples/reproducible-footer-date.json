@@ -1,0 +1,23 @@
+{
+  "description": "Reproducible bytes with a dated footer (generate_basic_pdf v1.7.0 on pdfnative 1.8): every date is written in UTC (`+00'00'`), so pinning `creationDate` makes the output byte-identical across calls AND across hosts, whatever the server's time zone. The `{date}` placeholder follows `creationDate` — here it prints 2026-01-01 — so a dated footer no longer breaks reproducibility. Call it twice and compare the bytes. Operators can pin the instant for the whole server instead (PDFNATIVE_MCP_CREATION_DATE, else SOURCE_DATE_EPOCH); a call's own `creationDate` still wins. Not covered by any pin: signatures' signingTime, update_metadata's modDate, RFC 3161 timestamps, encryption. Self-contained: runs end-to-end with no placeholders.",
+  "tool": "generate_basic_pdf",
+  "arguments": {
+    "title": "Quarterly statement",
+    "creationDate": "2026-01-01T00:00:00Z",
+    "footerTemplate": {
+      "left": "Generated {date}",
+      "right": "{page}/{pages}"
+    },
+    "blocks": [
+      {
+        "type": "heading",
+        "text": "Quarterly statement",
+        "level": 1
+      },
+      {
+        "type": "paragraph",
+        "text": "The same inputs produce the same file on every machine."
+      }
+    ]
+  }
+}

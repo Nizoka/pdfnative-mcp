@@ -1,0 +1,140 @@
+{
+  "description": "DeviceCMYK colours (pdfnative 1.8 via generate_basic_pdf v1.7.0): every colour input takes a CMYK operand string 'C M Y K' (each 0.0–1.0) or a [c, m, y, k] ink-percentage tuple (0–100) beside its usual hex / RGB form — here the watermark, the header template, a link, an svg drawing, the table borders and the chart series. The content stream then paints with the `k` / `K` operators. For print, pair CMYK colours with a CMYK `outputIntent` (see pdfx4-cmyk-validate.json); under a PDF/A claim with the default sRGB intent the engine reports PDFA_DEVICE_CMYK_CONTENT. Self-contained: runs end-to-end with no placeholders.",
+  "tool": "generate_basic_pdf",
+  "arguments": {
+    "title": "Process colours",
+    "creationDate": "2026-01-01T00:00:00Z",
+    "watermark": {
+      "text": "PROOF",
+      "opacity": 0.15,
+      "color": [
+        0,
+        100,
+        100,
+        0
+      ]
+    },
+    "headerTemplate": {
+      "left": "{title}",
+      "right": "Page {page} of {pages}",
+      "color": "0 0 0 0.8"
+    },
+    "blocks": [
+      {
+        "type": "heading",
+        "text": "Cyan, magenta, yellow, key",
+        "level": 1
+      },
+      {
+        "type": "paragraph",
+        "text": "Colours on this page are specified as ink percentages, the way a print shop states them."
+      },
+      {
+        "type": "link",
+        "text": "Colour reference (link drawn in 100 % cyan, 60 % magenta)",
+        "url": "https://github.com/Nizoka/pdfnative-mcp",
+        "color": [
+          100,
+          60,
+          0,
+          10
+        ]
+      },
+      {
+        "type": "svg",
+        "data": "M2 2 H38 V18 H2 Z",
+        "viewBox": [
+          0,
+          0,
+          40,
+          20
+        ],
+        "width": 160,
+        "height": 80,
+        "fill": "1 0 0 0",
+        "stroke": [
+          0,
+          0,
+          0,
+          100
+        ],
+        "strokeWidth": 1,
+        "alt": "A cyan rectangle with a black outline"
+      },
+      {
+        "type": "table",
+        "headers": [
+          "Ink",
+          "Coverage"
+        ],
+        "rows": [
+          [
+            "Cyan",
+            "100 %"
+          ],
+          [
+            "Magenta",
+            "60 %"
+          ],
+          [
+            "Yellow",
+            "0 %"
+          ],
+          [
+            "Key",
+            "10 %"
+          ]
+        ],
+        "cellBorders": {
+          "all": true,
+          "color": [
+            0,
+            0,
+            0,
+            40
+          ]
+        }
+      },
+      {
+        "type": "chart",
+        "chartType": "bar",
+        "title": "Ink coverage by plate",
+        "categories": [
+          "Front",
+          "Back"
+        ],
+        "series": [
+          {
+            "label": "Cyan",
+            "values": [
+              62,
+              48
+            ],
+            "color": "1 0 0 0"
+          },
+          {
+            "label": "Magenta",
+            "values": [
+              40,
+              55
+            ],
+            "color": "0 1 0 0"
+          },
+          {
+            "label": "Yellow",
+            "values": [
+              25,
+              30
+            ],
+            "color": [
+              0,
+              0,
+              100,
+              0
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

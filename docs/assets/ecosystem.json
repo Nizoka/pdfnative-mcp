@@ -1,0 +1,85 @@
+{
+  "$comment": "Single source of every count and version quoted in the docs, the agent files and the release notes. `npm run verify:docs` holds every document to it; `npm run release:prepare` bumps `packages.pdfnative-mcp.version` and `verifiedOn`. `declared` holds figures no filesystem walk can derive (measured at release, or an inventory of the engine); `derived` holds figures verify:docs recomputes from the source tree (the TOOLS and PROMPTS tables, every ToolError code, server.json, examples/, tests/, the sample baseline, the corpus table) and fails when they drift. `assertions` are the prose tokens each listed file must carry verbatim. `declared.toolsListBytes` is the UTF-8 size of the built `tools/list` payload, held within 2 % by `npx tsx scripts/tool-shape.ts --check` (gate step `verify:tool-shape`), which also enforces the 320 KiB catalogue and 8 KiB instructions budgets.",
+  "verifiedOn": "2026-09-21",
+  "packages": {
+    "pdfnative-mcp": {
+      "version": "1.7.0",
+      "pinField": null,
+      "pin": null,
+      "repo": "https://github.com/Nizoka/pdfnative-mcp",
+      "binary": "pdfnative-mcp"
+    },
+    "pdfnative": {
+      "version": "1.8.0",
+      "pinField": "dependencies",
+      "pin": "^1.8.0",
+      "repo": "https://github.com/Nizoka/pdfnative"
+    },
+    "pdfnative-cli": {
+      "version": "1.5.0",
+      "pinField": null,
+      "pin": null,
+      "repo": "https://github.com/Nizoka/pdfnative-cli"
+    }
+  },
+  "declared": {
+    "tests": 1631,
+    "coverageStatements": 89,
+    "coverageMeasured": 93.53,
+    "pdfaSamples": 33,
+    "pdfxSamples": 6,
+    "unicodeScripts": 27,
+    "blockKinds": 13,
+    "chartTypes": 9,
+    "diagnosticCodes": 9,
+    "toolsListBytes": 306618
+  },
+  "derived": {
+    "tools": 28,
+    "toolGroups": {
+      "Generate": ["generate_basic_pdf", "add_table", "add_chart", "add_barcode", "embed_image", "add_international_text", "add_form"],
+      "Sign & trust": ["sign_pdf", "prepare_signature_placeholder", "verify_pdf", "add_ltv", "timestamp_pdf"],
+      "Page tree": ["merge_pdfs", "split_pdf", "extract_pages"],
+      "Modify": ["annotate_pdf", "fill_form", "add_attachment", "update_metadata", "encrypt_pdf", "decrypt_pdf"],
+      "Read & validate": ["inspect_pdf", "inspect_layout", "extract_text", "extract_attachments", "read_form_fields", "validate_pdf"],
+      "Governance": ["draft_governance_issue"]
+    },
+    "prompts": 7,
+    "errorCodes": 47,
+    "envVars": 12,
+    "examples": 43,
+    "testFiles": 96,
+    "samples": 96,
+    "corpusFiles": 41
+  },
+  "assertions": [
+    {
+      "id": "tool-count",
+      "canonical": "{derived.tools} tools",
+      "match": "\\b(\\d+)\\s+tools\\b",
+      "expectFrom": "derived.tools",
+      "requireIn": ["README.md", "docs/AGENT_CONTRACT.md", "docs/KNOWLEDGE_BASE.md", "llms.txt", "AGENTS.md"]
+    },
+    {
+      "id": "prompt-count",
+      "canonical": "{derived.prompts} prompts",
+      "match": "\\b(\\d+)\\s+(?:MCP\\s+)?prompts\\b",
+      "expectFrom": "derived.prompts",
+      "requireIn": ["README.md", "AGENTS.md"]
+    },
+    {
+      "id": "error-code-count",
+      "canonical": "{derived.errorCodes} error codes",
+      "match": "\\b(\\d+)\\s+error codes\\b",
+      "expectFrom": "derived.errorCodes",
+      "requireIn": ["AGENTS.md", "docs/KNOWLEDGE_BASE.md"]
+    },
+    {
+      "id": "unicode-script-count",
+      "canonical": "{declared.unicodeScripts} Unicode scripts",
+      "match": "\\b(\\d+)\\s+Unicode scripts\\b",
+      "expectFrom": "declared.unicodeScripts",
+      "requireIn": ["README.md", "package.json", "AGENTS.md"]
+    }
+  ]
+}

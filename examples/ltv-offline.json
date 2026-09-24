@@ -1,5 +1,5 @@
 {
-  "description": "Air-gapped PAdES B-LT: embed validation material collected out-of-band (exported CRL / OCSP responses and the issuing chain) with add_ltv mode=offline — zero network access, every DER blob is parse-validated before it lands in /DSS. Then inspect_pdf check=['dss'] asserts the store is present.",
+  "description": "Air-gapped PAdES B-LT: embed validation material collected out-of-band (exported CRL / OCSP responses and the issuing chain) with add_ltv mode=offline — zero network access, every DER blob is parse-validated before it lands in /DSS (the OpenSSL recipe that produces the three DER inputs is in docs/guides/LTV.md, Offline mode). Then inspect_pdf check=['dss'] asserts the store is present.",
   "steps": [
     {
       "tool": "add_ltv",

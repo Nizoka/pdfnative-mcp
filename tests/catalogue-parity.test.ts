@@ -5,7 +5,7 @@
  *
  * Wording (descriptions, `_meta.examples` content, server instructions) is
  * free to evolve for token economy; a structural change must come with a
- * deliberate fixture refresh (`node scripts/tool-shape.mjs --write` after
+ * deliberate fixture refresh (`npx tsx scripts/tool-shape.ts --write` after
  * `npm run build`) reviewed under docs/API_STABILITY.md §5.
  */
 import { readFileSync } from 'node:fs';

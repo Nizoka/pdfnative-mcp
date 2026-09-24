@@ -22,8 +22,8 @@ abstract: >-
   governance issue drafting. Speaks MCP 2026-07-28 with automatic fallback for
   2025-era clients and makes no outbound network call by default.
 license: MIT
-version: 1.6.0
-date-released: "2026-08-23"
+version: 1.7.0
+date-released: "2026-09-21"
 keywords:
   - mcp
   - model-context-protocol

@@ -1,7 +1,10 @@
 # Charts guide (for AI agents)
 
-Native vector charts arrived in **pdfnative-mcp v1.5.0** (on pdfnative's
-`ChartBlock`); **charts v2** arrived in **v1.6.0** (pdfnative v1.7.0). Charts are
+Applies to pdfnative-mcp v1.7.0 · pdfnative 1.8.0.
+
+Native vector charts arrived in **pdfnative-mcp v1.5.0** (on pdfnative's <!-- verify-docs:allow version-token -->
+`ChartBlock`); **charts v2** arrived in **v1.6.0** (pdfnative v1.7.0); **CMYK chart <!-- verify-docs:allow version-token -->
+colours** and PDF/X-4 output arrived in **v1.7.0**. Charts are
 drawn as **pure PDF path operators** — no rasterisation, no external dependency —
 and carry a tagged-PDF `/Figure` + `/Alt`, so they stay PDF/A- and PDF/UA-safe.
 
@@ -112,16 +115,21 @@ Both build the identical pdfnative block, so pick whichever composes better.
 | `labelRotation` | Rotate category labels counter-clockwise (0–90°); disables the automatic stride. |
 | `legend` | `'bottom'` (default for multi-series/pie) or `'none'`. |
 | `markers` | Draw point markers on line series. |
-| `colors` | Palette override (per-series or per-slice), CSS hex like `#3366cc`. |
+| `colors` | Palette override (per-series or per-slice): CSS hex like `#3366cc`, or — since v1.7.0 — CMYK as `'C M Y K'` (each 0.0–1.0) or `[c, m, y, k]` (ink percentages 0–100). `series[].color` takes the same three forms. |
 | `align` | `'left'` (default) / `'center'` / `'right'`. |
 | `width` / `height` | Plot width (clamped to the content width, default 460) / plot-area height (default 240), in points. |
 | `altText` | Tagged `/Alt`. **Auto-generated when omitted** — leave it out unless you need a specific description. |
 | `pdfA` (`add_chart` only) | `pdfa1b` / `pdfa2b` / `pdfa2u` / `pdfa3b`. |
 | `print` / `metadata` / `outputIntent` / `embedFonts` / `strict` / `includeDiagnostics` (`add_chart` only) | Print-production and PDF/A options shared by every document tool — see [PRINT.md](PRINT.md) and [PDFA.md](PDFA.md). |
+| `pdfx` / `typography` (`add_chart` only) | `pdfx: 'pdfx4'` for a PDF/X-4 print file (needs `outputIntent` + `embedFonts: true`; exclusive with `pdfA` and `encrypt`) — see [PRINT.md](PRINT.md#pdfx-4); `typography` for the text around the chart — see [TYPOGRAPHY.md](TYPOGRAPHY.md). |
 
 ## Pitfalls
 
-- **Colours are hex strings**, e.g. `"#3366cc"` (with or without the leading `#`). Do not pass RGB tuples.
+- **Colours are hex strings**, e.g. `"#3366cc"` (with or without the leading `#`), **or CMYK**
+  (`"1 0.6 0 0.1"`, `[100, 60, 0, 10]`). Do not pass RGB tuples: a three-number array is
+  refused. Use CMYK for a print job with a CMYK `outputIntent`; under a PDF/A claim with the
+  default sRGB intent a CMYK colour raises `PDFA_DEVICE_CMYK_CONTENT`, and under PDF/X with
+  an RGB or Gray intent `PDFX_DEVICE_CMYK`.
 - **Pie/donut ignore extra series** — pass exactly one.
 - **Cross-field rules are enforced by the engine**, not by the JSON Schema, so they come back as
   `CHART_ERROR` with the remedy in the message: log scale with zero / negative values, log scale

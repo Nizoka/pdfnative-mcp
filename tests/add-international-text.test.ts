@@ -9,6 +9,7 @@ vi.mock('pdfnative', () => ({
     loadFontData: loadFontDataMock,
     buildDocumentPDFBytes: buildDocumentPDFBytesMock,
     PDF_A_CONFORMANCE_TARGETS: ['pdfa1b', 'pdfa2b', 'pdfa2u', 'pdfa3b'] as const,
+    PDF_X_CONFORMANCE_TARGETS: ['pdfx4'] as const,
 }));
 
 describe('add_international_text tool', () => {
@@ -199,14 +200,16 @@ describe('add_international_text print + diagnostics inputs (v1.6.0)', () => {
         loadFontDataMock.mockResolvedValue({ fontName: 'NotoMock', metrics: {}, cmap: {}, defaultWidth: 500, widths: {}, pdfWidthArray: '', ttfBase64: '', gsub: {} });
     });
 
-    it('strict + pdfA succeeds (fonts are always embedded) and forwards strict + a diagnostics sink', async () => {
+    it('strict + pdfA succeeds (fonts are always embedded); strict stays in the sink, which escalates by diagnostic code', async () => {
         const { addInternationalText } = await import('../src/tools/add-international-text.js');
         const result = await addInternationalText({ title: 'T', lang: 'ar', paragraphs: ['مرحبا'], pdfA: 'pdfa2b', strict: true, includeDiagnostics: true });
         expect(result.diagnostics).toEqual([]);
         const layout = buildDocumentPDFBytesMock.mock.calls[0]?.[1] as Record<string, unknown>;
-        expect(layout['strict']).toBe(true);
+        // The engine's own strict mode throws a bare message with no code: it is never forwarded.
+        expect(layout['strict']).toBeUndefined();
         expect(layout['tagged']).toBe('pdfa2b');
-        expect(typeof layout['onDiagnostic']).toBe('function');
+        const sink = layout['onDiagnostic'] as (d: { code: string; message: string; severity: 'warning' }) => void;
+        expect(() => sink({ code: 'PDFA_DEVICE_CMYK_CONTENT', message: 'm', severity: 'warning' })).toThrowError(expect.objectContaining({ code: 'PDF_A_COMPLIANCE_VIOLATION' }));
     });
 
     it('does not expose embedFonts (fonts are already embedded)', async () => {

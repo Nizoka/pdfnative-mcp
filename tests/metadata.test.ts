@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { __serverMetadata } from '../src/server.js';
+import { __serverMetadata, listToolsPayload } from '../src/server.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -47,5 +47,54 @@ describe('registry metadata parity', () => {
         const packages = server['packages'] as Array<Record<string, unknown>>;
         expect(packages[0]?.['identifier']).toBe(EXPECTED_NPM_NAME);
         expect(packages[0]?.['version']).toBe(version);
+    });
+
+    it('advertises the same title in serverInfo as server.json', async () => {
+        const server = await readJson('server.json');
+        expect(__serverMetadata.title).toBe(server['title']);
+    });
+
+    it('quotes the live tool count in every registry-facing description', async () => {
+        const pkg = await readJson('package.json');
+        const server = await readJson('server.json');
+        const phrase = `${listToolsPayload().tools.length} tools`;
+        expect(String(server['description'])).toContain(phrase);
+        expect(String(pkg['description'])).toContain(phrase);
+        expect(__serverMetadata.description).toContain(phrase);
+    });
+
+    it('validates server.json against a vendored copy of the schema revision it names', async () => {
+        const server = await readJson('server.json');
+        const url = String(server['$schema']);
+        const revision = /\/schemas\/([^/]+)\/server\.schema\.json$/.exec(url)?.[1];
+        expect(revision, 'server.json $schema must name a registry schema revision').toBeDefined();
+        const vendored = await readJson(`tests/_fixtures/server.schema.${revision}.json`);
+        expect(vendored['$id']).toBe(url);
+    });
+
+    it('declares in server.json exactly the operator variables the source reads', async () => {
+        const server = await readJson('server.json');
+        const packages = server['packages'] as Array<{ environmentVariables?: Array<{ name: string }> }>;
+        const declared = (packages[0]?.environmentVariables ?? []).map((v) => v.name).sort();
+
+        const srcDir = path.join(ROOT, 'src');
+        const read = new Set<string>();
+        const walk = async (dir: string): Promise<void> => {
+            for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+                const p = path.join(dir, entry.name);
+                if (entry.isDirectory()) await walk(p);
+                else if (entry.name.endsWith('.ts')) {
+                    // SOURCE_DATE_EPOCH is the one variable read under a name this project does not own.
+                    for (const m of (await fs.readFile(p, 'utf8')).matchAll(/PDFNATIVE_MCP_[A-Z_]+|\bSOURCE_DATE_EPOCH\b/g)) read.add(m[0]);
+                }
+            }
+        };
+        await walk(srcDir);
+        // A TypeScript constant (src/version.ts), not an environment variable.
+        read.delete('PDFNATIVE_MCP_VERSION');
+        // The deprecated misspelt alias PDFNATIVE_MPC_OUTPUT_DIR is deliberately
+        // undeclared: the regex above does not match it, and it must stay out of
+        // the registry listing.
+        expect(declared).toEqual([...read].sort());
     });
 });

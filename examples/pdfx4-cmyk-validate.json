@@ -1,0 +1,84 @@
+{
+  "description": "PDF/X-4 round trip with a CMYK printing condition (pdfnative 1.8 via v1.7.0): (1) generate a four-colour PDF/X-4 file — CMYK colours, a 5 mm bleed with crop marks and the colour control strip, the printer's CMYK ICC profile as `outputIntent`; (2) validate_pdf with `standard: 'pdf-x-4'` checks the ISO 15930-7 structural prerequisites and returns `caveats[]` stating what the verdict does NOT establish; (3) inspect_pdf asserts the claim and the /Trapped flag for a CI gate. `<synthetic CMYK prtr ICC, base64>` stands for a CMYK output profile: the test suite resolves it to a synthetic 10 KB profile, a real job supplies the one the printer names (ISO Coated v2, GRACoL, …) — none is bundled. validate_pdf is a structural, render-free gate: confirm a press job with callas pdfToolbox or Acrobat Preflight (veraPDF does not cover PDF/X).",
+  "steps": [
+    {
+      "tool": "generate_basic_pdf",
+      "arguments": {
+        "title": "Spring catalogue",
+        "pdfx": "pdfx4",
+        "embedFonts": true,
+        "creationDate": "2026-01-01T00:00:00Z",
+        "outputIntent": {
+          "iccProfileBase64": "<synthetic CMYK prtr ICC, base64>",
+          "outputConditionIdentifier": "Synthetic CMYK (pdfnative test profile)"
+        },
+        "metadata": {
+          "trapped": "False"
+        },
+        "print": {
+          "bleed": 14.17,
+          "marks": {
+            "colourBars": true
+          }
+        },
+        "watermark": {
+          "text": "CATALOGUE",
+          "opacity": 1,
+          "color": [
+            0,
+            0,
+            0,
+            8
+          ]
+        },
+        "blocks": [
+          {
+            "type": "heading",
+            "text": "Spring catalogue",
+            "level": 1
+          },
+          {
+            "type": "paragraph",
+            "text": "Four-colour job exchanged as PDF/X-4."
+          },
+          {
+            "type": "chart",
+            "chartType": "bar",
+            "categories": [
+              "Q1",
+              "Q2"
+            ],
+            "series": [
+              {
+                "label": "Orders",
+                "values": [
+                  120,
+                  180
+                ],
+                "color": "1 0.6 0 0.1"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "tool": "validate_pdf",
+      "arguments": {
+        "pdfBase64": "<base64 from step 1>",
+        "standard": "pdf-x-4"
+      }
+    },
+    {
+      "tool": "inspect_pdf",
+      "arguments": {
+        "pdfBase64": "<base64 from step 1>",
+        "check": [
+          "pdfx",
+          "trapped"
+        ],
+        "verbosity": "summary"
+      }
+    }
+  ]
+}

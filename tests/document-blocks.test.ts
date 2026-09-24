@@ -133,10 +133,18 @@ describe('generate_basic_pdf — block boundary validation (every failure names 
 });
 
 describe('generate_basic_pdf — PDF/A interactions of the new blocks', () => {
-    it('formField under pdfA reports PDFA_UNEMBEDDED_FORM_FONT and strict:true fails the call', async () => {
-        const out = await generateBasicPdf({ title: 'F', blocks: [{ type: 'formField', fieldType: 'text', name: 'n' }], pdfA: 'pdfa2b', embedFonts: true, includeDiagnostics: true });
+    it('formField under pdfA + embedFonts is clean: the AcroForm /DR font is embedded (pdfnative 1.8.0)', async () => {
+        const form = { title: 'F', blocks: [{ type: 'formField', fieldType: 'text', name: 'n' }], pdfA: 'pdfa2b', embedFonts: true };
+        const out = await generateBasicPdf({ ...form, includeDiagnostics: true });
+        expect(out.diagnostics).toEqual([]);
+        await expect(generateBasicPdf({ ...form, strict: true })).resolves.toMatchObject({ base64: expect.any(String) });
+    });
+
+    it('formField under pdfA WITHOUT embedFonts still reports PDFA_UNEMBEDDED_FORM_FONT and strict:true fails the call', async () => {
+        const form = { title: 'F', blocks: [{ type: 'formField', fieldType: 'text', name: 'n' }], pdfA: 'pdfa2b' };
+        const out = await generateBasicPdf({ ...form, includeDiagnostics: true });
         expect(out.diagnostics?.some((d) => d.code === 'PDFA_UNEMBEDDED_FORM_FONT')).toBe(true);
-        await expect(generateBasicPdf({ title: 'F', blocks: [{ type: 'formField', fieldType: 'text', name: 'n' }], pdfA: 'pdfa2b', embedFonts: true, strict: true })).rejects.toMatchObject({ code: 'PDF_A_COMPLIANCE_VIOLATION' });
+        await expect(generateBasicPdf({ ...form, strict: true })).rejects.toMatchObject({ code: 'PDF_A_COMPLIANCE_VIOLATION' });
     });
 
     it('svg, toc, link, barcode and table are clean under pdfa2b + embedFonts (no diagnostics)', async () => {
