@@ -59,7 +59,7 @@ What actually ran on the release branch (Windows 11, Node v22.17.0, veraPDF 1.30
 
 | Command | Result |
 |---|---|
-| `npx tsx scripts/gate.ts --publish --require-all` | `gate: 15 passed, 0 skipped in 557.2 s` (final run, after the three-OS CI change and the LF renormalisation; the earlier full runs took 522.5 s, 437.6 s and 453.2 s) |
+| `npx tsx scripts/gate.ts --publish --require-all` | `gate: 15 passed, 0 skipped in 504.8 s` (final run, after the host-dependent sample fix that the first three-OS CI run called for; the earlier full runs took 557.2 s, 522.5 s, 437.6 s and 453.2 s) |
 | `npm run test:coverage` — tests | 1616 passed, 13 expected fail (pinned upstream limits), 2 skipped = 1631 across 96 files |
 | `npm run test:coverage` — coverage | 93.53 % statements / 86.08 % branches / 98.88 % functions / 95.45 % lines (thresholds 89 / 82 / 94 / 91) |
 | `npm run build && npm run test:generate && npm run verify:samples` | `96 tracked samples match the baseline (93 byte-exact, 3 semantic)` |
