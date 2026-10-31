@@ -143,22 +143,23 @@
         "release:prepare": "npx tsx scripts/release-prepare.ts",
         "hooks:install": "node scripts/install-git-hooks.mjs",
         "hooks:uninstall": "node scripts/install-git-hooks.mjs --uninstall",
-        "prepublishOnly": "npm run build"
+        "prepublishOnly": "npm run build",
+        "agents:governance": "npx tsx scripts/build-governance-embed.ts"
     },
     "dependencies": {
-        "@modelcontextprotocol/server": "^2.0.0",
-        "pdfnative": "^1.8.0",
-        "zod": "^4.2.0"
+        "@modelcontextprotocol/server": "^2.4.0",
+        "pdfnative": "^1.9.0",
+        "zod": "^4.6.0"
     },
     "devDependencies": {
         "@eslint/js": "^9.18.0",
         "@types/node": "^22.10.5",
-        "@vitest/coverage-v8": "^4.1.11",
+        "@vitest/coverage-v8": "^4.1.12",
         "eslint": "^9.18.0",
         "tsx": "^4.22.4",
         "typescript": "^5.7.3",
         "typescript-eslint": "^8.20.0",
-        "vitest": "^4.1.11"
+        "vitest": "^4.1.12"
     },
     "packageManager": "npm@10.9.2",
     "overrides": {
