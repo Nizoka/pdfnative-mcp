@@ -1,0 +1,26 @@
+{
+  "description": "Right-to-left documents (pdfnative 1.9.0 through pdfnative-mcp 1.8.0): direction:'auto' reads each paragraph's first strong character, so the Arabic paragraphs are laid out right-to-left and right-aligned while the Latin one stays left-to-right; the untagged output carries an /ActualText span per right-to-left run (layout.actualText, default true), so extract_text returns the logical string. A paragraph's own direction overrides the document setting. The second step reads the text back in reading order.",
+  "steps": [
+    {
+      "tool": "add_international_text",
+      "arguments": {
+        "title": "Bidirectional notice",
+        "lang": ["ar", "latin"],
+        "direction": "auto",
+        "creationDate": "2026-01-15T09:00:00Z",
+        "paragraphs": [
+          "تُصدر هذه الوثيقة باللغتين العربية والإنجليزية، ويُعتمد النص العربي عند الاختلاف.",
+          "This notice is issued in Arabic and English; the Arabic text prevails in case of discrepancy.",
+          "رقم المرجع: PDF-2026-001 — صالح حتى 31 ديسمبر 2026."
+        ]
+      }
+    },
+    {
+      "tool": "extract_text",
+      "arguments": {
+        "pdfBase64": "<base64 from step 1>",
+        "verbosity": "full"
+      }
+    }
+  ]
+}

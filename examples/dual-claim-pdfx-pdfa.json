@@ -1,0 +1,21 @@
+{
+  "description": "The PDF/X-4 + PDF/A-2b dual claim (pdfnative 1.9.0 through pdfnative-mcp 1.8.0): one file carries both the print-exchange identification (GTS_PDFXVersion, the /GTS_PDFX output intent with the printer's ICC profile) and the archival one (pdfaid:part 2, tagged, every font embedded). pdfa1b (PDF 1.4) and pdfa3b (embedded files) are refused with the engine's own message; encrypt stays exclusive. Check both claims afterwards with validate_pdf standard:'pdf-x-4' and veraPDF. Replace <synthetic CMYK prtr ICC, base64> with the profile of your printing condition.",
+  "tool": "generate_basic_pdf",
+  "arguments": {
+    "title": "Archived print job",
+    "pdfx": "pdfx4",
+    "pdfA": "pdfa2b",
+    "embedFonts": true,
+    "outputIntent": {
+      "iccProfileBase64": "<synthetic CMYK prtr ICC, base64>",
+      "outputConditionIdentifier": "Synthetic CMYK (test profile)"
+    },
+    "metadata": { "trapped": "False" },
+    "print": { "bleed": 8.5 },
+    "creationDate": "2026-01-15T09:00:00Z",
+    "blocks": [
+      { "type": "heading", "text": "One file, two claims", "level": 1 },
+      { "type": "paragraph", "text": "This brochure is delivered to the printer as PDF/X-4 and kept in the archive as PDF/A-2b, without a second rendition." }
+    ]
+  }
+}

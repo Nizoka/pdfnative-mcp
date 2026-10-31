@@ -67,6 +67,8 @@ export const INSPECT_LAYOUT_INPUT_SCHEMA = {
         headerTemplate: LAYOUT_INPUT_PROPERTIES.headerTemplate,
         footerTemplate: LAYOUT_INPUT_PROPERTIES.footerTemplate,
         typography: LAYOUT_INPUT_PROPERTIES.typography,
+        direction: LAYOUT_INPUT_PROPERTIES.direction,
+        actualText: LAYOUT_INPUT_PROPERTIES.actualText,
         verbosity: {
             type: 'string',
             enum: ['summary', 'full'],
@@ -147,6 +149,8 @@ const InputSchema = z.strictObject({
     headerTemplate: LayoutInputShape.headerTemplate,
     footerTemplate: LayoutInputShape.footerTemplate,
     typography: LayoutInputShape.typography,
+    direction: LayoutInputShape.direction,
+    actualText: LayoutInputShape.actualText,
     verbosity: z.enum(['summary', 'full']).optional(),
     fields: z.array(z.string().min(1)).max(16).optional(),
 });
@@ -203,7 +207,7 @@ export async function inspectLayout(rawInput: unknown): Promise<InspectLayoutRes
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, blocks, footerText, pdfA, normalize, embedFonts, font, pageSize, margins, headerTemplate, footerTemplate, typography } = parsed.data;
+    const { title, blocks, footerText, pdfA, normalize, embedFonts, font, pageSize, margins, headerTemplate, footerTemplate, typography, direction, actualText } = parsed.data;
 
     const docBlocks = toDocumentBlocks(blocks);
     const fontEntries = [...(await customFontEntry(font)), ...(await latinFontEntries(embedFonts, font === undefined ? '/F3' : '/F4'))];
@@ -220,7 +224,7 @@ export async function inspectLayout(rawInput: unknown): Promise<InspectLayoutRes
             {
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
                 ...(normalize !== undefined ? { normalize } : {}),
-                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, direction, actualText }),
             },
         );
     } catch (err) {

@@ -95,11 +95,11 @@ async function main(): Promise<number> {
             tool: entry.tool,
             bytes: bytes.byteLength,
             sha256: createHash('sha256').update(bytes).digest('hex'),
-            expectPdfAClaim: claims === 'pdfa',
+            expectPdfAClaim: claims === 'pdfa' || claims === 'both',
             // A file that makes no claim is never validated, so it has no compliance expectation.
-            expectCompliant: claims === 'pdfa' && compliant,
-            expectPdfXClaim: claims === 'pdfx',
-            expectPdfXCompliant: claims === 'pdfx' && compliant,
+            expectCompliant: (claims === 'pdfa' || claims === 'both') && compliant,
+            expectPdfXClaim: claims === 'pdfx' || claims === 'both',
+            expectPdfXCompliant: (claims === 'pdfx' || claims === 'both') && compliant,
         });
         const tag = claims === 'none' ? 'no claim' : `${claims === 'pdfa' ? 'PDF/A' : 'PDF/X'}${compliant ? '' : ', NEGATIVE canary'}`;
         say(`  wrote  ${entry.file.padEnd(44)} ${String(bytes.byteLength).padStart(8)} B  (${entry.tool}, ${tag})`);

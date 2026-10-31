@@ -242,6 +242,8 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
         headerTemplate,
         footerTemplate,
         typography,
+        direction,
+        actualText,
         compress,
         debug,
         strict,
@@ -281,7 +283,7 @@ export async function prepareSignaturePlaceholder(rawInput: unknown): Promise<Ou
             {
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
-                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, direction, actualText, compress, debug }),
                 ...collector.layout,
             },
         );

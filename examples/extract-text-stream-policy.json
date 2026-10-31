@@ -1,0 +1,24 @@
+{
+  "description": "extract_text onStreamError (pdfnative 1.9.0 through pdfnative-mcp 1.8.0): a content stream over the decompression cap (PDFNATIVE_MCP_MAX_INFLATE_BYTES) fails the call with PDF_PARSE_FAILED by default ('limit'), naming the operator remedy; 'skip' reads the rest of the document and the capped page comes back empty — the 1.7.0 behaviour, one opt-in away. On a document under the cap, as here, both policies return the same text; the example shows the input shape.",
+  "steps": [
+    {
+      "tool": "generate_basic_pdf",
+      "arguments": {
+        "title": "Compressed",
+        "compress": true,
+        "creationDate": "2026-01-15T09:00:00Z",
+        "blocks": [
+          { "type": "paragraph", "text": "FlateDecode page content, read back with the stream policy made explicit." }
+        ]
+      }
+    },
+    {
+      "tool": "extract_text",
+      "arguments": {
+        "pdfBase64": "<base64 from step 1>",
+        "onStreamError": "skip",
+        "verbosity": "summary"
+      }
+    }
+  ]
+}

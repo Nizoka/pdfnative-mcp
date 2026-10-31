@@ -1,0 +1,17 @@
+{
+  "description": "The five scripts pdfnative 1.9.0 adds to the Indic engine — Gujarati (gu), Gurmukhi (pa), Kannada (kn), Malayalam (ml) and Odia (or) — in one PDF/A-2u document (32 scripts in all). Every shaper reports its glyphs to the ToUnicode CMap since 1.9.0, so the level-U claim holds and extract_text returns the logical text; a sentence-final danda stays on its own script's line.",
+  "tool": "add_international_text",
+  "arguments": {
+    "title": "Five Indic scripts",
+    "lang": ["gu", "pa", "kn", "ml", "or"],
+    "pdfA": "pdfa2u",
+    "creationDate": "2026-01-15T09:00:00Z",
+    "paragraphs": [
+      "નમસ્તે દુનિયા — ગુજરાતી લિપિ.",
+      "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ਦੁਨੀਆ — ਗੁਰਮੁਖੀ ਲਿਪੀ।",
+      "ನಮಸ್ಕಾರ ಜಗತ್ತು — ಕನ್ನಡ ಲಿಪಿ.",
+      "നമസ്കാരം ലോകം — മലയാളം ലിപി.",
+      "ନମସ୍କାର ବିଶ୍ୱ — ଓଡ଼ିଆ ଲିପି।"
+    ]
+  }
+}

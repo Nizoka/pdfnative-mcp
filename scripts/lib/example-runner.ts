@@ -11,7 +11,8 @@
  *   - the PDF produced by an earlier step (`<base64 from step N>`,
  *     `<base64-of-the-generated-pdf>`),
  *   - a plain generated document (`<any PDF base64>`),
- *   - the synthetic CMYK output profile (`<synthetic CMYK prtr ICC, base64>`).
+ *   - the synthetic CMYK output profile (`<synthetic CMYK prtr ICC, base64>`),
+ *   - a minimal JPEG 2000 image (`<synthetic RGB JP2, base64>`).
  * Certificates, keys, revocation data and pre-encrypted inputs are not: those
  * examples stay covered by the vitest suite.
  */
@@ -20,6 +21,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { REPO_ROOT } from '../helpers/io.js';
+import { jp2Base64 } from './jpx.js';
 import { buildSyntheticCmykProfile, iccBase64 } from './synthetic-icc.js';
 
 export const EXAMPLES_DIR = join(REPO_ROOT, 'examples');
@@ -69,10 +71,12 @@ const STEP_REF = /^base64 from step (\d+)$/;
 const FIRST_STEP = 'base64-of-the-generated-pdf';
 const PLAIN_PDF = new Set(['any PDF base64', 'any unencrypted PDF base64']);
 const CMYK_ICC = 'synthetic CMYK prtr ICC, base64';
+/** A minimal 8×8 RGB JP2 file (pdfnative 1.9.0 passes JPEG 2000 through; nothing is decoded). */
+const JP2_IMAGE = 'synthetic RGB JP2, base64';
 
 /** True for a placeholder the generator can resolve with no test fixture. */
 export function isHermeticPlaceholder(token: string): boolean {
-    return STEP_REF.test(token) || token === FIRST_STEP || PLAIN_PDF.has(token) || token === CMYK_ICC;
+    return STEP_REF.test(token) || token === FIRST_STEP || PLAIN_PDF.has(token) || token === CMYK_ICC || token === JP2_IMAGE;
 }
 
 /** The placeholders that keep an example out of the hermetic run (empty = it runs). */
@@ -140,6 +144,7 @@ export async function runExample(example: Example, deps: RunnerDeps): Promise<St
                 cmyk ??= iccBase64(buildSyntheticCmykProfile());
                 return cmyk;
             }
+            if (token === JP2_IMAGE) return jp2Base64(3, { size: 8 });
             throw new Error(`${example.name}: <${token}> is not a hermetic placeholder`);
         }) as Record<string, unknown>;
         const result = await deps.call(step.tool, args);

@@ -1,57 +1,57 @@
 {
   "$comment": "Fingerprints of every sample in test-output/samples/ (written by the BUILT server, scripts/generate-samples.ts). Regenerate deliberately with `npx tsx scripts/verify-samples.ts --update`, and say why in the release notes: a changed hash means existing output changed. Mode `bytes` is a SHA-256 of the file; mode `semantic` is a SHA-256 of a canonical projection of the document, used for encrypted samples (CSPRNG file key and IVs), signed samples (a per-revision /ID drawn at signing time) and host-dependent results (draft_governance_issue reports the Node version and the OS), whose bytes can never repeat on every host. Each entry's `since` names the release whose output the hash is: it is carried forward untouched while the sample is unchanged, and moves to the release doing the rebaseline when the hash changes, so the chain 1.7.0 -> 1.8.0 -> … stays auditable and every re-anchoring is visible in the diff.",
-  "baselineVersion": "1.7.0",
-  "provenance": "Chain origin: pdfnative-mcp 1.7.0 on pdfnative 1.8.0. Release 1.6.0 had no determinism plumbing (no pinned process instant, dates written in the host time zone by pdfnative 1.7), so there is no earlier reference to chain from and every entry is anchored to 1.7.0. Verification of this first baseline: the corpus was generated twice from the built server, once under TZ=UTC and once under TZ=Pacific/Kiritimati; 94 of 96 samples were byte-identical across the two runs. The two that moved are fingerprinted semantically, by construction: the encrypt_pdf output (CSPRNG file key, salts and IVs, ISO 32000-1 7.6) and the signed corpus entry (a throwaway RSA key generated per run, never written to disk). The first CI run on Linux, Windows and macOS then moved exactly one more: the draft_governance_issue result, whose Environment section reports the Node version and the operating system of the host by design; it is fingerprinted semantically since 2026-09-24 (HOST_DEPENDENT_SAMPLES, the host values projected to a placeholder) - 93 entries by bytes, 3 semantic. The PDF/A-claiming files were accepted or rejected as expected by veraPDF 1.30.2 (27 PASS, 6 XFAIL) and the PDF/X-4 files by pdfnative validatePdfX() (4 PASS, 2 XFAIL) on the same bytes. From 1.8.0 on, an entry that still reads 1.7.0 is being held to the bytes 1.7.0 emitted; re-anchoring one is a declared output change (release notes, Upgrade section).",
+  "baselineVersion": "1.8.0",
+  "provenance": "Chain origin: pdfnative-mcp 1.7.0 on pdfnative 1.8.0. Release 1.6.0 had no determinism plumbing (no pinned process instant, dates written in the host time zone by pdfnative 1.7), so there is no earlier reference to chain from and every entry is anchored to 1.7.0. Verification of this first baseline: the corpus was generated twice from the built server, once under TZ=UTC and once under TZ=Pacific/Kiritimati; 94 of 96 samples were byte-identical across the two runs. The two that moved are fingerprinted semantically, by construction: the encrypt_pdf output (CSPRNG file key, salts and IVs, ISO 32000-1 7.6) and the signed corpus entry (a throwaway RSA key generated per run, never written to disk). The first CI run on Linux, Windows and macOS then moved exactly one more: the draft_governance_issue result, whose Environment section reports the Node version and the operating system of the host by design; it is fingerprinted semantically since 2026-09-24 (HOST_DEPENDENT_SAMPLES, the host values projected to a placeholder) - 93 entries by bytes, 3 semantic. The PDF/A-claiming files were accepted or rejected as expected by veraPDF 1.30.2 (27 PASS, 6 XFAIL) and the PDF/X-4 files by pdfnative validatePdfX() (4 PASS, 2 XFAIL) on the same bytes. From 1.8.0 on, an entry that still reads 1.7.0 is being held to the bytes 1.7.0 emitted; re-anchoring one is a declared output change (release notes, Upgrade section). Rebaseline 1.8.0 (2026-10-31): pdfnative-mcp 1.8.0 on pdfnative 1.9.0. 52 of the 96 inherited entries moved and are re-anchored at 1.8.0, every one for a cause the engine release ledger names (release-notes/v1.9.0.md, C1-C28): every document embedding a font (lean, compact CID subsets with the six-letter tag - C6, C21, C28), every untagged document with right-to-left or reordered shaped text (/ActualText spans - C20, C27), every document with a shaped run or a font change in a line (one text object per line - C25), the Odia / Gurmukhi danda lines (C26) and a font registered but never drawn (C18); the server itself changed no default output (TOOL_API_VERSION 1.8.0 adds optional inputs only). 44 entries kept their 1.7.0 bytes, which is the proof that the server-side changes of this release (spot colours, direction, JPEG 2000, link annotations, the font sandbox, the base URL) are opt-in. 12 entries are new, from the examples added for the 1.9.0 surface, and start their chain at 1.8.0. Verified by two consecutive generations through the built server (byte-identical) before the update.",
   "creationDate": "2026-01-01T00:00:00.000Z",
   "timezone": "UTC",
   "entries": {
     "corpus/attachment-pdfa3b-pdf.pdf": {
       "mode": "bytes",
-      "hash": "1b0a93ca1942254724d01e07db628998fb1cc73256711b8230dd153852b571d4",
-      "size": 234143,
-      "since": "1.7.0"
+      "hash": "f0677f36cd2b12c5c481c4129c50555950b627f5befd3964337ed49c602d0543",
+      "size": 26131,
+      "since": "1.8.0"
     },
     "corpus/attachment-pdfa3b-xml.pdf": {
       "mode": "bytes",
-      "hash": "d90e45b331a53d3406af7340a231ebf4958148fc353291b37d6e51668b717afc",
-      "size": 118007,
-      "since": "1.7.0"
+      "hash": "bdabf126ff1f8135ab5085c3f93a90de31e4c6918550fb70ab885dce66975408",
+      "size": 14115,
+      "since": "1.8.0"
     },
     "corpus/barcode-pdfa2b-qr.pdf": {
       "mode": "bytes",
-      "hash": "528f31856463f155ad384988ffebf4197066d7a6028268f88b1f3a3c423b9af5",
-      "size": 128673,
-      "since": "1.7.0"
+      "hash": "f0383151f945bcdbae47b2effebc22bddf8750adc7f7e0a361462a2c75b35193",
+      "size": 24666,
+      "since": "1.8.0"
     },
     "corpus/basic-pdfa1b-watermark.pdf": {
       "mode": "bytes",
-      "hash": "624228b6d1e9e127fc6efaadb7a4a56548d1edcd1de6dac2dc9c7dd211f3ad45",
-      "size": 117865,
-      "since": "1.7.0"
+      "hash": "82a61ee9a858674b6cdc2fe161cd27713931b1973aab248bcaf9af7478143eef",
+      "size": 13927,
+      "since": "1.8.0"
     },
     "corpus/basic-pdfa1b.pdf": {
       "mode": "bytes",
-      "hash": "ac1934bd1de3c75931aed38799003a8a43da7961000e326f094600bea07d29ae",
-      "size": 116998,
-      "since": "1.7.0"
+      "hash": "c1cbde5452183c58b3a5cdca1616f3b67c5d418d879a2fe753c3a43d15e666bf",
+      "size": 12974,
+      "since": "1.8.0"
     },
     "corpus/basic-pdfa2b-chart-bar.pdf": {
       "mode": "bytes",
-      "hash": "d662653877eab1423d4978a209427c3d5953141497e6a09a4579615792bc041a",
-      "size": 118414,
-      "since": "1.7.0"
+      "hash": "5adafd8257a6b6d8fbd880375a7d22e34000a911f16ca1e28b025f7c2901f9d5",
+      "size": 14451,
+      "since": "1.8.0"
     },
     "corpus/basic-pdfa2b-chart-stackedbar.pdf": {
       "mode": "bytes",
-      "hash": "6f8a97f4a54647530773397f2da0be57b879c9c7616d1f89714bb7183ffa48ab",
-      "size": 118926,
-      "since": "1.7.0"
+      "hash": "056b8f8d138c9219ada32683eb1ce1613a3ca0e879886275b827c7bb30123b20",
+      "size": 15003,
+      "since": "1.8.0"
     },
     "corpus/basic-pdfa2b-custom-outputintent.pdf": {
       "mode": "bytes",
-      "hash": "84c53add399601a332d366eb98897aaad1b911ed68db8151e4cce1e857e8eef2",
-      "size": 117920,
-      "since": "1.7.0"
+      "hash": "1f8612bbe40d78487d4bd1af8430acd1c090d7dffcb074cb537e8dc39e3d9d90",
+      "size": 13991,
+      "since": "1.8.0"
     },
     "corpus/basic-pdfa2b-no-embedfonts.pdf": {
       "mode": "bytes",
@@ -61,57 +61,57 @@
     },
     "corpus/basic-pdfa2b-outline-labels-list.pdf": {
       "mode": "bytes",
-      "hash": "8af3dece875582629b146649d5dae4ebdc430abf93fcda227930352472e1877e",
-      "size": 122568,
-      "since": "1.7.0"
+      "hash": "43549c0c36f34dccad6bb8de2244a1f7166d5c0813e38236539b612dd4528d54",
+      "size": 18661,
+      "since": "1.8.0"
     },
     "corpus/basic-pdfa2b-print-metadata.pdf": {
       "mode": "bytes",
-      "hash": "8a59f422630519e316f7f63ae061e276a7c237a9a1da6af5ec65a55fad0e9269",
-      "size": 120153,
-      "since": "1.7.0"
+      "hash": "b9cd4de087da6769bb76ab39954a8184c8b6e18dcfe3ac11c207bac4716b97d0",
+      "size": 16195,
+      "since": "1.8.0"
     },
     "corpus/basic-pdfa2b-watermark.pdf": {
       "mode": "bytes",
-      "hash": "0e06f5452679d923225ff93892bbedf1b35d5abc12d19ab5beb8a7c7c3e79cf2",
-      "size": 117892,
-      "since": "1.7.0"
+      "hash": "d3e6be72d3a41771440987fa8b3755091b36ff50a59ee6d622d510cb638a1c72",
+      "size": 13987,
+      "since": "1.8.0"
     },
     "corpus/basic-pdfa2u-text.pdf": {
       "mode": "bytes",
-      "hash": "6421c49ac08267c201a63e9b472195793075ea559ddf222f339e6c8acb6c8c49",
-      "size": 119383,
-      "since": "1.7.0"
+      "hash": "578e800c23d9efb9b65200912712c2dad8b2360ad999f7523784541636116f9b",
+      "size": 15480,
+      "since": "1.8.0"
     },
     "corpus/chart-pdfa2b-scatter.pdf": {
       "mode": "bytes",
-      "hash": "11a435aa90761eba7ce6ee830d225c6b43fe177000dc2c9ac058bc753011d80b",
-      "size": 119411,
-      "since": "1.7.0"
+      "hash": "d729450b08ec43b0f235bb76fb89a047c03f9c2954e3e3447e84aaedd2b5a457",
+      "size": 15407,
+      "since": "1.8.0"
     },
     "corpus/cmyk-content-srgb-pdfa2b.pdf": {
       "mode": "bytes",
-      "hash": "3875182f33951b4991ed84c47d7d6b1def05f376ced272cc2e183d5bd00fdcdf",
-      "size": 117454,
-      "since": "1.7.0"
+      "hash": "6498e204219db5dfcf473a3a81295442ca1d12497e0d3d40defc29e93c7ccbe9",
+      "size": 13538,
+      "since": "1.8.0"
     },
     "corpus/cmyk-intent-pdfa2b.pdf": {
       "mode": "bytes",
-      "hash": "62f959522ade0e00c3b44f17e0c28450b655097395e82e341791b6737dbca1c9",
-      "size": 129388,
-      "since": "1.7.0"
+      "hash": "edd44687947673efae2222714d30c64d6e962f2627a7fb650ffaf01064f617ba",
+      "size": 25524,
+      "since": "1.8.0"
     },
     "corpus/composite-blocks-pdfa2b.pdf": {
       "mode": "bytes",
-      "hash": "77a026948b63883dd2aaccded4a9447ea0b759141ffa635b047976c1fbed5286",
-      "size": 136837,
-      "since": "1.7.0"
+      "hash": "5a7b3c7c3582b108cf067884b0a1251aac84cce1bdf32e25235f8dcc9e00b565",
+      "size": 33307,
+      "since": "1.8.0"
     },
     "corpus/extract-pages-pdfa2b.pdf": {
       "mode": "bytes",
-      "hash": "0d5797da24de847b768ab128dacb46888b60a58a8c36da0ffe62ad0956005368",
-      "size": 115645,
-      "since": "1.7.0"
+      "hash": "b89956e35788d8b9a9e0e2523512ee6ef24e615348179514d55fa1d32a8aa93d",
+      "size": 11738,
+      "since": "1.8.0"
     },
     "corpus/form-pdfa2b-no-embedfonts.pdf": {
       "mode": "bytes",
@@ -121,99 +121,99 @@
     },
     "corpus/form-pdfa2b.pdf": {
       "mode": "bytes",
-      "hash": "cde325ecf6af6867c7cb1c47629a0627dade122852f8f0c4c19b48619018f911",
-      "size": 247049,
-      "since": "1.7.0"
+      "hash": "612fee392ede42894fcf23522e8a8aefe6bc9fec7289f6df0d2bd13e146280b6",
+      "size": 143132,
+      "since": "1.8.0"
     },
     "corpus/gray-intent-pdfa2b.pdf": {
       "mode": "bytes",
-      "hash": "4570a78dd7f90ea65b1447a6923ffc8370edc882d57402c4216213ba6b743379",
-      "size": 117981,
-      "since": "1.7.0"
+      "hash": "ab29779b78c1bc178b8688dc14b63a249766006311b35f4d80fed38ad91e3342",
+      "size": 14049,
+      "since": "1.8.0"
     },
     "corpus/iccv4-pdfa1b.pdf": {
       "mode": "bytes",
-      "hash": "812e70957050248097f96bd8ee486961f01f049dca21241bef00830fbf66313d",
-      "size": 117097,
-      "since": "1.7.0"
+      "hash": "eed362b2aefc410d56a72e8c518f20c7f5d832a44b4531141e69aa6b55742424",
+      "size": 13110,
+      "since": "1.8.0"
     },
     "corpus/image-pdfa2b-jpeg.pdf": {
       "mode": "bytes",
-      "hash": "1139503996a9d95683e2107359d44f2db9406d2062cd3de54154b967eda941db",
-      "size": 116001,
-      "since": "1.7.0"
+      "hash": "ca9114acf7e6cb8cb2ac141f156cff788b3ce2008cbf032cd8b2c15310d61ec7",
+      "size": 11952,
+      "since": "1.8.0"
     },
     "corpus/international-pdfa2b-taitham.pdf": {
       "mode": "bytes",
-      "hash": "c3273ed763647a5f375dafd4170e02bde957e23ecf20a555c88e91b0999284a6",
-      "size": 2108218,
-      "since": "1.7.0"
+      "hash": "bccdf99ae8461ff4ab611529a25a979c39a015eca4743e1c7fad71016a253959",
+      "size": 15531,
+      "since": "1.8.0"
     },
     "corpus/international-pdfa2u-emoji-math.pdf": {
       "mode": "bytes",
-      "hash": "d673682f9925965e0e5e5767e0557b356cbf4b6aad775d2d243fd43851894628",
-      "size": 601902,
-      "since": "1.7.0"
+      "hash": "b00e586f219ae26153415b0bc5187a1fe5bb3a87098f6805daad16c56cb22946",
+      "size": 48463,
+      "since": "1.8.0"
     },
     "corpus/international-pdfa2u-lao-cham.pdf": {
       "mode": "bytes",
-      "hash": "1eb5d742d9375cf3f9f333358d6971b0c6e3cd278e9b407222c3bfb89df4619d",
-      "size": 2131363,
-      "since": "1.7.0"
+      "hash": "da9c3b16df27f6d3e294ca814fe3725db32129aa431c29dd9844c315ef087514",
+      "size": 37547,
+      "since": "1.8.0"
     },
     "corpus/international-pdfa2u-taitham.pdf": {
       "mode": "bytes",
-      "hash": "9056910228ddb09cc74e414b8893563b04823d37ef8257a8afd4b513fecd0be7",
-      "size": 2108730,
-      "since": "1.7.0"
+      "hash": "f8cc3e98d5260f745a16ec37368cb43bd3e4c966eb6e3cc5b4e7c21918ce141c",
+      "size": 16076,
+      "since": "1.8.0"
     },
     "corpus/international-pdfa2u.pdf": {
       "mode": "bytes",
-      "hash": "1b824606d4e9b76a752a1eba0001f57a3da9fcb86aea3c4a06200b95b315ff47",
-      "size": 163377,
-      "since": "1.7.0"
+      "hash": "5abe354b82b812622f3f6f079272577d1bb39da1926353395682bdf4a611db03",
+      "size": 23461,
+      "since": "1.8.0"
     },
     "corpus/layout-letter-templates-compress-pdfa2b.pdf": {
       "mode": "bytes",
-      "hash": "0c5df36d55261bfeb1f1769dadf622f7548a42f427aeba1f1687299028e071ef",
-      "size": 56051,
-      "since": "1.7.0"
+      "hash": "1d0f13832cc29834f4d39969f417884047a3722e14cf0dc078c5b7bd9f65d31f",
+      "size": 17090,
+      "since": "1.8.0"
     },
     "corpus/merge-pdfa2b.pdf": {
       "mode": "bytes",
-      "hash": "c3364eb48f97a041c47e775465398599bc7d9ffabece6fc1eb74d2b7bcf14a20",
-      "size": 227352,
-      "since": "1.7.0"
+      "hash": "95e3f5bcdd8d6dcf433f90343ce9e3f428a45e9b103b8c8d89b632d44d49de47",
+      "size": 19332,
+      "since": "1.8.0"
     },
     "corpus/metadata-updated-pdfa2u.pdf": {
       "mode": "bytes",
-      "hash": "f973d7570c046bdf097436773a4dbe95d7b02aa5d641391fc1d3bb2ab1b90970",
-      "size": 121120,
-      "since": "1.7.0"
+      "hash": "d5c99fc2609ea44183b0a87264079deda6fb2044d6fee70f0784973d4f57b365",
+      "size": 17215,
+      "since": "1.8.0"
     },
     "corpus/pdfx4-cmyk-bleed-colourbars.pdf": {
       "mode": "bytes",
-      "hash": "e70b4f8612ffc5ce4b945d05d1e6903e18131a3207406581187793b515a7770c",
-      "size": 127774,
-      "since": "1.7.0"
+      "hash": "edece9cea064dd3e6d351bc591df75293766a2c0eab44259199c83d138f3dd95",
+      "size": 23819,
+      "since": "1.8.0"
     },
     "corpus/pdfx4-cmyk.pdf": {
       "mode": "bytes",
-      "hash": "5205e4844443aca8767d2fda61886557cb274573199a78a7505fcbe63961ef88",
-      "size": 127357,
-      "since": "1.7.0"
+      "hash": "2af1f856e637d82815c7471a1f89959a2416a01b79990175cd4d783e41cf4cc3",
+      "size": 23454,
+      "since": "1.8.0"
     },
     "corpus/pdfx4-gray.pdf": {
       "mode": "bytes",
-      "hash": "89c02a2ea01c54c0ebb46a2199b8990bac8554fe914952f4a2a377d122a69696",
-      "size": 116530,
-      "since": "1.7.0"
+      "hash": "a0e23f3ba828d72809fb78ca1108b4e3c8d7b77202ee087d5a944c2fbbf13fb9",
+      "size": 12607,
+      "since": "1.8.0"
     },
     "corpus/pdfx4-link-annotation.pdf": {
       "mode": "bytes",
-      "hash": "91e1d93246d502858eef768a62745cdd687f47a12958cdfbd61237b574bc3380",
-      "size": 125734,
-      "since": "1.7.0"
+      "hash": "a9c580c1648b9bd999b199463902f9043f7f31c68c3c06a04fcf5e9f4e0d480d",
+      "size": 21768,
+      "since": "1.8.0"
     },
     "corpus/pdfx4-no-embedfonts.pdf": {
       "mode": "bytes",
@@ -223,39 +223,39 @@
     },
     "corpus/pdfx4-table.pdf": {
       "mode": "bytes",
-      "hash": "129f6f1cf3d3d82907e4bbd19aaf3098c4f766f66fa994dcd93e99f152f25195",
-      "size": 126723,
-      "since": "1.7.0"
+      "hash": "2cb89a25e57bb9a253e7d0aa57dbaa6d0bbb6491287f8afd57ee30f099555803",
+      "size": 22788,
+      "since": "1.8.0"
     },
     "corpus/placeholder-pdfa2b-unsigned.pdf": {
       "mode": "bytes",
-      "hash": "8abc2951ca4cfb7dd9c74a3cee20672a7b3ccc954900350cb6a6b22e5ca566f4",
-      "size": 150298,
-      "since": "1.7.0"
+      "hash": "65913796fc74be019c57c1f6fcaeda30220ae0bcb5fb73f66f12b0b95e6b4dcc",
+      "size": 46324,
+      "since": "1.8.0"
     },
     "corpus/signed-pdfa2b-pades.pdf": {
       "mode": "semantic",
       "hash": "700b2d61573aedcbfce6327102d853e2ee8439a5976d09785a5bd282e646966d",
-      "size": 150298,
+      "size": 46324,
       "since": "1.7.0"
     },
     "corpus/table-pdfa2b.pdf": {
       "mode": "bytes",
-      "hash": "9e7f8b00dc824ac8e62a1aaee5e2cb7dfdc6afe61364a056dff091b3a8c02a0a",
-      "size": 120999,
-      "since": "1.7.0"
+      "hash": "d88808b42c106694a49d304caff214c8322b2a8603e41c5047233341b6e95502",
+      "size": 17648,
+      "since": "1.8.0"
     },
     "corpus/typography-pdfa2u.pdf": {
       "mode": "bytes",
-      "hash": "ce257765cf4522d2be368f03b7b0329e9346bcfbcdc7718e3ed90d3238f31355",
-      "size": 168948,
-      "since": "1.7.0"
+      "hash": "37ceb1dff5d0ce81c7404753c4ea2c3c54e9bf3891df0b895500a2e99e20b148",
+      "size": 65401,
+      "since": "1.8.0"
     },
     "examples/african-languages/01-add_international_text.pdf": {
       "mode": "bytes",
-      "hash": "a30246b6bc91e528e87e6e2415215e97e77dc445df6864655518cc69c7e7bc18",
-      "size": 121316,
-      "since": "1.7.0"
+      "hash": "c5792c11620a50ce4dc537813fd49e1f96211d878b789e56597f31075844bfe3",
+      "size": 15013,
+      "since": "1.8.0"
     },
     "examples/annotate-pdf/01-generate_basic_pdf.pdf": {
       "mode": "bytes",
@@ -271,9 +271,9 @@
     },
     "examples/basic-watermark-normalize/01-generate_basic_pdf.pdf": {
       "mode": "bytes",
-      "hash": "a13b410a1908ad97d2c2319273f79bceca0ed6f4de0a16eebe391fafddad3d97",
-      "size": 5001,
-      "since": "1.7.0"
+      "hash": "0408bbcd67d45bb87c112e1bb0094cbd30593747e1ffca51a1996e8aff33214a",
+      "size": 5054,
+      "since": "1.8.0"
     },
     "examples/bookmarked-report/01-generate_basic_pdf.pdf": {
       "mode": "bytes",
@@ -287,6 +287,12 @@
       "size": 7710,
       "since": "1.7.0"
     },
+    "examples/chart-per-value-colours/01-add_chart.pdf": {
+      "mode": "bytes",
+      "hash": "8ce6033291d3bebc2ed235ac74aa85419976f1a5d87bc1d3ec3280b9190f2798",
+      "size": 6140,
+      "since": "1.8.0"
+    },
     "examples/chart-report/01-add_chart.pdf": {
       "mode": "bytes",
       "hash": "2c39f7a4e3d86a1156ceb9b71314f57b8f5421253157eca6a2633f5fb3cc00a5",
@@ -295,15 +301,15 @@
     },
     "examples/cmyk-colours/01-generate_basic_pdf.pdf": {
       "mode": "bytes",
-      "hash": "59cce1c8edbc07699dfb717925aa394efa901378c84d2426398f06175eba0746",
-      "size": 9292,
-      "since": "1.7.0"
+      "hash": "91172f2cad5d79cbc9fbe46bafe46fc440d52e0abc9c6ac85ad6634bbc802855",
+      "size": 9345,
+      "since": "1.8.0"
     },
     "examples/draft-governance-issue/01-draft_governance_issue.json": {
       "mode": "semantic",
-      "hash": "b4a0e99a618b7e9a0ed91bafb7e008786a48499d0d601677bbd4b9beb3987641",
+      "hash": "1547cfbf01369f2907d9a0dc312e417e5a57aa87b2d84243eed50d3a25221030",
       "size": 2542,
-      "since": "1.7.0"
+      "since": "1.8.0"
     },
     "examples/dual-axis-time-chart/01-add_chart.pdf": {
       "mode": "bytes",
@@ -311,11 +317,17 @@
       "size": 8791,
       "since": "1.7.0"
     },
+    "examples/dual-claim-pdfx-pdfa/01-generate_basic_pdf.pdf": {
+      "mode": "bytes",
+      "hash": "d50535c2768792462aef594731a9008b99bf27faefd9a7495078742b1f21caad",
+      "size": 25884,
+      "since": "1.8.0"
+    },
     "examples/emoji-skin-tones/01-add_international_text.pdf": {
       "mode": "bytes",
-      "hash": "45603beeec365a13037902128d6df59387fba5afb210681e8e73ec6a0b7515e3",
-      "size": 568179,
-      "since": "1.7.0"
+      "hash": "d619cceeeaa1f9ab802dd9db8d50305dfb10c8a6343d63d93eec27613c9c7cbb",
+      "size": 137044,
+      "since": "1.8.0"
     },
     "examples/encrypt-decrypt-roundtrip/01-generate_basic_pdf.pdf": {
       "mode": "bytes",
@@ -364,6 +376,18 @@
       "hash": "ed9bab7106913c1417b63ef7e16f0b7b7fa5a005785a987c7c56f2fbb3bdff05",
       "size": 589,
       "since": "1.7.0"
+    },
+    "examples/extract-text-stream-policy/01-generate_basic_pdf.pdf": {
+      "mode": "bytes",
+      "hash": "a2c2ba77ccb3506b1b523f99151264f90b3780361eb08911c42571829a6e7fa1",
+      "size": 2437,
+      "since": "1.8.0"
+    },
+    "examples/extract-text-stream-policy/02-extract_text.json": {
+      "mode": "bytes",
+      "hash": "73d7928a6cf85c9f468e4545cc4e2f5f597d4b04499a9c2418a30b0ab0be5b85",
+      "size": 73,
+      "since": "1.8.0"
     },
     "examples/factur-x-invoice/01-add_attachment.pdf": {
       "mode": "bytes",
@@ -419,11 +443,35 @@
       "size": 606,
       "since": "1.7.0"
     },
+    "examples/jpeg2000-image/01-embed_image.pdf": {
+      "mode": "bytes",
+      "hash": "511803db5320bc1c392b6ae630689bbffc037a199aacb90414a62a1393aee35c",
+      "size": 13023,
+      "since": "1.8.0"
+    },
+    "examples/link-annotation/01-generate_basic_pdf.pdf": {
+      "mode": "bytes",
+      "hash": "44fc00d0059a99c0a082f141aef41033dc61ae8b792698d0e7c5fb074ad0e883",
+      "size": 4450,
+      "since": "1.8.0"
+    },
+    "examples/link-annotation/02-annotate_pdf.pdf": {
+      "mode": "bytes",
+      "hash": "b474478ab2884bff9c76b34d05a0318d2bc98ddce4c94f79b72be45a37f7a861",
+      "size": 5214,
+      "since": "1.8.0"
+    },
+    "examples/link-annotation/03-inspect_pdf.json": {
+      "mode": "bytes",
+      "hash": "14b9c9c34fafd6dba2bc03d4fd27f5ead982920d9bc02fd2a504d148d157ada5",
+      "size": 155,
+      "since": "1.8.0"
+    },
     "examples/math-symbols/01-add_international_text.pdf": {
       "mode": "bytes",
-      "hash": "1369cc693ce26f9bd52861fc5c7ed81f240608ef746aaa4dd80f58a4fc68aa04",
-      "size": 253844,
-      "since": "1.7.0"
+      "hash": "7ebf19506cb411e14967f86440e289c24606fb6c9959bda73c99bb3390abb4db",
+      "size": 28226,
+      "since": "1.8.0"
     },
     "examples/merge-pdfs/01-generate_basic_pdf.pdf": {
       "mode": "bytes",
@@ -451,9 +499,9 @@
     },
     "examples/multilingual-doc/01-add_international_text.pdf": {
       "mode": "bytes",
-      "hash": "9ca9eee86d7421016e49a5c14949d7dc27fe4a810538c452f3edb08298e7000e",
-      "size": 20325595,
-      "since": "1.7.0"
+      "hash": "232c9354fe353985a9f2ba8159ecc883945f491fdfca9d505825052541b40e72",
+      "size": 29253,
+      "since": "1.8.0"
     },
     "examples/page-labels-inspect/01-generate_basic_pdf.pdf": {
       "mode": "bytes",
@@ -469,21 +517,21 @@
     },
     "examples/pdfa-embed-fonts/01-generate_basic_pdf.pdf": {
       "mode": "bytes",
-      "hash": "a1848e01461fc1f599d4c199bc53ac4b3818122c19ea8482eb7a000b18e39ba8",
-      "size": 120464,
-      "since": "1.7.0"
+      "hash": "a55c1d826f2f462cfadf4af2af7f1a4b86535408bc3be5b447b6f8dab7056a08",
+      "size": 16619,
+      "since": "1.8.0"
     },
     "examples/pdfx4-cmyk-validate/01-generate_basic_pdf.pdf": {
       "mode": "bytes",
-      "hash": "9ef3e256eee4f4d5b7e09faa7b56a857fefe613f7b079d9cfae79ee88c6539e6",
-      "size": 128907,
-      "since": "1.7.0"
+      "hash": "76a5281e054240ce46d5cdaa7fe79ce205965169842344a7a83807e1cd95dc2e",
+      "size": 25019,
+      "since": "1.8.0"
     },
     "examples/pdfx4-cmyk-validate/02-validate_pdf.json": {
       "mode": "bytes",
-      "hash": "bf24d1f12bce92a2f16e377214e80875d1081cacdfa567fd4f89271fde48ed0a",
-      "size": 503,
-      "since": "1.7.0"
+      "hash": "762a16cb04b416e436277df460681061a04f4ee420d1e05eb66ce5ebf11e7705",
+      "size": 605,
+      "since": "1.8.0"
     },
     "examples/pdfx4-cmyk-validate/03-inspect_pdf.json": {
       "mode": "bytes",
@@ -493,9 +541,9 @@
     },
     "examples/pdfx4-gray/01-generate_basic_pdf.pdf": {
       "mode": "bytes",
-      "hash": "dfb1ddb902f39f8501777ae47deed9414ab6b1539e6ab983179d15163950f55f",
-      "size": 118655,
-      "since": "1.7.0"
+      "hash": "ce366c6a22a2cc7e13619c3d14612b0a245aa8c6dd25c08ad4f5c645a41b12bb",
+      "size": 14766,
+      "since": "1.8.0"
     },
     "examples/print-bleed-marks/01-generate_basic_pdf.pdf": {
       "mode": "bytes",
@@ -515,17 +563,35 @@
       "size": 4486,
       "since": "1.7.0"
     },
+    "examples/rtl-direction/01-add_international_text.pdf": {
+      "mode": "bytes",
+      "hash": "5dabcf798a42e5ff8b8574479c0945732178cae3ab65e969e75e1ccfaba348f3",
+      "size": 33259,
+      "since": "1.8.0"
+    },
+    "examples/rtl-direction/02-extract_text.json": {
+      "mode": "bytes",
+      "hash": "acb893e6e3b75a7638c2190bc680c4bb663e140e801a7fdaf342680430877161",
+      "size": 804,
+      "since": "1.8.0"
+    },
     "examples/scatter-log-chart/01-add_chart.pdf": {
       "mode": "bytes",
       "hash": "a16e05f76b84a1f60fa79f90ea83e4c0356a8fe56aa74e02eedcd0133fb2c717",
       "size": 8115,
       "since": "1.7.0"
     },
+    "examples/scripts-indic-1-9/01-add_international_text.pdf": {
+      "mode": "bytes",
+      "hash": "084d2e5e2f1453ca7610fbc2b6ea55c1c0990626c969ab367cf7a6a83059f2d4",
+      "size": 47567,
+      "since": "1.8.0"
+    },
     "examples/scripts-lao-tai-cham/01-add_international_text.pdf": {
       "mode": "bytes",
-      "hash": "d42c7961e5b46aa4ff047a5d425f0f0aeb78d403cb16c9ad64a48be5f6f5a571",
-      "size": 2166102,
-      "since": "1.7.0"
+      "hash": "3f8d6a2e4770eb4b43dbf6d28aa30caf8f57272ff7d76f3a3eb7c43702b874eb",
+      "size": 42928,
+      "since": "1.8.0"
     },
     "examples/split-pdf/01-generate_basic_pdf.pdf": {
       "mode": "bytes",
@@ -545,6 +611,12 @@
       "size": 4746,
       "since": "1.7.0"
     },
+    "examples/spot-colours/01-generate_basic_pdf.pdf": {
+      "mode": "bytes",
+      "hash": "22ba306cf1d9b4e866afd033016be7bd4df1cf90bfdcb3540a3fa9efa986c7f4",
+      "size": 8192,
+      "since": "1.8.0"
+    },
     "examples/stacked-bar-chart/01-add_chart.pdf": {
       "mode": "bytes",
       "hash": "741e28a352d595b9f758f42265bc421b270a7870c81f79c5314865ea7146ef56",
@@ -559,15 +631,15 @@
     },
     "examples/typography-french/01-generate_basic_pdf.pdf": {
       "mode": "bytes",
-      "hash": "cc85697dd95f1dd38dc392b661a2dc2df6efa71fcfa8e0c6cafdd3935af4ac5a",
-      "size": 119900,
-      "since": "1.7.0"
+      "hash": "5628cb7430ca616e0dbba2aff8cfba6452f4cd1f24d84a33fd7b6dc8270cfd02",
+      "size": 16216,
+      "since": "1.8.0"
     },
     "examples/typography-report/01-generate_basic_pdf.pdf": {
       "mode": "bytes",
-      "hash": "2dc52f7e59e12a0a732010d9af81e14f3fb629d3ce28e703a3f568725e852970",
-      "size": 152190,
-      "since": "1.7.0"
+      "hash": "8aa979b2346ab2ea6b67f635cbb9f526c196e5ed88b9b06335f91289bbefd0f2",
+      "size": 48560,
+      "since": "1.8.0"
     },
     "examples/update-metadata/01-update_metadata.pdf": {
       "mode": "bytes",
@@ -577,9 +649,9 @@
     },
     "examples/watermarked-report/01-add_table.pdf": {
       "mode": "bytes",
-      "hash": "1d8d663175f5a85a87e74330d96eebdd46451a46aa62121ddbde0460babdd6c0",
-      "size": 6247,
-      "since": "1.7.0"
+      "hash": "fc7e6b30841b305f9bed2d227e86eec14513acca5782ec86a0b3a514d3fa9b68",
+      "size": 6300,
+      "since": "1.8.0"
     }
   }
 }

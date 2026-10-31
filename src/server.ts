@@ -221,7 +221,7 @@ const SERVER_DESCRIPTION =
  * make a cached response unsafe to serve. Independent from SERVER_VERSION
  * (which tracks the npm package).
  */
-const TOOL_API_VERSION = '1.7.0';
+const TOOL_API_VERSION = '1.8.0';
 
 /**
  * MCP 2026-07-28 cache hints (`ttlMs` / `cacheScope`) emitted on the cacheable

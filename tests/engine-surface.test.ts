@@ -64,7 +64,8 @@ describe('engine-surface matrix: shape', () => {
         expect(new Set(ids).size).toBe(ids.length);
         for (const item of matrix.items) {
             expect(ITEM_KINDS, item.id).toContain(item.kind);
-            expect(item.changelog.length, item.id).toBeGreaterThan(8);
+            // A bold title can be as short as "docs:" or "fix(ci):" — the prefix must still be unambiguous.
+            expect(item.changelog.length, item.id).toBeGreaterThan(4);
             const tested = (item.tests?.length ?? 0) > 0;
             expect(tested !== (item.waiver !== undefined), `${item.id}: tests XOR waiver`).toBe(true);
             if (item.waiver !== undefined) {
@@ -83,7 +84,7 @@ describe('engine-surface matrix: shape', () => {
 
     it('every engine feature a JSON tool call can reach is tested, not waived', () => {
         // The headline features of the release, by id: none may drift into a waiver.
-        const mustBeTested = ['typography', 'five-new-scripts', 'cmyk-colours', 'cmyk-gray-output-intents', 'pdfx4', 'validate-pdfx', 'colour-bars', 'utc-dates', 'actualtext', 'latin-marks', 'skin-tones', 'deterministic-samples', 'fix-acroform-pdfa', 'fix-inspect-layout-toc'];
+        const mustBeTested = ['five-indic-scripts', 'tounicode-every-shaper', 'spot-colours', 'dual-claim', 'validate-pdfx-xobjects', 'jpeg-2000', 'layout-descenders-toc', 'decode-pdf-text-string', 'pdf-stream-limit-error', 'compose-ltv-data', 'link-annotation', 'ecdsa-exports', 'chart-optional-label', 'actualtext-opt-out', 'actualtext-rtl', 'text-glyph-not-covered', 'chart-per-value-colors', 'extract-text-throws-stream-limit', 'dual-claim-messages', 'subset-font-tag', 'fix-deep-descenders', 'fix-toc-overflow', 'fix-chart-no-label', 'fix-text-strings', 'fix-ltv-extra-certificates', 'fix-danda-shaper-routing'];
         for (const id of mustBeTested) {
             const item = matrix.items.find((i) => i.id === id);
             expect(item, id).toBeDefined();
@@ -131,21 +132,24 @@ describe('engine-surface matrix: every reference is real', () => {
 
     it('every upstream limit is pinned in the tree and listed in ROADMAP.md', () => {
         const roadmap = read('ROADMAP.md');
-        expect(matrix.upstreamLimits.length).toBeGreaterThanOrEqual(4);
+        // 1.9.0 lifted every limit pinned at 1.8.0 but the Thai tone-mark pair.
+        expect(matrix.upstreamLimits.length).toBeGreaterThanOrEqual(1);
         for (const limit of matrix.upstreamLimits) {
             expect(limit.summary.length, limit.id).toBeGreaterThan(40);
             expect(source(limit.pinnedBy.file).includes(limit.pinnedBy.name), `${limit.id}: "${limit.pinnedBy.name}" in ${limit.pinnedBy.file}`).toBe(true);
             expect(roadmap.includes(limit.roadmap), `${limit.id}: ROADMAP.md mentions "${limit.roadmap}"`).toBe(true);
         }
         // The pins that are tests are it.fails markers: they go red the day the engine lifts the limit.
-        expect(read('tests/upstream-limits.test.ts').match(/it\.fails\(/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+        // At 1.9.0 the one remaining marker lives in the scripts suite (EXTRACTION_LIMITS → it.fails).
+        expect(read('tests/scripts.test.ts')).toContain('it.fails');
+        expect(read('tests/upstream-limits.test.ts')).toContain('lifted by pdfnative 1.9.0');
     });
 });
 
 describe('engine-surface: named means exercised', () => {
     it('every diagnostic code has a trigger a test executes, and a row in the agent contract', () => {
         expect(Object.keys(DIAGNOSTIC_TRIGGERS).sort()).toEqual([...DIAGNOSTIC_CODES].sort());
-        expect(DIAGNOSTIC_CODES).toHaveLength(9);
+        expect(DIAGNOSTIC_CODES).toHaveLength(13);
         // The table is executed, not just declared.
         expect(read('tests/diagnostics-triggers.test.ts')).toContain('it.each(Object.entries(DIAGNOSTIC_TRIGGERS))');
         const contract = read('docs/AGENT_CONTRACT.md');
@@ -165,15 +169,17 @@ describe('engine-surface: named means exercised', () => {
         expect([...used].filter((k) => !(TYPOGRAPHY_KEYS as readonly string[]).includes(k)), 'no example sets a key the engine does not have').toEqual([]);
     });
 
-    it('every script code and alias has a native test string, and the five new scripts reach a fingerprinted sample', () => {
-        expect(SCRIPT_CODES).toHaveLength(27);
+    it('every script code and alias has a native test string, and the ten scripts added since 1.7.0 reach a fingerprinted sample', () => {
+        expect(SCRIPT_CODES).toHaveLength(32);
         expect(SCRIPT_CODES.filter((code) => SCRIPT_SAMPLES[code] === undefined), 'script codes without a test string').toEqual([]);
         expect(Object.keys(LANG_ALIASES).filter((code) => ALIAS_SAMPLES[code] === undefined), 'aliases without a test string').toEqual([]);
         // Rendered for real, for every code: the parametrised suite walks the same table.
         expect(read('tests/scripts.test.ts')).toContain('it.each(Object.entries(SCRIPT_SAMPLES))');
-        const example = JSON.parse(read('examples/scripts-lao-tai-cham.json')) as { arguments: { lang: string[] } };
-        for (const code of ['lo', 'nod', 'khb', 'tdd', 'cjm']) expect(example.arguments.lang, code).toContain(code);
-        expect(Object.hasOwn(baseline.entries, 'examples/scripts-lao-tai-cham/01-add_international_text.pdf')).toBe(true);
+        for (const [file, codes] of [['scripts-lao-tai-cham', ['lo', 'nod', 'khb', 'tdd', 'cjm']], ['scripts-indic-1-9', ['gu', 'pa', 'kn', 'ml', 'or']]] as const) {
+            const example = JSON.parse(read(`examples/${file}.json`)) as { arguments: { lang: string[] } };
+            for (const code of codes) expect(example.arguments.lang, code).toContain(code);
+            expect(Object.hasOwn(baseline.entries, `examples/${file}/01-add_international_text.pdf`), file).toBe(true);
+        }
     });
 });
 

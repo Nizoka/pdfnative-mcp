@@ -297,7 +297,7 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
     }
     const {
         title, blocks, footerText, pdfA, watermark, normalize, outline, pageLabels, viewerPreferences,
-        print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt, pdfx, strict, includeDiagnostics, embedFonts, font, outputMode, outputPath,
+        print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, direction, actualText, compress, debug, encrypt, pdfx, strict, includeDiagnostics, embedFonts, font, outputMode, outputPath,
     } = parsed.data;
     assertWatermarkPdfACompatible(watermark, pdfA);
     assertPrintPdfACompatible(print, pdfA);
@@ -327,7 +327,7 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
                 ...(normalize !== undefined ? { normalize } : {}),
                 ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
-                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, direction, actualText, compress, debug, encrypt }),
                 ...toPdfXLayout(pdfx),
                 ...collector.layout,
             },

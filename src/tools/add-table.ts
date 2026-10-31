@@ -122,7 +122,7 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, headers, rows, infoItems, footerText, autoFitColumns, clipCells, wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, cellBorders, cellVAlign, pdfA, watermark, viewerPreferences, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt, pdfx, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
+    const { title, headers, rows, infoItems, footerText, autoFitColumns, clipCells, wrap, repeatHeader, zebra, caption, minRowHeight, cellPadding, cellBorders, cellVAlign, pdfA, watermark, viewerPreferences, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, direction, actualText, compress, debug, encrypt, pdfx, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
     assertWatermarkPdfACompatible(watermark, pdfA);
     assertPrintPdfACompatible(print, pdfA);
     assertLayoutPdfACompatible({ encrypt }, pdfA);
@@ -137,7 +137,7 @@ export async function addTable(rawInput: unknown): Promise<OutputResult> {
     const layout = {
         ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
         ...toPrintLayout({ print, outputIntent, creationDate }),
-        ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt }),
+        ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, direction, actualText, compress, debug, encrypt }),
         ...toPdfXLayout(pdfx),
         ...collector.layout,
     };
