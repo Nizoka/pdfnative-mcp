@@ -151,7 +151,7 @@ No breaking change: every 1.7.0 input is still accepted, all new behaviour is op
 - Four new diagnostics (13 in all): PDFA1_JPX_IMAGE, PDFA_JPX_IMAGE, PDFA_GLYPH_WITHOUT_UNICODE (pdfa2u, a used glyph ToUnicode cannot name), TEXT_GLYPH_NOT_COVERED (a character no registered font covers — DIAGNOSTIC_ESCALATED under strict).
 - Issue #66: `PDFNATIVE_MCP_OUTPUT_BASE_URL` makes file-mode results carry a public `url`. Issue #65: `blocks` carries `maxItems: 5000` so grammar-constrained clients (llama.cpp) compile the schema; tests/client-compat.test.ts pins the catalogue against those clients.
 - Governance resources pdfnative://governance/policy and pdfnative://governance/rules (embedded at build time); any call carrying `password` is never cached.
-- Repository: ClusterFuzzLite fuzzing over the tools/call boundary, a five-job attested publish pipeline (npm provenance, three SBOMs, cosign-verified mcp-publisher), workflow-lint as a required check, a 108-sample byte baseline, 51 examples, a 384 KiB catalogue budget (≈ 355 kB live).
+- Repository: ClusterFuzzLite fuzzing over the tools/call boundary, a five-job attested publish pipeline (npm provenance, three SBOMs, cosign-verified mcp-publisher), workflow-lint as a required check, a 112-sample byte baseline, 51 examples, a 384 KiB catalogue budget (≈ 355 kB live).
 - Still deferred: redact_pdf (no content-removal API), HTTP page streaming (no partial structuredContent in 2026-07-28). Engine limits pinned by tests: a Thai above-vowel + tone-mark pair extracts in visual order; fill_form writes a non-Latin-1 value under nonWinAnsi:'needAppearances' as low bytes.
 
 ## New in v1.7.0 (pdfnative v1.8)

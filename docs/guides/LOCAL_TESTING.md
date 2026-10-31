@@ -175,13 +175,13 @@ change by accident. The whole loop is:
 npm run build && npm run test:generate && npm run verify:samples
 ```
 
-- `npm run test:generate` drives the **built** server (never `src/`) and writes 108
+- `npm run test:generate` drives the **built** server (never `src/`) and writes 112
   samples into the git-ignored `test-output/samples/`: every hermetic `examples/*.json`
   sequence (those needing no PKI, TSA or revocation fixture) plus the conformance
   corpus. It runs under `TZ=UTC`, with every operator variable scrubbed and every
   instant pinned, so the set is reproducible on any machine.
 - `npm run verify:samples` fingerprints the set and compares it with the committed
-  `tests/_fixtures/samples.sha256.json`: 105 samples byte for byte, and 3 that cannot
+  `tests/_fixtures/samples.sha256.json`: 109 samples byte for byte, and 3 that cannot
   repeat their bytes (encrypted, signed with a per-run key, or host-dependent) through a
   semantic projection — each listed explicitly, with its reason, in
   `scripts/lib/sample-fingerprint.ts`. Exit 0 match, 1 a changed or removed sample,

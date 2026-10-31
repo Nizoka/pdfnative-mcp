@@ -43,7 +43,7 @@ agents never register the project anywhere).
 | Criterion | Status | Evidence |
 | --- | --- | --- |
 | Working build system | Met | `npm run build` (`tsc`), `npm run gate` as the single definition of green ([scripts/gate.ts](../scripts/gate.ts), [guides/LOCAL_TESTING.md](guides/LOCAL_TESTING.md)). |
-| Automated test suite | Met | vitest: one suite per tool and module, examples-as-tests, the conformance corpus under veraPDF, a byte baseline of 108 samples, fuzz targets on a seed corpus. Coverage thresholds are enforced in [vitest.config.ts](../vitest.config.ts) and only ever move up. |
+| Automated test suite | Met | vitest: one suite per tool and module, examples-as-tests, the conformance corpus under veraPDF, a byte baseline of 112 samples, fuzz targets on a seed corpus. Coverage thresholds are enforced in [vitest.config.ts](../vitest.config.ts) and only ever move up. |
 | New functionality tested | Met | Every tool change touches its test, its example and the engine-surface matrix ([AGENTS.md](../AGENTS.md) §Architecture); `verify:docs` fails on a missed step. |
 | Warning flags | Met | TypeScript strict, `eslint --max-warnings 0`, `tsc` over `src/`, `tests/` and `scripts/`. |
 | Continuous integration (silver) | Met | Required checks on Linux (Node 22 and 24), Windows and macOS, the sample baseline and the workflow linter ([.github/rulesets/main.json](../.github/rulesets/main.json)). |
