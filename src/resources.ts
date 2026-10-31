@@ -19,9 +19,43 @@ import path from 'node:path';
 
 import { getOutputSandbox, resolveSandboxedPath } from './output.js';
 import { ToolError } from './errors.js';
+import { AGENT_RULES_TEXT, AI_GOVERNANCE_POLICY_JSON } from './governance-embed.js';
 
 /** URI scheme + authority for sandboxed PDF resources. */
 export const RESOURCE_URI_PREFIX = 'pdfnative://output/';
+
+/**
+ * The AI-governance contract as two static text resources (1.8.0): the
+ * machine-readable policy and the protocol, byte-identical to the files the
+ * repository holds (verify:docs rule governance-embed), so an agent on a
+ * remote host reads the same contract the `governance_contract` prompt
+ * summarises. Always listed, sandbox or not.
+ */
+export const GOVERNANCE_RESOURCES: readonly ResourceDescriptor[] = [
+    {
+        uri: 'pdfnative://governance/policy',
+        name: 'governance/policy',
+        title: 'AI-governance policy (ai-governance.json)',
+        description: 'The machine-readable AI-governance / human-in-the-loop policy of pdfnative-mcp (.github/ai-governance.json, verbatim): what an agent may do, what only a human submits.',
+        mimeType: 'application/json',
+        size: Buffer.byteLength(AI_GOVERNANCE_POLICY_JSON, 'utf8'),
+    },
+    {
+        uri: 'pdfnative://governance/rules',
+        name: 'governance/rules',
+        title: 'Agent rules (AGENT_RULES.md)',
+        description: 'The human-in-the-loop protocol an agent follows when it proposes a change to pdfnative or pdfnative-mcp (.github/AGENT_RULES.md, verbatim).',
+        mimeType: 'text/markdown',
+        size: Buffer.byteLength(AGENT_RULES_TEXT, 'utf8'),
+    },
+];
+
+/** The text of a governance resource, or `null` for any other URI. */
+function governanceText(uri: string): { readonly mimeType: string; readonly text: string } | null {
+    if (uri === 'pdfnative://governance/policy') return { mimeType: 'application/json', text: AI_GOVERNANCE_POLICY_JSON };
+    if (uri === 'pdfnative://governance/rules') return { mimeType: 'text/markdown', text: AGENT_RULES_TEXT };
+    return null;
+}
 
 /** Maximum number of resources returned by a single `resources/list`. */
 const MAX_LISTED_RESOURCES = 1000;
@@ -41,11 +75,10 @@ export interface ResourceDescriptor {
     readonly size: number;
 }
 
-export interface ResourceContents {
-    readonly uri: string;
-    readonly mimeType: string;
-    readonly blob: string;
-}
+/** A PDF comes back as base64 bytes, a governance resource as UTF-8 text. */
+export type ResourceContents =
+    | { readonly uri: string; readonly mimeType: string; readonly blob: string }
+    | { readonly uri: string; readonly mimeType: string; readonly text: string };
 
 /** Convert an absolute sandbox path to its `pdfnative://output/…` URI (POSIX separators). */
 function uriForRelative(relative: string): string {
@@ -98,15 +131,15 @@ async function walkPdfs(sandbox: string, dir: string, depth: number, out: string
     }
 }
 
-/** List every sandboxed PDF as an MCP resource. Empty when file output is disabled. */
+/** List the governance resources, then every sandboxed PDF (none when file output is disabled). */
 export async function listResources(): Promise<ResourceDescriptor[]> {
     const sandbox = getOutputSandbox();
-    if (sandbox === null) return [];
+    if (sandbox === null) return [...GOVERNANCE_RESOURCES];
     const relatives: string[] = [];
     await walkPdfs(sandbox, sandbox, 0, relatives);
     relatives.sort();
 
-    const descriptors: ResourceDescriptor[] = [];
+    const descriptors: ResourceDescriptor[] = [...GOVERNANCE_RESOURCES];
     for (const relative of relatives) {
         let size = 0;
         try {
@@ -137,6 +170,8 @@ export async function listResources(): Promise<ResourceDescriptor[]> {
  *         `OUTPUT_TOO_LARGE` when the file exceeds the read cap.
  */
 export async function readResource(uri: string): Promise<ResourceContents> {
+    const governance = governanceText(uri);
+    if (governance !== null) return { uri, ...governance };
     if (!uri.startsWith(RESOURCE_URI_PREFIX)) {
         throw new ToolError('UNKNOWN_RESOURCE', `Unsupported resource URI: ${uri}`);
     }

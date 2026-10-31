@@ -18,8 +18,16 @@
     "outbound_network_allowed": false,
     "outbound_network": {
       "default": "none",
-      "operator_configured_endpoints": ["rfc3161_tsa", "ocsp", "crl"],
-      "configured_via": ["PDFNATIVE_MCP_TSA_URL", "PDFNATIVE_MCP_REVOCATION", "PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS"],
+      "operator_configured_endpoints": [
+        "rfc3161_tsa",
+        "ocsp",
+        "crl"
+      ],
+      "configured_via": [
+        "PDFNATIVE_MCP_TSA_URL",
+        "PDFNATIVE_MCP_REVOCATION",
+        "PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS"
+      ],
       "url_from_tool_arguments": "never",
       "github": "never",
       "telemetry": "never"
@@ -139,11 +147,14 @@
   "verification": {
     "command": "npm run verify:issue -- .github/drafts/<draft>.md",
     "advisory_in_ci": true,
-    "blocks_submission_on_failure": true
+    "blocks_submission_on_failure": true,
+    "validator_covered_by": "tests/governance.test.ts"
   },
   "references": {
     "zero_dependency_policy": "README.md",
     "governance_guide": "docs/guides/AI_GOVERNANCE.md",
-    "issue_templates": [".github/ISSUE_TEMPLATE"]
+    "issue_templates": [
+      ".github/ISSUE_TEMPLATE"
+    ]
   }
 }
