@@ -5,7 +5,10 @@ description: >-
   .github/checksums/. Exports VERAPDF_HOME and puts `verapdf` on the PATH.
   pdfnative-mcp stays a zero-extra-runtime-dependency package; veraPDF is a
   CI tool. Shared by verapdf.yml and publish.yml so the URL/SHA-256 bump
-  happens in one place (it used to be duplicated in both workflows).
+  happens in one place (it used to be duplicated in both workflows). The
+  install directory is also handed back as the `home` output, so a caller can
+  pass it explicitly as VERAPDF_HOME through the step's outputs instead of
+  relying on the job-wide GITHUB_ENV export.
 
 inputs:
   version:
@@ -17,6 +20,11 @@ inputs:
       https://software.verapdf.org/rel/
     required: false
     default: '1.30.2'
+
+outputs:
+  home:
+    description: The veraPDF install directory (what VERAPDF_HOME must name).
+    value: ${{ steps.install.outputs.home }}
 
 runs:
   using: composite
@@ -52,6 +60,7 @@ runs:
         unzip -q "${ARCHIVE}" -d "$HOME/verapdf-installer"
 
     - name: Install veraPDF CLI
+      id: install
       shell: bash
       run: |
         set -euo pipefail
@@ -73,6 +82,7 @@ runs:
         XML
         java -jar "${INSTALLER_JAR}" "$HOME/verapdf/auto-install.xml"
         echo "VERAPDF_HOME=$HOME/verapdf" >> "$GITHUB_ENV"
+        echo "home=$HOME/verapdf" >> "$GITHUB_OUTPUT"
         echo "$HOME/verapdf" >> "$GITHUB_PATH"
 
     - name: Verify veraPDF

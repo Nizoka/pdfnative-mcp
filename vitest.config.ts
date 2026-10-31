@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 import { defineConfig } from 'vitest/config';
 
 /**
@@ -12,6 +14,12 @@ if (process.env.GITHUB_ACTIONS) reporters.push('github-actions');
 if (process.env.GATE === '1') reporters.push(['json', { outputFile: 'test-output/.gate/vitest.json' }]);
 
 export default defineConfig({
+    resolve: {
+        // The fuzz targets (fuzz/*.js) import the BUILT boundary module by a
+        // relative path, which is what the ClusterFuzzLite container fuzzes;
+        // tests/fuzzing/targets.test.ts runs the same files against src/.
+        alias: [{ find: /^\.\.\/dist\/fuzz-surface\.js$/, replacement: fileURLToPath(new URL('./src/fuzz-surface.ts', import.meta.url)) }],
+    },
     test: {
         include: ['tests/**/*.test.ts'],
         environment: 'node',
@@ -42,9 +50,11 @@ export default defineConfig({
             //               handling); the gate's `smoke` step and
             //               tests/cli-stdio.test.ts drive the built binary
             //   - index.ts  re-exports only, no logic of its own
+            //   - fuzz-surface.ts  re-exports only, the door the fuzz targets use
             exclude: [
                 'src/cli.ts',
                 'src/index.ts',
+                'src/fuzz-surface.ts',
             ],
             // `text-summary` is four lines instead of one per source file;
             // `json-summary` is what scripts/gate.ts reads the percentage

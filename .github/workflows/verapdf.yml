@@ -76,11 +76,11 @@ jobs:
 
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          egress-policy: audit
+          egress-policy: audit # 2026-10-31: software.verapdf.org and the Adoptium API (Temurin) are not baselined yet
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -95,6 +95,7 @@ jobs:
       # a floating "latest" URL can silently change the rule set between two
       # runs of the same commit. Bump deliberately in the action's default.
       - name: Setup veraPDF
+        id: verapdf
         uses: ./.github/actions/setup-verapdf
 
       - name: Install dependencies
@@ -108,9 +109,12 @@ jobs:
 
       # BLOCKING (see header). The exit code drives the step outcome — the
       # step fails naturally on a non-zero exit — and the summary step below
-      # surfaces the verdict.
+      # surfaces the verdict. The validator reads the install directory from
+      # the action's `home` output.
       - name: Validate PDF/A corpus (blocking)
         id: validate
+        env:
+          VERAPDF_HOME: ${{ steps.verapdf.outputs.home }}
         run: |
           set +e
           npm run validate:pdfa --silent -- --verbose 2> >(tee verapdf-stderr.txt >&2) | tee verapdf-report.txt
@@ -123,7 +127,7 @@ jobs:
       # diagnosed without re-running the job.
       - name: Upload veraPDF report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: verapdf-report
           path: |
@@ -136,8 +140,11 @@ jobs:
 
       - name: Job summary
         if: always()
+        env:
+          EXIT_CODE: ${{ steps.validate.outputs.exit_code }}
+          OUTCOME: ${{ steps.validate.outcome }}
         run: |
-          code='${{ steps.validate.outputs.exit_code }}'
+          code="${EXIT_CODE}"
           case "${code}" in
             0) verdict='all expectations met' ;;
             1) verdict='CONFORMANCE failure (FAIL, XPASS or coverage canary — see report)' ;;
@@ -147,7 +154,7 @@ jobs:
           {
             echo "## PDF/A validation (veraPDF, blocking)"
             echo
-            echo "Step outcome: ${{ steps.validate.outcome }} · exit ${code:-n/a} · ${verdict}"
+            echo "Step outcome: ${OUTCOME} · exit ${code:-n/a} · ${verdict}"
             echo
             echo '```'
             cat verapdf-report.txt 2>/dev/null || echo "(no report produced)"
