@@ -10,20 +10,24 @@ url: "https://github.com/Nizoka/pdfnative-mcp"
 abstract: >-
   Model Context Protocol (MCP) server bridging the zero-dependency pdfnative
   library to AI clients. Provides 28 production-grade tools for PDF generation
-  (13 document block kinds, page layout options, a read-only pagination preview),
-  PDF/A archival with embedded fonts and conformance diagnostics, PDF/UA
-  structural validation, native vector charts, embedded barcodes, multi-script
-  text, smart tables, interactive forms (create, read, fill, flatten), embedded
-  files (Factur-X), digital signatures with the full PAdES long-term-validation
-  ladder (B-B to B-LTA: RFC 3161 timestamps, DSS, document timestamps) and
-  verification, print production (page boxes, bleed, printer's marks), document
-  metadata updates, encryption round-trip, page-tree operations, markup
+  (13 document block kinds, page layout options, fine typography, right-to-left
+  text, operator-supplied fonts, a read-only pagination preview), PDF/A archival
+  with embedded fonts and conformance diagnostics, PDF/X-4 print exchange (alone
+  or as a dual claim with PDF/A-2), PDF/UA structural validation, native vector
+  charts, embedded barcodes, text in 32 Unicode scripts, JPEG / PNG / JPEG 2000
+  images, CMYK and spot colours, smart tables, interactive forms (create, read,
+  fill, flatten), embedded files (Factur-X), digital signatures with the full
+  PAdES long-term-validation ladder (B-B to B-LTA: RFC 3161 timestamps, DSS,
+  document timestamps) and verification, print production (page boxes, bleed,
+  printer's marks, colour bars), reproducible output, document metadata
+  updates, encryption round-trip, page-tree operations, markup and link
   annotations, Unicode text extraction, PDF introspection, and human-in-the-loop
   governance issue drafting. Speaks MCP 2026-07-28 with automatic fallback for
-  2025-era clients and makes no outbound network call by default.
+  2025-era clients, makes no outbound network call by default, is fuzzed
+  continuously and published with provenance and SBOMs.
 license: MIT
-version: 1.7.0
-date-released: "2026-09-21"
+version: 1.8.0
+date-released: "2026-10-31"
 keywords:
   - mcp
   - model-context-protocol
@@ -36,3 +40,12 @@ keywords:
   - print-production
   - factur-x
   - ai-tools
+  - pdf-x-4
+  - pdf-ua
+  - spot-colours
+  - jpeg-2000
+  - right-to-left
+  - custom-fonts
+  - unicode
+  - reproducible-builds
+  - zero-dependency

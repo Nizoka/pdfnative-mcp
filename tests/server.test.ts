@@ -25,7 +25,7 @@ describe('server', () => {
 
     it('exposes stable metadata', () => {
         expect(__serverMetadata.name).toBe('pdfnative-mcp');
-        expect(__serverMetadata.version).toBe('1.7.0');
+        expect(__serverMetadata.version).toBe('1.8.0');
     });
 
     it('advertises a human-readable title and description in serverInfo (MCP Implementation)', () => {
@@ -131,7 +131,7 @@ describe('server', () => {
 
         // Every tool advertises _meta.apiVersion and at least one example.
         for (const t of response.tools) {
-            expect(t._meta?.apiVersion).toBe('1.7.0');
+            expect(t._meta?.apiVersion).toBe('1.8.0');
             expect(Array.isArray(t._meta?.examples)).toBe(true);
             expect((t._meta?.examples ?? []).length).toBeGreaterThan(0);
         }
@@ -282,10 +282,10 @@ describe('server', () => {
     });
 
     it('advertises the MCP resources capability with list, read and templates handlers', async () => {
-        // With no sandbox configured, listing is empty (stateless, safe default).
+        // With no sandbox configured, only the two static governance resources are listed (no output entry).
         delete process.env[OUTPUT_ENV];
-        const res = await rpc<{ resources: unknown[] }>('resources/list');
-        expect(res.resources).toEqual([]);
+        const res = await rpc<{ resources: Array<{ uri: string }> }>('resources/list');
+        expect(res.resources.map((r) => r.uri)).toEqual(['pdfnative://governance/policy', 'pdfnative://governance/rules']);
         const templates = await rpc<{ resourceTemplates: unknown[] }>('resources/templates/list');
         expect(Array.isArray(templates.resourceTemplates)).toBe(true);
         // Spec 2026-07-28: resource-not-found is -32602 (Invalid params) on every revision.

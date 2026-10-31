@@ -9,7 +9,7 @@
 
 Every tool emits `_meta.apiVersion` in the `ListTools` response.
 
-Current value: **`1.7.0`** (stable, since pdfnative-mcp 1.7.0; `TOOL_API_VERSION` in `src/server.ts`).
+Current value: **`1.8.0`** (stable, since pdfnative-mcp 1.8.0; `TOOL_API_VERSION` in `src/server.ts`).
 
 The tool API version is **independent of the npm release version**.
 Server releases that ship only documentation, refactoring, or non-breaking ergonomic improvements (richer descriptions, additional `_meta.examples`, new optional output fields) **do not** bump `_meta.apiVersion`.
@@ -57,9 +57,10 @@ A bump of `_meta.apiVersion` happens **only** in the cases listed in §3.
 > `$schema` keyword** by policy: MCP ≥ 2025-11-25 defaults to JSON Schema 2020-12, and some
 > hosts forward `inputSchema` verbatim to LLM function-calling APIs that reject unknown
 > keywords. Likewise there is no `$ref` / `$defs`, which is why the 13-kind block union is
-> repeated inline in `inspect_layout` and `tools/list` weighs ≈ 306 kB, under a 320 KiB budget enforced by `scripts/tool-shape.ts --check` (≈ 246 kB in 1.6.0: the
-> `typography` fragment and the widened colour schemas of 1.7.0 are inlined in every tool that
-> carries them).
+> repeated inline in `inspect_layout` and `tools/list` weighs ≈ 355 kB, under a 384 KiB budget enforced by `scripts/tool-shape.ts --check` (≈ 246 kB in 1.6.0, ≈ 306 kB in 1.7.0: the
+> `typography` fragment and the widened colour schemas of 1.7.0, then the two spot-colour members at
+> 46 colour sites and the five layout / print options of 1.8.0, are inlined in every tool that
+> carries them; the budget moved from 320 to 384 KiB in 1.8.0, deliberately — §5).
 
 ---
 
@@ -115,7 +116,7 @@ When a tool, field or error code is scheduled for removal:
 
 ## 5. Per-tool stability matrix
 
-All 28 tools shipped through pdfnative-mcp 1.7.0 are at `_meta.apiVersion = '1.7.0'` and are considered **stable**:
+All 28 tools shipped through pdfnative-mcp 1.8.0 are at `_meta.apiVersion = '1.8.0'` and are considered **stable**:
 
 `generate_basic_pdf`, `add_barcode`, `add_international_text`, `add_table`, `add_form`,
 `embed_image`, `prepare_signature_placeholder`, `sign_pdf`, `verify_pdf`, `validate_pdf`,
@@ -124,9 +125,119 @@ All 28 tools shipped through pdfnative-mcp 1.7.0 are at `_meta.apiVersion = '1.7
 `read_form_fields`, `fill_form`, `add_chart`, `encrypt_pdf`, `decrypt_pdf`,
 `update_metadata`, `add_ltv`, `timestamp_pdf`, `inspect_layout`.
 
+> **v1.8.0 minor bump rationale:** no new tool — the catalogue stays at 28. `TOOL_API_VERSION`
+> moves `1.7.0` → `1.8.0` because existing tools gained **optional inputs**, **enum values**, one
+> **optional output field** and one **error code** on pdfnative 1.9.0. Everything is additive per §3:
+> every 1.7.0 input is still accepted, every new input is off by default and nothing is emitted for
+> an absent one, so default output is byte-identical except where the engine corrected
+> previously-wrong bytes (table below) and where a silent data loss became a coded error
+> (`extract_text`, *Error codes*).
+>
+> | Tool | 1.8.0 input / output changes |
+> | --- | --- |
+> | `generate_basic_pdf` | `direction`, `actualText`, `font`, `print.spotColours`; the spot / ink-mix members on every colour (`watermark.color`, template `color`, outline `color`, and in blocks `link.color`, `svg.fill` / `svg.stroke`, chart `colors` / series `color` / series `colors`, table `cellBorders.color`); `blocks[]`: `paragraph.direction`, `image.mimeType` value `image/jp2`, chart series `colors` and optional `label`; `watermark.image.mimeType` value `image/jp2`; `pdfx` + `pdfA: 'pdfa2b' \| 'pdfa2u'` accepted |
+> | `inspect_layout` | `direction`, `actualText`, `font`; the same `blocks[]` additions (it shares the block schema); the spot / ink-mix members on template `color` |
+> | `add_table`, `add_barcode`, `add_form`, `add_attachment`, `prepare_signature_placeholder` | `direction`, `actualText`, `print.spotColours`; the spot / ink-mix members on every colour they carry (`watermark.color`, `cellBorders.color`, template `color`); `prepare_signature_placeholder.blocks` `maxItems` 2000 → 5000 |
+> | `add_chart` | the same, plus `series[].colors` (one per value, `bar` / `barH` / `stackedBar` / `stackedBarH`) and `series[].label` optional |
+> | `embed_image` | the same, plus `mimeType` value `image/jp2` (JP2 file or raw codestream) |
+> | `add_international_text` | the same, plus `font` and the `lang` enum values `gu`, `pa`, `kn`, `ml`, `or` |
+> | `annotate_pdf` | `type` value `link` and the input `url` (required when `type` is `link`) |
+> | `extract_text` | `onStreamError` (`limit`, the default, or `skip`) |
+> | `add_ltv` | `match` (`all`, the default, or `chain`), offline mode only |
+> | `validate_pdf` | `caveats[]` wording for `pdf-x-4` (the XObject clause is gone — a description, not a schema change) |
+> | `inspect_pdf` | `info` values are decoded text strings (a `/Info` title in any script reads back as text) |
+> | Every tool with `outputMode: 'file'`, and `split_pdf` parts, and `draft_governance_issue` | output `url` (presence-gated: only when `PDFNATIVE_MCP_OUTPUT_BASE_URL` is set) |
+> | `sign_pdf`, `verify_pdf`, `timestamp_pdf`, `update_metadata`, `merge_pdfs`, `extract_pages`, `extract_attachments`, `read_form_fields`, `fill_form`, `encrypt_pdf`, `decrypt_pdf` | no schema change beyond the file-mode `url` (`_meta.apiVersion` moves with the catalogue) |
+>
+> - **Spot colours** — `print.spotColours[]` (`{ name, alternate: [c, m, y, k] | [r, g, b] }`, at
+>   most 32) on the nine document tools; every colour property the shared module serves gains two
+>   `anyOf` members after the CMYK forms: `{ spot, tint? }` and `{ inks }` (46 sites). Their
+>   descriptions are terse on purpose (one member is inlined 46 times); the long form is on
+>   `print.spotColours` and in `docs/guides/PRINT.md`. An undeclared ink is the engine's error,
+>   `VALIDATION_ERROR` naming the ink; the declaration errors are `PRINT_ERROR`.
+> - **`direction`** (`auto` | `ltr` | `rtl`) and **`actualText`** (default true) on the nine
+>   document tools and `inspect_layout`; `paragraph.direction` overrides. Omitted, the layout
+>   fragment emits nothing and the bytes are those of 1.7.0.
+> - **`font`** (three tools) — a slug (`^[a-z0-9][a-z0-9-]{0,63}$`) naming a face the operator
+>   registered through `PDFNATIVE_MCP_FONT_DIR`; the schema is static, the registry is runtime, an
+>   unknown slug is `FONT_NOT_FOUND`.
+> - **`image/jp2`** — a third `mimeType` value on the three image inputs; the bytes are checked
+>   (JP2 signature box or raw codestream) and passed through, never decoded.
+> - **`pdfx` + `pdfA`** — 1.7.0 refused every combination before the build; 1.8.0 accepts
+>   `pdfa2b` / `pdfa2u` (the dual claim) and refuses `pdfa1b` / `pdfa3b` with the engine's two
+>   level-specific messages. A looser validation is additive per §3.
+> - New engine **diagnostics** (not error codes): `PDFA1_JPX_IMAGE`, `PDFA_JPX_IMAGE`,
+>   `PDFA_GLYPH_WITHOUT_UNICODE`, `TEXT_GLYPH_NOT_COVERED` — thirteen in total, enumerated from the
+>   engine's own type. `PDFA1_*` escalates like `PDFA_*`; `TEXT_GLYPH_NOT_COVERED` escalates to
+>   `DIAGNOSTIC_ESCALATED`, and because the engine reports it before `PDFA_GLYPH_WITHOUT_UNICODE`,
+>   a strict level-U call fails with `DIAGNOSTIC_ESCALATED` (`includeDiagnostics` lists both).
+> - Operator environment: `PDFNATIVE_MCP_FONT_DIR` and `PDFNATIVE_MCP_OUTPUT_BASE_URL` (read once
+>   at boot; an invalid value, or a base URL without an output directory, refuses to start).
+>   `resources/list` now always carries `pdfnative://governance/policy` and
+>   `pdfnative://governance/rules` first, read as `text`; resources are outside the §2 matrix.
+> - The response-cache namespace carries `TOOL_API_VERSION`, so no 1.7.0 cache entry is served; a
+>   call carrying `password` is no longer cached at all.
+>
+> **Error codes (1.8.0).** One **new code**, additive, reachable **only** by a call that sets `font`:
+> `FONT_NOT_FOUND` (an unknown slug; the message lists the registered ones). Existing codes gained
+> **new triggers** without changing their meaning: `PDF_PARSE_FAILED` now also covers a content
+> stream over the decompression cap in `extract_text` (1.7.0 returned an empty page — a silent data
+> loss, closed by the engine's `PdfStreamLimitError`; `onStreamError: 'skip'` restores the empty
+> page); `VALIDATION_ERROR` covers an undeclared spot ink or ink mix, a `pdfx` request with
+> `pdfa1b` / `pdfa3b` (two messages replace the single 1.7.0 refusal, which is gone), a `link`
+> annotation without `url` or with a scheme outside `http:` / `https:` / `mailto:`, and a spot tint
+> outside 0–1; `PRINT_ERROR` covers a `print.spotColours` entry the engine refuses (empty or duplicate
+> name, an alternate out of range); `CHART_ERROR` covers a series `colors` array whose length differs
+> from `values`. `embed_image` no longer re-wraps a strict diagnostic as `VALIDATION_ERROR`: it
+> carries its own code (`PDF_A_COMPLIANCE_VIOLATION`, `PDF_X_COMPLIANCE_VIOLATION`,
+> `DIAGNOSTIC_ESCALATED`). No code is removed, renamed or repurposed. The inventory is 48 codes
+> (`tests/error-codes.test.ts`; [`AGENT_CONTRACT.md`](AGENT_CONTRACT.md) §6).
+>
+> **Accepted deltas against the frozen 1.5.0 catalogue (1.8.0).** No new rule in the superset gate
+> (`tests/catalogue-superset.test.ts`). The colour `anyOf` of every site gained two object members
+> (`{ spot, tint }`, `{ inks }`) beside the CMYK forms; the gate reports the same `widened to anyOf`
+> sites as in 1.7.0 — one member (the published schema, first and verbatim) still accepts every
+> 1.5.0 value — so the existing `CMYK_WIDENING` acceptance covers it and the asserted list of sites
+> is unchanged. `prepare_signature_placeholder.blocks.maxItems` 2000 → 5000 is a bound widening,
+> which the gate admits without a delta. The chart series `label` stays in the frozen fixture's
+> `required` and is merely optional now (a `required` entry dropped is never reported). `image/jp2`,
+> `link` and the five `lang` codes are enum additions. The enumerated `ACCEPTED_DELTAS` are
+> unchanged since 1.6.0; each must still occur. The catalogue budget of `scripts/tool-shape.ts
+> --check` moves from 320 KiB to **384 KiB**: 46 colour sites × two members and five options × nine
+> tools weigh about 47 kB (≈ 306 kB → ≈ 355 kB), the member descriptions were cut to one line, and
+> `$ref` / `$defs` stay excluded by policy — raising the budget was the honest choice, recorded
+> here and in `declared.toolsListBytes`.
+>
+> **Bug fix that changes bytes (1.8.0, server-side):** none. The server-side corrections of this
+> release change error codes (`embed_image` under `strict`, `extract_text` over the cap), not the
+> bytes of a document that built.
+>
+> **Engine-inherited byte changes 1.8 → 1.9, default inputs.** pdfnative 1.9.0 changes the bytes
+> of the following outputs; in each case the previous output was wrong or incomplete, so per §3
+> these are correctness fixes, not "default value changes". Documents on base-14 fonts without
+> these features are byte-identical to 1.7.0. The engine's own release note carries the full ledger
+> (C1–C28); the ledger tags below are its.
+>
+> | Output | What changed | Why |
+> | --- | --- | --- |
+> | Every document that embeds a TrueType subset (`embedFonts: true`, `font`, `add_international_text`) | the subset's bytes, the `/W` array, the ToUnicode CMap, the content-stream codes | lean subsets (C6), glyphs renumbered into the document's CID space in order of first use (C28), the six-letter subset tag on `/BaseFont` / `/FontName` (C21) |
+> | Every untagged document with right-to-left text, or with Indic, Sinhala, Khmer, Myanmar, Tai Tham, Cham, Thai or Lao text | the content stream | a `/Span /ActualText` per right-to-left run (C27) and per reordered shaped run (C20), so `extract_text` returns the logical text untagged |
+> | Every document with a shaped run or a line that changes font | the text objects | one `BT … ET` per line with `TJ` arrays and relative `Td` moves (C25), instead of one text object per glyph |
+> | Every Odia, Gurmukhi, Gujarati, Kannada or Malayalam line ending in a danda | the shaping of the last cluster | U+0964 / U+0965 route to the line's own shaper (C26) |
+> | Every document registering a font it never draws | a far smaller embedded program | a `.notdef`-only lean subset with `/W []` (C18) |
+> | `extract_text` on untagged output of those scripts | `text` / `fullText` | logical order (the `/ActualText` spans above); tagged output is unchanged |
+> | `extract_text` on a content stream over the decompression cap | an error instead of an empty page | `PdfStreamLimitError` → `PDF_PARSE_FAILED`, the server-side classification above — listed here because a consumer sees a different result |
+>
+> The evidence is in the repository: `npm run test:generate` drives the built server under
+> `TZ=UTC` and `npm run verify:samples` holds the 112 samples to `tests/_fixtures/samples.sha256.json`,
+> the chained baseline in which an unchanged entry keeps the version it was anchored at. Of the 96
+> entries inherited from 1.7.0, 52 moved to `since: "1.8.0"` under the rows above and 44 kept
+> `since: "1.7.0"` byte for byte; 16 entries are new. The release note's *Upgrade* section declares
+> the rebaseline.
+
 > **v1.7.0 minor bump rationale:** no new tool — the catalogue stays at 28. `TOOL_API_VERSION`
 > moves `1.6.0` → `1.7.0` because existing tools gained **optional inputs**, **enum values** and two
-> **error codes** on pdfnative 1.8.0. Everything is additive per §3: every 1.6.0 input is still
+> **error codes** on pdfnative 1.8.0. Everything is additive per §3: every 1.6.0 input is still <!-- verify-docs:allow version-token -->
 > accepted, every new input is off by default and nothing is emitted for an absent one, so default
 > output is byte-identical except where the engine corrected previously-wrong bytes (clause below).
 >
@@ -215,7 +326,7 @@ All 28 tools shipped through pdfnative-mcp 1.7.0 are at `_meta.apiVersion = '1.7
 > black. The shared colour module now converts a 0–1 triple to an operand string. Bytes change
 > only for inputs that rendered the wrong colour.
 >
-> **Engine-inherited byte changes 1.7 → 1.8, default inputs.** pdfnative 1.8.0 changes the bytes
+> **Engine-inherited byte changes 1.7 → 1.8, default inputs.** pdfnative 1.8.0 changes the bytes <!-- verify-docs:allow version-token -->
 > of the following outputs; in each case the previous output was wrong or incomplete, so per §3
 > these are correctness fixes, not "default value changes". Documents on base-14 fonts without
 > these features are byte-identical to 1.6.0.
@@ -515,7 +626,7 @@ All 28 tools shipped through pdfnative-mcp 1.7.0 are at `_meta.apiVersion = '1.7
 > shape. This is an opt-in token-saving feature. (Since 1.6.0 the read tools' `outputSchema`
 > declares every property optional, so a projection still validates against it — see §1.)
 
-Page-tree tools `merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative v1.4.0's page-tree API; `annotate_pdf` shipped in v1.4.0 on pdfnative v1.5.0's annotation writer; charts (`add_chart`), form fill/flatten (`read_form_fields`, `fill_form`) and the encrypted round-trip (`encrypt_pdf`, `decrypt_pdf`, `password`/`encrypt` on the page-tree and read-only tools) shipped in v1.5.0 on pdfnative v1.6.0; the PAdES LTV ladder (`add_ltv`, `timestamp_pdf`, `sign_pdf` `profile` / `timestamp`), `update_metadata`, `inspect_layout`, the 13 document block kinds, layout options, build-time `encrypt`, print production and charts v2 shipped in v1.6.0 on pdfnative v1.7.0; fine typography, CMYK colours, PDF/X-4, 27 Unicode scripts and the operator creation-date pin shipped in v1.7.0 on pdfnative v1.8.0. <!-- verify-docs:allow version-token -->
+Page-tree tools `merge_pdfs`, `split_pdf` and `extract_pages` shipped in v1.3.0 on pdfnative v1.4.0's page-tree API; `annotate_pdf` shipped in v1.4.0 on pdfnative v1.5.0's annotation writer; charts (`add_chart`), form fill/flatten (`read_form_fields`, `fill_form`) and the encrypted round-trip (`encrypt_pdf`, `decrypt_pdf`, `password`/`encrypt` on the page-tree and read-only tools) shipped in v1.5.0 on pdfnative v1.6.0; the PAdES LTV ladder (`add_ltv`, `timestamp_pdf`, `sign_pdf` `profile` / `timestamp`), `update_metadata`, `inspect_layout`, the 13 document block kinds, layout options, build-time `encrypt`, print production and charts v2 shipped in v1.6.0 on pdfnative v1.7.0; fine typography, CMYK colours, PDF/X-4, 27 Unicode scripts and the operator creation-date pin shipped in v1.7.0 on pdfnative v1.8.0. <!-- verify-docs:allow version-token --> <!-- verify-docs:allow stale-token -->
 `redact_pdf` stays **deferred by design** (pdfnative can overlay/flatten but not remove content — an overlay-only redaction would create false security) and will be added with the same stability guarantees once pdfnative exports a content-removal API. Native ECDSA verification also stays deferred: pdfnative still does not export `ecdsaVerifyHash`, so `verify_pdf` keeps its local P-256 implementation (no contract impact). <!-- verify-docs:allow tool-parity -->
 
 > **Design note / follow-up (v1.6.0).** Two places where the wrapper is thicker than it

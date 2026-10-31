@@ -2,19 +2,19 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Nizoka/pdfnative-mcp",
   "title": "pdfnative MCP — PDF generation, PAdES signing & introspection",
-  "description": "PDF MCP server: generate PDF/A, sign & verify PAdES (LTV), forms, merge, split, encrypt. 28 tools",
+  "description": "PDF MCP server: PDF/A, PDF/X-4, PAdES (LTV), forms, 32 scripts, JPEG 2000, spot colours. 28 tools",
   "repository": {
     "url": "https://github.com/Nizoka/pdfnative-mcp",
     "source": "github"
   },
-  "version": "1.7.0",
+  "version": "1.8.0",
   "websiteUrl": "https://github.com/Nizoka/pdfnative-mcp#readme",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "pdfnative-mcp",
-      "version": "1.7.0",
+      "version": "1.8.0",
       "runtimeHint": "npx",
       "runtimeArguments": [
         {
