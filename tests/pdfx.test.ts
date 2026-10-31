@@ -115,6 +115,15 @@ describe('pdfx — success', () => {
         expect(latin1(out)).toContain('/GTS_PDFX');
     });
 
+    it("pdfx + pdfA:'pdfa2b' is the dual claim (pdfnative 1.9.0): one file carries the PDF/X-4 and the PDF/A-2 identification", async () => {
+        const out = await generateBasicPdf({ ...DOC, ...PDFX, pdfA: 'pdfa2b', includeDiagnostics: true });
+        const pdf = latin1(out);
+        expect(pdf).toContain('GTS_PDFXVersion');
+        expect(pdf).toContain('pdfaid:part');
+        expect(pdf).toContain('/GTS_PDFX');
+        expect(out.diagnostics).toEqual([]);
+    });
+
     it('add_international_text (always-embedded Noto fonts) takes pdfx without embedFonts', async () => {
         const out = await addInternationalText({ title: 'I', lang: 'latin', paragraphs: ['Été à Zürich.'], pdfx: 'pdfx4', outputIntent: CMYK_INTENT, creationDate: PINNED });
         expect(validatePdfX(bytesOf(out)).errors).toEqual([]);
@@ -137,7 +146,8 @@ describe('pdfx — success', () => {
 
 describe('pdfx — coherence errors are VALIDATION_ERROR, before the build', () => {
     const cases: Array<[string, Record<string, unknown>, RegExp]> = [
-        ['pdfx + pdfA', { pdfA: 'pdfa2b' }, /pdfx and pdfA are mutually exclusive/],
+        ['pdfx + pdfa1b', { pdfA: 'pdfa1b' }, /cannot be combined with pdfA:'pdfa1b'/],
+        ['pdfx + pdfa3b', { pdfA: 'pdfa3b' }, /cannot be combined with pdfA:'pdfa3b'/],
         ['pdfx + encrypt', { encrypt: { ownerPassword: 'owner-secret' } }, /pdfx and encrypt are mutually exclusive/],
         ['no outputIntent', { outputIntent: undefined }, /pdfx requires outputIntent/],
         ["metadata.trapped 'Unknown'", { metadata: { trapped: 'Unknown' } }, /known trapping state/],

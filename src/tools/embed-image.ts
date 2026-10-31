@@ -1,7 +1,7 @@
 /**
  * Tool: embed_image
  *
- * Generates a PDF document with an embedded image (JPEG or PNG) using
+ * Generates a PDF document with an embedded image (JPEG, PNG or JPEG 2000) using
  * pdfnative's document builder. The image is accepted as a base64-encoded
  * string and can optionally be wrapped in a titled document with a caption.
  */
@@ -145,10 +145,11 @@ export async function embedImage(rawInput: unknown): Promise<OutputResult> {
             },
         );
     } catch (err) {
-        // PDF/A conformance and print-production failures keep their stable codes;
-        // any other engine throw is an image decoding problem, as before.
+        // Every classified failure keeps its stable code (a strict diagnostic — PDF/A, PDF/X or
+        // escalated —, a print / PDF/X argument error, a spot-colour declaration); any other
+        // engine throw is an image decoding problem, as before.
         const mapped = mapBuildError(err, EMBED_IMAGE_NAME);
-        if (mapped.code === 'PDF_A_COMPLIANCE_VIOLATION' || mapped.code === 'PRINT_ERROR') throw mapped;
+        if (mapped.code !== 'GENERATION_FAILED') throw mapped;
         /* v8 ignore start - buildDocumentPDFBytes only throws on internal pdfnative errors; defensive guard. */
         const msg = err instanceof Error ? err.message : String(err);
         throw new ToolError('VALIDATION_ERROR', `Failed to embed image: ${msg}`);

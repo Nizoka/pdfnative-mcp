@@ -126,6 +126,7 @@ export const DRAFT_GOVERNANCE_ISSUE_OUTPUT_SCHEMA = {
         targetRepo: { type: 'string' },
         outputMode: { type: 'string', enum: ['inline', 'file'] },
         filePath: { type: 'string', description: "Sandboxed absolute path (when outputMode='file')." },
+        url: { type: 'string', description: 'Public URL of the draft (file mode, only when PDFNATIVE_MCP_OUTPUT_BASE_URL is set).' },
         sizeBytes: { type: 'integer', minimum: 0 },
         draftMarkdown: { type: 'string', description: 'The full draft, ready for a human to review and submit.' },
         warnings: { type: 'array', items: { type: 'string' } },
@@ -199,6 +200,8 @@ export interface DraftGovernanceIssueResult {
     readonly targetRepo: string;
     readonly outputMode: 'inline' | 'file';
     readonly filePath?: string;
+    /** Public URL of the draft (file mode, only when PDFNATIVE_MCP_OUTPUT_BASE_URL is set). */
+    readonly url?: string;
     readonly sizeBytes: number;
     readonly draftMarkdown: string;
     readonly warnings: readonly string[];
@@ -314,13 +317,14 @@ export async function draftGovernanceIssue(rawInput: unknown): Promise<DraftGove
     const sizeBytes = Buffer.byteLength(draftMarkdown, 'utf8');
 
     if (input.outputMode === 'file') {
-        const { filePath } = await writeSandboxedText(draftMarkdown, input.outputPath as string, '.md');
+        const { filePath, url } = await writeSandboxedText(draftMarkdown, input.outputPath as string, '.md');
         return {
             title: input.title,
             issueType: input.issueType,
             targetRepo: input.targetRepo,
             outputMode: 'file',
             filePath,
+            ...(url !== undefined ? { url } : {}),
             sizeBytes,
             draftMarkdown,
             warnings: validation.warnings,

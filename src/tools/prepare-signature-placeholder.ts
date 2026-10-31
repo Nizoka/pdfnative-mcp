@@ -109,7 +109,7 @@ export const PREPARE_SIGNATURE_PLACEHOLDER_INPUT_SCHEMA = {
         blocks: {
             type: 'array',
             description: 'Optional document body blocks rendered before the signature field.',
-            maxItems: 2000,
+            maxItems: 5000,
             items: {
                 oneOf: [
                     {
@@ -189,7 +189,7 @@ const InputSchema = z.strictObject({
     reserveTimestamp: z.boolean().default(false),
     pageIndex: z.number().int().min(0).optional(),
     pdfA: PdfASchema.optional(),
-    blocks: z.array(BlockSchema).max(2000).optional(),
+    blocks: z.array(BlockSchema).max(5000).optional(),
     ...PrintInputShape,
     ...UnencryptedLayoutShape,
     ...DiagnosticInputShape,

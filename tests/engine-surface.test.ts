@@ -170,7 +170,7 @@ describe('engine-surface: named means exercised', () => {
         expect(SCRIPT_CODES.filter((code) => SCRIPT_SAMPLES[code] === undefined), 'script codes without a test string').toEqual([]);
         expect(Object.keys(LANG_ALIASES).filter((code) => ALIAS_SAMPLES[code] === undefined), 'aliases without a test string').toEqual([]);
         // Rendered for real, for every code: the parametrised suite walks the same table.
-        expect(read('tests/scripts-27.test.ts')).toContain('it.each(Object.entries(SCRIPT_SAMPLES))');
+        expect(read('tests/scripts.test.ts')).toContain('it.each(Object.entries(SCRIPT_SAMPLES))');
         const example = JSON.parse(read('examples/scripts-lao-tai-cham.json')) as { arguments: { lang: string[] } };
         for (const code of ['lo', 'nod', 'khb', 'tdd', 'cjm']) expect(example.arguments.lang, code).toContain(code);
         expect(Object.hasOwn(baseline.entries, 'examples/scripts-lao-tai-cham/01-add_international_text.pdf')).toBe(true);

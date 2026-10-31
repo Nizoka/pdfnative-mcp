@@ -10,7 +10,14 @@ import { z } from 'zod';
 import { decodeBase64Field } from './base64.js';
 import { ToolError } from './errors.js';
 
-export const IMAGE_MIME_ENUM = ['image/jpeg', 'image/png'] as const;
+/**
+ * `image/jp2` (pdfnative 1.9.0) covers both JPEG 2000 forms the engine passes
+ * through as `/JPXDecode`: a JP2 file (signature box `0000000C 6A502020`) and a
+ * raw codestream (`FF4F FF51`, `.j2k` / `.j2c`). Neither is decoded on the way
+ * in; under PDF/A-1 it raises PDFA1_JPX_IMAGE, and an opacity channel or an
+ * unusual channel count raises PDFA_JPX_IMAGE under any PDF/A level.
+ */
+export const IMAGE_MIME_ENUM = ['image/jpeg', 'image/png', 'image/jp2'] as const;
 export type ImageMime = (typeof IMAGE_MIME_ENUM)[number];
 
 /** Longest accepted base64 payload for one image (≈ 9 MiB decoded). */
@@ -28,12 +35,12 @@ export const IMAGE_PAYLOAD_PROPERTIES = {
     imageBase64: {
         type: 'string',
         minLength: 4,
-        description: 'Base64 image bytes. JPEG (baseline; 1, 3 or 4 components — CMYK raises PDFA_DEVICE_CMYK_IMAGE under PDF/A) or PNG (8-bit greyscale/RGB, non-interlaced; alpha-channel and palette PNGs are rejected with a remedy). No data: URI.',
+        description: 'Base64 image bytes. JPEG (baseline; 1, 3 or 4 components — CMYK raises PDFA_DEVICE_CMYK_IMAGE under PDF/A), PNG (8-bit greyscale/RGB, non-interlaced; alpha-channel and palette PNGs are rejected with a remedy) or JPEG 2000 (JP2 file or raw .j2k codestream, passed through as /JPXDecode; PDF 1.5+, so PDFA1_JPX_IMAGE under pdfa1b). No data: URI.',
     },
     mimeType: {
         type: 'string',
         enum: [...IMAGE_MIME_ENUM],
-        description: 'MIME type of the image. Must match the actual encoding of imageBase64 (magic bytes are checked).',
+        description: "MIME type of the image. Must match the actual encoding of imageBase64 (magic bytes are checked). 'image/jp2' accepts a JP2 file (.jp2/.jpx) or a raw JPEG 2000 codestream (.j2k/.j2c).",
     },
 } as const;
 
@@ -61,11 +68,18 @@ export const BoundedImagePayloadShape = {
 export function decodeImageBase64(imageBase64: string, mimeType: ImageMime, field = 'imageBase64'): Uint8Array {
     const bytes = decodeBase64Field(imageBase64, field);
     if (bytes.length < 8) {
-        throw new ToolError('VALIDATION_ERROR', `${field} decodes to ${bytes.length} byte(s) — too small to be a JPEG or PNG.`);
+        throw new ToolError('VALIDATION_ERROR', `${field} decodes to ${bytes.length} byte(s) — too small to be a JPEG, PNG or JPEG 2000 image.`);
     }
     if (mimeType === 'image/jpeg') {
         if (bytes[0] !== 0xff || bytes[1] !== 0xd8) {
             throw new ToolError('VALIDATION_ERROR', `${field} does not match mimeType 'image/jpeg' (missing JPEG magic bytes FF D8).`);
+        }
+    } else if (mimeType === 'image/jp2') {
+        if (!isJp2Signature(bytes) && !isJ2kCodestream(bytes)) {
+            throw new ToolError(
+                'VALIDATION_ERROR',
+                `${field} does not match mimeType 'image/jp2' (neither the JP2 signature box 00 00 00 0C 6A 50 20 20 nor the raw codestream markers FF 4F FF 51).`,
+            );
         }
     } else if (bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e || bytes[3] !== 0x47) {
         throw new ToolError('VALIDATION_ERROR', `${field} does not match mimeType 'image/png' (missing PNG magic bytes 89 50 4E 47).`);
@@ -73,6 +87,17 @@ export function decodeImageBase64(imageBase64: string, mimeType: ImageMime, fiel
         assertPngSupported(bytes, field);
     }
     return bytes;
+}
+
+/** JP2 file: a 12-byte signature box `00 00 00 0C 'jP  ' 0D 0A 87 0A` (ISO/IEC 15444-1 Annex I). */
+function isJp2Signature(bytes: Uint8Array): boolean {
+    const sig = [0x00, 0x00, 0x00, 0x0c, 0x6a, 0x50, 0x20, 0x20, 0x0d, 0x0a, 0x87, 0x0a];
+    return bytes.length >= sig.length && sig.every((b, i) => bytes[i] === b);
+}
+
+/** Raw JPEG 2000 codestream: SOC (FF 4F) immediately followed by SIZ (FF 51). */
+function isJ2kCodestream(bytes: Uint8Array): boolean {
+    return bytes[0] === 0xff && bytes[1] === 0x4f && bytes[2] === 0xff && bytes[3] === 0x51;
 }
 
 /**

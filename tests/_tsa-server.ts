@@ -91,8 +91,11 @@ export async function startMockTsaServer(pki: MockPki, opts?: MockTsaServerOptio
                         }
                     }
                 } catch (err) {
+                    // A generic body: a real TSA never echoes its parser's failure to the client
+                    // (CodeQL js/stack-trace-exposure); the test log keeps the detail.
+                    process.stderr.write(`[mock-tsa] rejected request: ${err instanceof Error ? err.message : String(err)}\n`);
                     res.writeHead(400, { 'Content-Type': 'text/plain' });
-                    res.end(err instanceof Error ? err.message : String(err));
+                    res.end('bad timestamp request');
                 }
             };
             if (mode === 'slow') {

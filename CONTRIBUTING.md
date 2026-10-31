@@ -25,6 +25,7 @@ Windows notes: the Bash one-liners run under Git Bash; PowerShell swallows a bar
 3. **Keep diffs small and focused**. One logical change per PR.
 4. **Add tests** for any new behaviour. CI runs [the gate](#the-gate) on every PR on Linux (Node 22 and 24), Windows and macOS; every one of those jobs is a required check.
 5. **Update the changelog** under the `## [Unreleased]` section.
+6. **Certify your contribution.** By opening a pull request you certify the [Developer Certificate of Origin 1.1](https://developercertificate.org/): the change is yours to submit under the MIT licence, or was submitted to you under a compatible licence. No `Signed-off-by` trailer is required — the pull request itself is the certification — and, as with every commit here, no `Co-Authored-By` or "generated with" trailer is added.
 
 ## The gate
 
@@ -202,7 +203,7 @@ Moving `pdfnative` to a new release is adopting that release: every user-facing 
 1. Read the engine's changelog entry; extend `tests/_fixtures/engine-surface.json` with one item per bullet — named tests and examples, or a waiver (`LIB`, `TOOLING`, `DOCS`, `tested-upstream` with its transmission suite, `upstream-limit`). Set `engine` to the new version: `tests/engine-surface.test.ts` fails until the matrix follows the pin.
 2. A new diagnostic code gets an executed trigger in `tests/_diagnostic-triggers.ts` and moves `declared.diagnosticCodes` — a code the docs name is a code a test triggers. A new script code gets a string in `tests/_script-text.ts`; a new engine option gets an example that sets it.
 3. Refresh the build-error registry `tests/_fixtures/pdfnative-build-errors.json` from the engine's error messages (`mapBuildError` in `src/diagnostics.ts` classifies on the bare message, and the registry test holds every entry to a `ToolError` code).
-4. Re-run the `it.fails` markers (`tests/upstream-limits.test.ts`, `tests/scripts-27.test.ts`): a limit of the engine is pinned there and listed under *Blocked upstream* in [ROADMAP.md](ROADMAP.md); when the engine fixes one the suite goes red — delete the marker, flip the matching corpus canary, move the ROADMAP item.
+4. Re-run the `it.fails` markers (`tests/upstream-limits.test.ts`, `tests/scripts.test.ts`): a limit of the engine is pinned there and listed under *Blocked upstream* in [ROADMAP.md](ROADMAP.md); when the engine fixes one the suite goes red — delete the marker, flip the matching corpus canary, move the ROADMAP item.
 5. Regenerate the samples, declare any rebaseline in the release note (the engine pin never moves without one), and update `packages.pdfnative` in `docs/assets/ecosystem.json`.
 
 ### Branch protection

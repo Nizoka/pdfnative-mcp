@@ -55,8 +55,14 @@ export function applyInflateCap(env: NodeJS.ProcessEnv = process.env): number {
  */
 const INFLATE_CAP_RE = /zip bomb|exceeds maximum of \d+ bytes|ERR_BUFFER_TOO_LARGE|Cannot create a Buffer larger than|maxOutputLength/i;
 
-/** True when `err` is an inflate-cap failure from the engine. */
+/**
+ * True when `err` is an inflate-cap failure from the engine. Since pdfnative
+ * 1.9.0 the decode filters and `extractText()` throw `PdfStreamLimitError`
+ * (`code === 'PDF_STREAM_LIMIT'`) — classified by the code, never by the
+ * message, which differs between FlateDecode and the fixed-cap filters.
+ */
 export function isInflateCapError(err: unknown): boolean {
+    if (err instanceof Error && (err as { code?: unknown }).code === 'PDF_STREAM_LIMIT') return true;
     const message = err instanceof Error ? `${err.message} ${(err as { code?: unknown }).code ?? ''}` : String(err);
     return INFLATE_CAP_RE.test(message);
 }

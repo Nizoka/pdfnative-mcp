@@ -40,6 +40,8 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import { AGENT_RULES_TEXT, AI_GOVERNANCE_POLICY_JSON } from '../src/governance-embed.js';
+import { escapeRegExp } from './lib/escape-regexp.js';
 import { findNonEnglishProse } from './lib/prose-language.js';
 import {
     INSTRUCTIONS_DIR,
@@ -149,7 +151,7 @@ export const OFFLINE_RULES = [
     'changelog-ladder', // every CHANGELOG heading has its compare link, each comparing the previous tag with its own
     'claude-md-budget', // CLAUDE.md imports AGENTS.md; both ≤ 120 lines, Copilot file ≤ 16 KiB, no line > 240 chars
     'governance-sources', // ai-governance.json sources/on_demand exist; always-loaded sources < 16 KiB
-    'node-pin-parity', // .nvmrc, .node-version, engines.node, the CI floor and every setup-node step agree; packageManager is npm@
+    'node-pin-parity', // .nvmrc, .node-version, engines.node, the CI floor and every setup-node step agree (node-current.yml names the line above the pin); packageManager is npm@
     'ruleset-parity', // every required status check in rulesets/main.json names a real job; sample-regression required; tags.json protects refs/tags/v*
     'agent-config-parity', // settings.json parses; every CLAUDE.md "Never Read" glob is denied; HITL denies present for Bash and PowerShell; guard hook passes node --check
     'claude-rules-sync', // .claude/rules/ equals a fresh render of .github/instructions/ (npm run agents:rules)
@@ -161,6 +163,8 @@ export const OFFLINE_RULES = [
     'anchor-parity', // every `#fragment` a Markdown link (or a governance reference) targets is a heading anchor of its target
     'verified-on-parity', // every "Verified on" stamp equals manifest.verifiedOn
     'prose-language', // docs, examples README and release notes are English unless marked demo-language
+    'governance-embed', // .github/ai-governance.json and .github/AGENT_RULES.md equal the copies embedded in src/governance-embed.ts (npm run agents:governance)
+    'keyword-count', // every "N keywords" token in the docs equals package.json keywords.length
 ] as const;
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -281,7 +285,7 @@ export async function verifyDocs(root: string, options: VerifyOptions = {}): Pro
 
     // ── The documentation corpus ──────────────────────────────────
     const DOC_FILES: string[] = [
-        ...['README.md', 'ROADMAP.md', 'AGENTS.md', 'CLAUDE.md', 'CONTRIBUTING.md', 'SECURITY.md', 'SUPPORT.md', 'llms.txt',
+        ...['README.md', 'ROADMAP.md', 'AGENTS.md', 'CLAUDE.md', 'CONTRIBUTING.md', 'SECURITY.md', 'SUPPORT.md', 'THIRD-PARTY-NOTICES.md', 'llms.txt',
             '.github/copilot-instructions.md', '.github/AGENT_RULES.md', 'examples/README.md', 'scripts/README.md',
             `release-notes/v${selfVersion}.md`]
             .map((f) => join(root, f))
@@ -722,11 +726,47 @@ export async function verifyDocs(root: string, options: VerifyOptions = {}): Pro
             fail('CHANGELOG.md', 1, 'changelog-ladder', 'missing');
         } else {
             for (const f of checkChangelogLadder(changelog)) fail('CHANGELOG.md', f.line, 'changelog-ladder', f.message);
-            if (selfVersion !== '' && !new RegExp(`^## \\[${selfVersion.replace(/\./g, '\\.')}\\]`, 'm').test(changelog)) {
+            if (selfVersion !== '' && !new RegExp(`^## \\[${escapeRegExp(selfVersion)}\\]`, 'm').test(changelog)) {
                 fail('CHANGELOG.md', 1, 'changelog-ladder', `has no "## [${selfVersion}]" entry — release-notes/v${selfVersion}.md is mirrored into it`);
             }
             if (selfVersion !== '' && !existsSync(join(root, 'release-notes', `v${selfVersion}.md`))) {
                 fail(`release-notes/v${selfVersion}.md`, 1, 'changelog-ladder', 'missing — a release note is mandatory for every version');
+            }
+        }
+    }
+
+    // ── Rule: governance-embed ────────────────────────────────────
+    // The server serves the contract as pdfnative://governance/policy and
+    // pdfnative://governance/rules from src/governance-embed.ts; the files the
+    // repository holds and the copies the server prints must be identical.
+    {
+        const policy = readOr('.github/ai-governance.json');
+        if (policy === null) {
+            fail('.github/ai-governance.json', 1, 'governance-embed', 'missing — the server embeds it and agents read it');
+        } else if (policy !== AI_GOVERNANCE_POLICY_JSON) {
+            fail('.github/ai-governance.json', 1, 'governance-embed', 'differs from AI_GOVERNANCE_POLICY_JSON in src/governance-embed.ts — run npm run agents:governance and commit both');
+        }
+        const rules = readOr('.github/AGENT_RULES.md');
+        if (rules === null) {
+            fail('.github/AGENT_RULES.md', 1, 'governance-embed', 'missing — the server embeds it and agents read it');
+        } else if (rules !== AGENT_RULES_TEXT) {
+            fail('.github/AGENT_RULES.md', 1, 'governance-embed', 'differs from AGENT_RULES_TEXT in src/governance-embed.ts — run npm run agents:governance and commit both');
+        }
+    }
+
+    // ── Rule: keyword-count ───────────────────────────────────────
+    // "N keywords" in prose is a figure about package.json: it drifted two
+    // releases in a row (39 → 77 → 132 quoted for 77 real) before this rule.
+    {
+        const pkg = JSON.parse(read(join(root, 'package.json'))) as { keywords?: string[] };
+        const count = pkg.keywords?.length ?? 0;
+        for (const file of DOC_FILES) {
+            const text = texts.get(file)!;
+            const lines = text.split('\n');
+            for (const m of text.matchAll(/\b(\d+)\s+(?:npm\s+)?keywords\b/gi)) {
+                const line = lineOf(text, m.index ?? 0);
+                if (Number(m[1]) === count || isSuppressed(lines, line, 'keyword-count')) continue;
+                fail(rel(file), line, 'keyword-count', `says ${m[1]} keywords; package.json has ${count}`);
             }
         }
     }
@@ -837,7 +877,16 @@ export async function verifyDocs(root: string, options: VerifyOptions = {}): Pro
                     }
                     continue;
                 }
-                fail(relPath, lineOf(text, uses[0].index), 'node-pin-parity', 'actions/setup-node must read `node-version-file: .nvmrc` (only ci.yml may span a matrix)');
+                // node-current.yml exists to run the line ABOVE the pin (advisory, never required):
+                // its explicit major must be newer than .nvmrc, never equal to or below it.
+                const current = name === 'node-current.yml' && /node-version:\s*(\d+)\s*$/m.exec(text);
+                if (current) {
+                    if (pinnedMajor !== null && Number(current[1]) <= pinnedMajor) {
+                        fail(relPath, lineOf(text, current.index), 'node-pin-parity', `node-current.yml runs Node ${current[1]}, which is not above the .nvmrc pin ${pinnedMajor} — it belongs in ci.yml's matrix instead`);
+                    }
+                    continue;
+                }
+                fail(relPath, lineOf(text, uses[0].index), 'node-pin-parity', 'actions/setup-node must read `node-version-file: .nvmrc` (only ci.yml may span a matrix, and node-current.yml name the line above the pin)');
             }
         }
         const engines = pkgJsonText === null ? null : ((JSON.parse(pkgJsonText) as { engines?: { node?: string } }).engines?.node ?? null);

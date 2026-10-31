@@ -8,6 +8,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import {
+    INK_MIX_SCHEMA,
+    SPOT_COLOR_SCHEMA,
     CMYK_STRING_PATTERN,
     CMYK_STRING_SCHEMA,
     CMYK_TUPLE_SCHEMA,
@@ -74,22 +76,22 @@ describe('CMYK forms — JSON Schema and Zod agree', () => {
         expect(CmykTupleSchema.safeParse(value).success).toBe(ok);
     });
 
-    it('colorSchema keeps the historical member first, verbatim, and appends the two CMYK forms', () => {
+    it('colorSchema keeps the historical member first, verbatim, and appends the two CMYK forms, then the spot colour and the ink mix', () => {
         const legacy = { type: 'string', pattern: '^#[0-9a-f]{6}$' } as const;
         const schema = colorSchema(legacy, 'Hex colour.');
         expect(schema.anyOf[0]).toBe(legacy);
-        expect(schema.anyOf.slice(1)).toEqual([CMYK_STRING_SCHEMA, CMYK_TUPLE_SCHEMA]);
+        expect(schema.anyOf.slice(1)).toEqual([CMYK_STRING_SCHEMA, CMYK_TUPLE_SCHEMA, SPOT_COLOR_SCHEMA, INK_MIX_SCHEMA]);
         // The wrapper keeps the property's own description; the CMYK members document themselves (token budget).
         expect(schema.description).toBe('Hex colour.');
         const zod = colorZod(z.string().regex(/^#[0-9a-f]{6}$/));
-        for (const ok of ['#aabbcc', '0 0 0 1', [0, 0, 0, 100]]) expect(zod.safeParse(ok).success, JSON.stringify(ok)).toBe(true);
-        for (const bad of ['red', '0 0 0', [0, 0, 0], [0, 0, 0, 101]]) expect(zod.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+        for (const ok of ['#aabbcc', '0 0 0 1', [0, 0, 0, 100], { spot: 'PANTONE 300 C' }, { spot: 'Varnish', tint: 0.4 }, { inks: { 'PANTONE 300 C': 1, Varnish: 0.3 } }]) expect(zod.safeParse(ok).success, JSON.stringify(ok)).toBe(true);
+        for (const bad of ['red', '0 0 0', [0, 0, 0], [0, 0, 0, 101], { spot: '' }, { spot: 'X', tint: 1.5 }, { spot: 'X', extra: 1 }, { inks: {} }, { inks: { X: 2 } }]) expect(zod.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
     });
 
-    it('freeStringColorSchema adds only the tuple (a free string already admits the CMYK operands)', () => {
+    it('freeStringColorSchema adds the tuple and the two spot forms (a free string already admits the CMYK operands)', () => {
         const legacy = { type: 'string' } as const;
         const schema = freeStringColorSchema(legacy, 'Any colour string.');
-        expect(schema.anyOf).toEqual([legacy, CMYK_TUPLE_SCHEMA]);
+        expect(schema.anyOf).toEqual([legacy, CMYK_TUPLE_SCHEMA, SPOT_COLOR_SCHEMA, INK_MIX_SCHEMA]);
         const zod = freeStringColorZod(z.string().min(1));
         expect(zod.safeParse('1 0.6 0 0.1').success).toBe(true);
         expect(zod.safeParse([100, 60, 0, 10]).success).toBe(true);

@@ -111,20 +111,25 @@ describe('a stream exceeding the cap fails the read tools with a coded error', (
         applyInflateCap({ [MAX_INFLATE_ENV]: String(MAX_INFLATE_MIN_BYTES) });
         await expect(extractAttachments({ pdfBase64, includeData: true })).rejects.toMatchObject({
             code: 'PDF_PARSE_FAILED',
-            message: expect.stringMatching(/exceeds maximum of 1024 bytes[\s\S]*PDFNATIVE_MCP_MAX_INFLATE_BYTES/),
+            // 1.9.0: PdfStreamLimitError names the filter and the cap; the server appends the operator remedy.
+            message: expect.stringMatching(/FlateDecode output exceeds the 1024-byte limit[\s\S]*PDFNATIVE_MCP_MAX_INFLATE_BYTES/),
         });
         // Metadata-only listing never inflates the payload, so it keeps working.
         const meta = await extractAttachments({ pdfBase64, includeData: false });
         expect(meta.attachments[0]?.name).toBe('big.txt');
     });
 
-    it('extract_text degrades to empty text for a capped content stream (engine swallows per-page decode failures)', async () => {
+    it('extract_text fails a capped content stream with PDF_PARSE_FAILED naming the env var (1.9.0), unless onStreamError:skip asks for the empty page', async () => {
         const pdfBase64 = flatePdfBase64();
         const ok = await extractText({ pdfBase64 });
         expect(ok.pages[0]?.text).toContain('Lorem ipsum');
 
         applyInflateCap({ [MAX_INFLATE_ENV]: String(MAX_INFLATE_MIN_BYTES) });
-        const capped = await extractText({ pdfBase64 });
+        await expect(extractText({ pdfBase64 })).rejects.toMatchObject({
+            code: 'PDF_PARSE_FAILED',
+            message: expect.stringMatching(/FlateDecode output exceeds the 1024-byte limit[\s\S]*PDFNATIVE_MCP_MAX_INFLATE_BYTES/),
+        });
+        const capped = await extractText({ pdfBase64, onStreamError: 'skip' });
         expect(capped.pages[0]?.text).toBe('');
     });
 

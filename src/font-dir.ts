@@ -1,0 +1,162 @@
+/**
+ * Operator font sandbox — `PDFNATIVE_MCP_FONT_DIR` (1.8.0).
+ *
+ * The operator points the variable at a directory of `.ttf` / `.otf` files;
+ * at boot every file is parsed by the engine's own font compiler
+ * (`parseFontData` from `pdfnative/tools`: metrics, cmap, widths, GSUB /
+ * GPOS) and registered under `custom:<slug>`, where the slug is the file's
+ * base name folded to `[a-z0-9-]`. A tool call then names a face with the
+ * `font` input (the slug); an unknown slug is `FONT_NOT_FOUND` listing the
+ * registered ones. The schema stays static (the catalogue never varies by
+ * operator) and no tool argument ever carries a path.
+ *
+ * Designed like the output sandbox: read once at boot, declared in
+ * `server.json`, validated before registration, and an invalid value — a
+ * relative or missing directory, a file that is not a font, two files folding
+ * to the same slug, more than {@link MAX_FONT_FILES} files or a file over
+ * {@link MAX_FONT_FILE_BYTES} — refuses to start rather than serving with a
+ * silently incomplete registry. The directory itself is never listed to a
+ * client: results and errors name slugs, never paths.
+ */
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import path from 'node:path';
+
+import { loadFontData, registerFont, type FontData, type FontEntry } from 'pdfnative';
+import { parseFontData } from 'pdfnative/tools';
+import { z } from 'zod';
+
+import { ToolError } from './errors.js';
+
+export const FONT_DIR_ENV = 'PDFNATIVE_MCP_FONT_DIR';
+/** Registry key prefix: keeps operator faces apart from the bundled script codes. */
+export const CUSTOM_FONT_PREFIX = 'custom:';
+export const MAX_FONT_FILES = 64;
+export const MAX_FONT_FILE_BYTES = 16 * 1024 * 1024;
+const FONT_EXTENSIONS = new Set(['.ttf', '.otf']);
+
+/** A slug: the file's base name folded to lower-case `[a-z0-9-]`, 1–64 characters. */
+export const FONT_SLUG_PATTERN = '^[a-z0-9][a-z0-9-]{0,63}$';
+const FONT_SLUG_RE = new RegExp(FONT_SLUG_PATTERN);
+
+interface CustomFont {
+    readonly slug: string;
+    readonly lang: string;
+    readonly fontName: string;
+}
+
+let registry: ReadonlyMap<string, CustomFont> = new Map();
+
+/** Fold a file's base name to a slug: `Brand Sans-Bold.ttf` → `brand-sans-bold`. */
+export function fontSlug(fileName: string): string {
+    return path
+        .basename(fileName, path.extname(fileName))
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 64);
+}
+
+/**
+ * Read the variable, parse and register every font file, and return the
+ * registered slugs in directory order. Throws a plain `Error` (a boot
+ * refusal) on any invalid condition; a missing or blank variable registers
+ * nothing and returns `[]`.
+ */
+export function loadCustomFonts(env: NodeJS.ProcessEnv = process.env): readonly string[] {
+    const raw = env[FONT_DIR_ENV];
+    if (raw === undefined || raw.trim() === '') {
+        registry = new Map();
+        return [];
+    }
+    const dir = raw.trim();
+    if (!path.isAbsolute(dir)) throw new Error(`${FONT_DIR_ENV} must be an absolute path; got "${dir}".`);
+    let entries: string[];
+    try {
+        if (!statSync(dir).isDirectory()) throw new Error('not a directory');
+        entries = readdirSync(dir);
+    } catch (err) {
+        throw new Error(`${FONT_DIR_ENV} must name an existing, readable directory: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    // Sorted by slug (not by raw name) so the registration order is the same on every file system.
+    const files = entries.filter((name) => FONT_EXTENSIONS.has(path.extname(name).toLowerCase())).sort((a, b) => (fontSlug(a) < fontSlug(b) ? -1 : fontSlug(a) > fontSlug(b) ? 1 : a < b ? -1 : 1));
+    if (files.length === 0) throw new Error(`${FONT_DIR_ENV} holds no .ttf / .otf file.`);
+    if (files.length > MAX_FONT_FILES) throw new Error(`${FONT_DIR_ENV} holds ${files.length} font files; at most ${MAX_FONT_FILES} are registered.`);
+
+    const next = new Map<string, CustomFont>();
+    for (const file of files) {
+        const slug = fontSlug(file);
+        if (!FONT_SLUG_RE.test(slug)) throw new Error(`${FONT_DIR_ENV}: "${file}" folds to an empty or invalid slug — rename it to letters, digits and dashes.`);
+        if (next.has(slug)) throw new Error(`${FONT_DIR_ENV}: "${file}" folds to the slug "${slug}" already taken by another file — rename one of them.`);
+        const full = path.join(dir, file);
+        const size = statSync(full).size;
+        if (size > MAX_FONT_FILE_BYTES) throw new Error(`${FONT_DIR_ENV}: "${file}" is ${size} bytes, over the ${MAX_FONT_FILE_BYTES}-byte limit.`);
+        let data: FontData;
+        try {
+            data = parseFontData(new Uint8Array(readFileSync(full))) as unknown as FontData;
+        } catch (err) {
+            throw new Error(`${FONT_DIR_ENV}: "${file}" is not a TrueType / OpenType font the engine can parse: ${err instanceof Error ? err.message : String(err)}`);
+        }
+        const lang = `${CUSTOM_FONT_PREFIX}${slug}`;
+        registerFont(lang, () => Promise.resolve(data));
+        next.set(slug, { slug, lang, fontName: data.fontName });
+    }
+    registry = next;
+    return [...next.keys()];
+}
+
+/** The registered slugs, in registration order. */
+export function customFontSlugs(): readonly string[] {
+    return [...registry.keys()];
+}
+
+/**
+ * The registry key (`custom:<slug>`) of a face named by the `font` input, or
+ * `FONT_NOT_FOUND` naming what the operator did register.
+ */
+export function resolveCustomFont(slug: string): string {
+    const found = registry.get(slug);
+    if (found !== undefined) return found.lang;
+    const available = customFontSlugs();
+    throw new ToolError(
+        'FONT_NOT_FOUND',
+        available.length === 0
+            ? `font '${slug}' is unknown: the operator registered no custom font (${FONT_DIR_ENV} is unset).`
+            : `font '${slug}' is unknown. Registered custom fonts: ${available.join(', ')}.`,
+    );
+}
+
+/**
+ * The primary `FontEntry` for a document tool's `font` input (`/F3`), or `[]`
+ * when the input is absent so the build call stays byte-identical.
+ */
+export async function customFontEntry(slug: string | undefined, fontRef = '/F3'): Promise<FontEntry[]> {
+    if (slug === undefined) return [];
+    const lang = resolveCustomFont(slug);
+    const fontData = await loadFontData(lang);
+    /* v8 ignore next 3 -- registered at boot from a parsed file; the loader cannot miss */
+    if (fontData === null) {
+        throw new ToolError('FONT_LOAD_FAILED', `Failed to load the custom font '${slug}'.`);
+    }
+    return [{ fontData, fontRef, lang }];
+}
+
+/** Test-only: forget every registered face (the engine registry keeps its loaders). */
+export function __resetCustomFonts(): void {
+    registry = new Map();
+}
+
+/** JSON Schema fragment — spread into a tool's `properties`. */
+export const FONT_INPUT_PROPERTY = {
+    font: {
+        type: 'string',
+        pattern: FONT_SLUG_PATTERN,
+        maxLength: 64,
+        description:
+            "Operator-registered custom font (the slug of a .ttf / .otf file in PDFNATIVE_MCP_FONT_DIR, e.g. 'brand-sans'): drawn first, with the bundled faces as fallbacks. Unknown slug → FONT_NOT_FOUND listing the registered ones; always embedded, so valid under PDF/A.",
+    },
+} as const;
+
+/** Zod counterpart of {@link FONT_INPUT_PROPERTY}. */
+export const FontInputShape = {
+    font: z.string().regex(FONT_SLUG_RE).max(64).optional(),
+} as const;

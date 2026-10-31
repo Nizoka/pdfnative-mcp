@@ -12,6 +12,7 @@ import { callToolDirect, ensureCompressionReady } from '../src/server.js';
 import { PDFNATIVE_MCP_VERSION } from '../src/version.js';
 import { generateBasicPdf } from '../src/tools/generate-basic-pdf.js';
 import { buildRsaSelfSignedCert } from './_cert-fixtures.js';
+import { escapeRegExp } from '../scripts/lib/escape-regexp.js';
 
 let cacheDir: string;
 
@@ -48,7 +49,7 @@ describe('response cache policy', () => {
         const [file] = readdirSync(cacheDir).filter((f) => f.endsWith('.json'));
         const entry = JSON.parse(readFileSync(join(cacheDir, file!), 'utf8')) as { apiVersion: string; tool: string };
         expect(entry.tool).toBe('generate_basic_pdf');
-        expect(entry.apiVersion).toMatch(new RegExp(`^\\d+\\.\\d+\\.\\d+/${PDFNATIVE_MCP_VERSION.replace(/\./g, '\\.')}$`));
+        expect(entry.apiVersion).toMatch(new RegExp(`^\\d+\\.\\d+\\.\\d+/${escapeRegExp(PDFNATIVE_MCP_VERSION)}$`));
     });
 
     it('never caches sign_pdf (wall-clock signingTime, key material) even with a pinned signingTime', async () => {
@@ -79,5 +80,27 @@ describe('response cache policy', () => {
             delete process.env['PDFNATIVE_MCP_OUTPUT_DIR'];
             rmSync(outDir, { recursive: true, force: true });
         }
+    });
+});
+
+describe('response cache policy — protected documents (1.8.0)', () => {
+    it('never caches a call carrying `password`: the secret never feeds a key and the protected content never lands on disk', async () => {
+        const pdf = (await generateBasicPdf(DOC)).base64!;
+        const encrypted = await callToolDirect('encrypt_pdf', { pdfBase64: pdf, ownerPassword: 'owner-secret', userPassword: 'open-me' });
+        expect(encrypted.isError).not.toBe(true);
+        const protectedBase64 = (encrypted.content.find((c) => c.type === 'resource') as { resource: { blob: string } }).resource.blob;
+        const before = readdirSync(cacheDir).filter((f) => f.endsWith('.json')).length;
+
+        for (const tool of ['inspect_pdf', 'extract_text', 'read_form_fields']) {
+            const first = await callToolDirect(tool, { pdfBase64: protectedBase64, password: 'open-me' });
+            expect(first.isError, tool).not.toBe(true);
+            const second = await callToolDirect(tool, { pdfBase64: protectedBase64, password: 'open-me' });
+            expect((second._meta as Record<string, unknown> | undefined)?.['cached'], tool).toBeUndefined();
+        }
+        expect(readdirSync(cacheDir).filter((f) => f.endsWith('.json'))).toHaveLength(before);
+        // The same read without a password (an unprotected document) is cached as before.
+        await callToolDirect('inspect_pdf', { pdfBase64: pdf });
+        const hit = await callToolDirect('inspect_pdf', { pdfBase64: pdf });
+        expect((hit._meta as Record<string, unknown>)['cached']).toBe(true);
     });
 });

@@ -33,11 +33,14 @@ describe('math symbols (pdfnative v1.5 math font)', () => {
         assertValidPdf(result.base64 as string, 1);
     });
 
-    it('embeds the math font (math run is materially larger than latin-only)', async () => {
+    it('embeds the math font as a second program (pdfnative 1.9.0 subsets by used glyph, so size alone no longer tells)', async () => {
         const latinOnly = await addInternationalText({ title: 'M', lang: 'latin', paragraphs: [MATH_TEXT] });
         const withMath = await addInternationalText({ title: 'M', lang: ['latin', 'math'], paragraphs: [MATH_TEXT] });
-        // Noto Sans Math is a full font program — embedding it clearly grows the file.
-        expect(withMath.sizeBytes).toBeGreaterThan(latinOnly.sizeBytes + 10000);
+        const programs = (out: { base64?: string }): number => (Buffer.from(out.base64!, 'base64').toString('latin1').match(/\/FontFile2\s+\d+\s+0\s+R/g) ?? []).length;
+        expect(programs(latinOnly)).toBe(1);
+        expect(programs(withMath)).toBe(2);
+        // The subset is tagged (ABCDEF+NotoSansMath…, C21): the math face is really there.
+        expect(Buffer.from(withMath.base64!, 'base64').toString('latin1')).toMatch(/[A-Z]{6}\+NotoSansMath/);
     });
 
     it('exposes a resolvable bundled fonts directory', () => {

@@ -213,7 +213,7 @@ const SERVER_DESCRIPTION =
     'AcroForm fill & flatten, page-tree ops (merge / split / extract), markup annotations, Factur-X invoices, ' +
     'Unicode text extraction with positioned runs, PDF introspection, MCP resources for generated PDFs, ' +
     'and human-in-the-loop AI-governance issue drafting. ' +
-    '28 tools, 27 scripts, three runtime dependencies (pdfnative, the MCP SDK, zod).';
+    '28 tools, 32 scripts, three runtime dependencies (pdfnative, the MCP SDK, zod).';
 
 /**
  * Per-tool API version used by the opt-in cache key and by `_meta.apiVersion`.
@@ -278,10 +278,16 @@ export function cacheNamespace(): string {
 
 /** True when this call's output must bypass the response cache. */
 function isCacheable(name: string, input: unknown): boolean {
+    if (input === null || typeof input !== 'object') return !NON_CACHEABLE_TOOLS.has(name);
+    const args = input as { encrypt?: unknown; password?: unknown };
     // Build-time encryption (`encrypt` on the document tools) randomises the bytes and
     // takes passwords — same policy as encrypt_pdf: never persisted to the cache.
-    const encrypts = input !== null && typeof input === 'object' && (input as { encrypt?: unknown }).encrypt !== undefined;
-    return !isFileOutput(input) && !NON_CACHEABLE_TOOLS.has(name) && !encrypts;
+    const encrypts = args.encrypt !== undefined;
+    // A call that opens a protected document with `password` (the read and page-tree
+    // tools) is never cached either: the secret would feed the cache key, and the
+    // result — the content the owner chose to protect — would sit on disk in plaintext.
+    const opensProtected = args.password !== undefined;
+    return !isFileOutput(input) && !NON_CACHEABLE_TOOLS.has(name) && !encrypts && !opensProtected;
 }
 
 /** True when the call's input requests a file-mode output (filesystem side-effect). */
@@ -407,11 +413,12 @@ const PDF_OUTPUT_SCHEMA = {
     additionalProperties: false,
     required: ['mode', 'sizeBytes'],
     description:
-        "Result of a PDF-producing tool. base64 mode: the PDF arrives as an embedded `resource` content block (not duplicated here); file mode: `filePath`.",
+        "Result of a PDF-producing tool. base64 mode: the PDF arrives as an embedded `resource` content block (not duplicated here); file mode: `filePath` (and `url` when the operator maps the sandbox to a public base URL).",
     properties: {
         mode: { type: 'string', enum: ['base64', 'file'] },
         sizeBytes: { type: 'integer', minimum: 0 },
         filePath: { type: 'string', description: "Sandboxed absolute path (file mode)." },
+        url: { type: 'string', description: 'Public URL of the file (file mode, only when PDFNATIVE_MCP_OUTPUT_BASE_URL is set): base URL + sandbox-relative path, percent-encoded.' },
         ...DIAGNOSTICS_OUTPUT_PROPERTY,
         summary: {
             type: 'object',
@@ -442,6 +449,7 @@ const MULTI_PDF_OUTPUT_SCHEMA = {
                     index: { type: 'integer', minimum: 0 },
                     sizeBytes: { type: 'integer', minimum: 0 },
                     filePath: { type: 'string', description: "Sandboxed absolute path (file mode)." },
+                    url: { type: 'string', description: 'Public URL of the part (file mode, only when PDFNATIVE_MCP_OUTPUT_BASE_URL is set).' },
                 },
             },
         },
@@ -470,7 +478,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: GENERATE_BASIC_PDF_NAME,
         title: 'Generate basic PDF',
         description:
-            "Multi-page PDF composed from ordered blocks: heading, paragraph, list, table, image (JPEG/PNG), link, toc (printed table of contents), barcode, svg, formField, chart, pageBreak, spacer — every block kind the engine offers, each sharing its body with the dedicated tool (add_table, embed_image, add_barcode, add_form, add_chart). DEFAULT for any document; use the dedicated tools only for a standalone artefact, add_attachment for embedded files and add_international_text for non-Latin scripts. `pdfA` + `embedFonts:true` for a valid PDF/A-1b/2b/2u/3b claim; `outline` / `pageLabels` / `viewerPreferences` / `watermark` for navigation and presentation; `print`, `metadata`, `outputIntent`, `creationDate` as on every document tool. The 'chart' block takes the same body as add_chart.",
+            "Multi-page PDF composed from ordered blocks: heading, paragraph, list, table, image (JPEG/PNG/JPEG 2000), link, toc (printed table of contents), barcode, svg, formField, chart, pageBreak, spacer — every block kind the engine offers, each sharing its body with the dedicated tool (add_table, embed_image, add_barcode, add_form, add_chart). DEFAULT for any document; use the dedicated tools only for a standalone artefact, add_attachment for embedded files and add_international_text for non-Latin scripts. `pdfA` + `embedFonts:true` for a valid PDF/A-1b/2b/2u/3b claim; `outline` / `pageLabels` / `viewerPreferences` / `watermark` for navigation and presentation; `print`, `metadata`, `outputIntent`, `creationDate` as on every document tool. The 'chart' block takes the same body as add_chart.",
         inputSchema: GENERATE_BASIC_PDF_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -513,7 +521,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ADD_INTERNATIONAL_TEXT_NAME,
         title: 'Add international text',
         description:
-            "PDF rendering text in 27 scripts (Arabic, Hebrew, Thai, Lao, CJK, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Tai Tham, New Tai Lue, Tai Le, Cham, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Vietnamese, …; ha / yo / ig / sw are aliases of latin with anchored combining marks), COLRv1 colour emoji and mathematical symbols ('math': ∀ ∃ √ ∑ ∫ ∞). BiDi (UAX #9), Arabic joining and complex-script shaping are automatic; input is NFC-normalised; newlines split paragraphs. `lang` is a code or an array for mixed runs (['ar','emoji'], ['latin','math']). Fonts are always embedded, so `embedFonts` does not exist here. PDF/A, print, metadata and creationDate options as on every document tool.",
+            "PDF rendering text in 32 scripts (Arabic, Hebrew, Thai, Lao, CJK, Devanagari, Bengali, Gujarati, Gurmukhi, Kannada, Malayalam, Odia, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Tai Tham, New Tai Lue, Tai Le, Cham, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Vietnamese, …; ha / yo / ig / sw are aliases of latin with anchored combining marks), COLRv1 colour emoji and mathematical symbols ('math': ∀ ∃ √ ∑ ∫ ∞). BiDi (UAX #9), Arabic joining and complex-script shaping are automatic; input is NFC-normalised; newlines split paragraphs. `lang` is a code or an array for mixed runs (['ar','emoji'], ['latin','math']). Fonts are always embedded, so `embedFonts` does not exist here. PDF/A, print, metadata and creationDate options as on every document tool.",
         inputSchema: ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -554,7 +562,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: EMBED_IMAGE_NAME,
         title: 'Embed image in PDF',
         description:
-            "PDF with one embedded JPEG or PNG (base64; PNG without alpha channel) plus optional caption and render width/height. Inside a longer document use an 'image' block of generate_basic_pdf instead. PDF/A, print, metadata and creationDate options as on every document tool.",
+            "PDF with one embedded JPEG, PNG or JPEG 2000 image (base64; PNG without alpha channel; JPEG 2000 passed through as /JPXDecode) plus optional caption and render width/height. Inside a longer document use an 'image' block of generate_basic_pdf instead. PDF/A, print, metadata and creationDate options as on every document tool.",
         inputSchema: EMBED_IMAGE_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -921,14 +929,14 @@ COMMON PITFALLS:
   • Barcode data is the raw payload (never URL-encode); ecLevel applies to qr only; ean13 needs 12–13 digits.
   • Layout options on every document tool: pageSize (A4 default, Letter, Legal, A3, Tabloid), margins (all four), headerTemplate / footerTemplate with {page} {pages} {title} {date} (footerTemplate replaces the default footer, so footerText is then ignored), compress:true (FlateDecode streams, smaller file, different bytes), debug:true (guide rectangles).
   • generate_basic_pdf 'svg' blocks support paths, basic shapes and <text> only — no transform, <g>, gradients or CSS (silently ignored); 'image' blocks are capped at 24 MiB decoded per call; 'formField' blocks under pdfA need embedFonts:true (PDFA_UNEMBEDDED_FORM_FONT otherwise).
-  • Watermarks take text and/or an image (JPEG/PNG, default opacity 0.10) and a position (background | foreground); opacity < 1 is rejected under pdfa1b.
+  • Watermarks take text and/or an image (JPEG/PNG/JPEG 2000, default opacity 0.10) and a position (background | foreground); opacity < 1 is rejected under pdfa1b.
 
 REPRODUCIBILITY: outputs differ on every call because /CreationDate (and /ID) follow the wall clock. For byte-identical output pass creationDate (document tools), signingTime (sign_pdf / prepare_signature_placeholder) and modDate (update_metadata) as fixed ISO-8601 instants — every date is written in UTC, so the bytes are identical on every host whatever its time zone. The {date} placeholder of header/footer templates follows creationDate. The operator can pin the instant for the whole server (PDFNATIVE_MCP_CREATION_DATE, else SOURCE_DATE_EPOCH); a call's own creationDate still wins. Timestamps (TSA tokens), encryption (fresh keys / IVs) and ECDSA signatures are never reproducible.
 
 TOKEN-FRUGAL READS & RESOURCES: read tools accept verbosity:'summary' and fields:[…]. Generated PDFs arrive as an embedded resource block (not duplicated in structuredContent); in file mode the result carries a resource_link and the file is listed under resources/list as pdfnative://output/<path>. Prompts: governance_contract, draft_issue_workflow, pades_ladder, print_ready, reproducible_output, typography, pdfa_valid. Docs: docs/AI_GUIDE.md, docs/guides/*.md.`;
 
 function buildDraftGovernanceIssueResult(output: DraftGovernanceIssueResult, toolName: string): CallToolResult {
-    const where = output.outputMode === 'file' ? ` and written to ${output.filePath}` : '';
+    const where = output.outputMode === 'file' ? ` and written to ${output.url ?? output.filePath}` : '';
     return {
         content: [
             {
@@ -946,6 +954,7 @@ function buildDraftGovernanceIssueResult(output: DraftGovernanceIssueResult, too
             targetRepo: output.targetRepo,
             outputMode: output.outputMode,
             ...(output.filePath !== undefined ? { filePath: output.filePath } : {}),
+            ...(output.url !== undefined ? { url: output.url } : {}),
             sizeBytes: output.sizeBytes,
             draftMarkdown: output.draftMarkdown,
             warnings: output.warnings,
@@ -1102,7 +1111,10 @@ function buildSuccessResult(output: OutputResult, toolName: string): CallToolRes
             content: [
                 {
                     type: 'text',
-                    text: `${toolName}: wrote ${output.sizeBytes} bytes to ${output.filePath}`,
+                    // With a public base URL the text names the URL — what a remote user can open —
+                    // and keeps the host's filesystem layout out of the model's view; filePath stays
+                    // in structuredContent for compatibility.
+                    text: `${toolName}: wrote ${output.sizeBytes} bytes to ${output.url ?? output.filePath}`,
                 },
                 ...(link !== null
                     ? [{ type: 'resource_link' as const, ...link, mimeType: 'application/pdf' }]
@@ -1112,6 +1124,7 @@ function buildSuccessResult(output: OutputResult, toolName: string): CallToolRes
                 mode: output.mode,
                 sizeBytes: output.sizeBytes,
                 filePath: output.filePath,
+                ...(output.url !== undefined ? { url: output.url } : {}),
                 ...(output.diagnostics !== undefined ? { diagnostics: output.diagnostics } : {}),
                 ...(output.summary !== undefined ? { summary: output.summary } : {}),
             },
@@ -1152,7 +1165,7 @@ function buildMultiSuccessResult(output: MultiOutputResult, toolName: string): C
                 {
                     type: 'text',
                     text: `${toolName}: wrote ${output.count} PDF(s) (${output.totalBytes} bytes total) to ${output.parts
-                        .map((p) => p.filePath)
+                        .map((p) => p.url ?? p.filePath)
                         .join(', ')}`,
                 },
                 ...links,
@@ -1161,7 +1174,7 @@ function buildMultiSuccessResult(output: MultiOutputResult, toolName: string): C
                 mode: output.mode,
                 count: output.count,
                 totalBytes: output.totalBytes,
-                parts: output.parts.map((p) => ({ index: p.index, sizeBytes: p.sizeBytes, filePath: p.filePath })),
+                parts: output.parts.map((p) => ({ index: p.index, sizeBytes: p.sizeBytes, filePath: p.filePath, ...(p.url !== undefined ? { url: p.url } : {}) })),
             },
         };
     }

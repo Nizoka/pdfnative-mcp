@@ -39,9 +39,10 @@ import {
     toViewerPreferences,
 } from '../doc-features.js';
 import { PRINT_INPUT_PROPERTIES, PrintInputShape, assertPrintPdfACompatible, toDocumentMetadata, toPrintLayout } from '../print.js';
-import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, assertLayoutPdfACompatible, toLayoutOptions } from '../layout.js';
+import { LAYOUT_INPUT_PROPERTIES, LayoutInputShape, TEXT_DIRECTIONS, assertLayoutPdfACompatible, toLayoutOptions } from '../layout.js';
 import { PDFX_INPUT_PROPERTIES, PdfXInputShape, assertPdfXCompatible, toPdfXLayout } from '../pdfx.js';
 import { DIAGNOSTIC_INPUT_PROPERTIES, DiagnosticInputShape, collectDiagnostics, latinFontEntries, mapBuildError, withDiagnostics } from '../diagnostics.js';
+import { FONT_INPUT_PROPERTY, FontInputShape, customFontEntry } from '../font-dir.js';
 
 export const GENERATE_BASIC_PDF_NAME = 'generate_basic_pdf';
 
@@ -89,6 +90,7 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
                                 description: "Paragraph text. Embedded newlines ('\\n') are automatically split into separate paragraphs — no need to pre-split; never emit a literal newline expecting a soft line break.",
                             },
                             align: { type: 'string', enum: [...PARAGRAPH_ALIGN], description: "Text alignment (default left). 'justify' spans every line but the last across the measure; pair it with typography.opticalMargins." },
+                            direction: { type: 'string', enum: [...TEXT_DIRECTIONS], description: "Base direction of this paragraph, overriding the document `direction`: 'auto' (first strong character), 'ltr' or 'rtl'. A right-to-left paragraph is right-aligned unless `align` says otherwise." },
                             keepWithNext: { type: 'boolean', description: 'Keep this paragraph on the same page as the block that follows (a lead-in line before a table or figure). Default false.' },
                             splittable: { type: 'boolean', description: 'Allow / forbid this paragraph breaking across pages, overriding typography.splitParagraphs for this block.' },
                         },
@@ -157,6 +159,7 @@ export const GENERATE_BASIC_PDF_INPUT_SCHEMA = {
         ...LAYOUT_INPUT_PROPERTIES,
         ...PDFX_INPUT_PROPERTIES,
         ...DIAGNOSTIC_INPUT_PROPERTIES,
+        ...FONT_INPUT_PROPERTY,
         outputMode: {
             type: 'string',
             enum: ['base64', 'file'],
@@ -197,6 +200,7 @@ const InputSchema = z.strictObject({
                     type: z.literal('paragraph'),
                     text: z.string().min(1).max(50000),
                     align: z.enum(PARAGRAPH_ALIGN).optional(),
+                    direction: z.enum(TEXT_DIRECTIONS).optional(),
                     keepWithNext: z.boolean().optional(),
                     splittable: z.boolean().optional(),
                 }),
@@ -227,6 +231,7 @@ const InputSchema = z.strictObject({
     ...LayoutInputShape,
     ...PdfXInputShape,
     ...DiagnosticInputShape,
+    ...FontInputShape,
     outputMode: z.enum(['base64', 'file']).default('base64'),
     outputPath: z.string().optional(),
 });
@@ -256,6 +261,7 @@ export function toDocumentBlocks(blocks: DocumentBlocksInput): DocumentBlock[] {
                     type: 'paragraph' as const,
                     text,
                     ...(block.align !== undefined ? { align: block.align } : {}),
+                    ...(block.direction !== undefined ? { direction: block.direction } : {}),
                     ...(block.splittable !== undefined ? { splittable: block.splittable } : {}),
                     ...(block.keepWithNext !== undefined && i === segments.length - 1 ? { keepWithNext: block.keepWithNext } : {}),
                 }));
@@ -291,7 +297,7 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
     }
     const {
         title, blocks, footerText, pdfA, watermark, normalize, outline, pageLabels, viewerPreferences,
-        print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt, pdfx, strict, includeDiagnostics, embedFonts, outputMode, outputPath,
+        print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt, pdfx, strict, includeDiagnostics, embedFonts, font, outputMode, outputPath,
     } = parsed.data;
     assertWatermarkPdfACompatible(watermark, pdfA);
     assertPrintPdfACompatible(print, pdfA);
@@ -300,7 +306,7 @@ export async function generateBasicPdf(rawInput: unknown): Promise<OutputResult>
 
     const docBlocks = toDocumentBlocks(blocks);
     const docMetadata = toDocumentMetadata(metadata);
-    const fontEntries = await latinFontEntries(embedFonts);
+    const fontEntries = [...(await customFontEntry(font)), ...(await latinFontEntries(embedFonts, font === undefined ? '/F3' : '/F4'))];
     const collector = collectDiagnostics(strict);
 
     let bytes: Uint8Array;

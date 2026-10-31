@@ -486,7 +486,7 @@ pdfnative 1.8's document builder is covered in full at the block / layout level 
 | `TableBlock.columns` (`ColumnDef`), `PdfParams.columns` / `colors` / `fontSizes` on `add_table` | Column widths and palettes are derived from the data; exposing them duplicates the chart `colors` model for tables. |
 | `PdfLayoutOptions.maxBlocks` | The wrapper caps engine blocks at 50 000 after newline splitting and fails with `VALIDATION_ERROR` + "split the document"; raising the engine limit from a tool argument would only move the memory bound. |
 
-Known **engine limits** (pdfnative 1.8.0), each pinned by an `it.fails` test (`tests/upstream-limits.test.ts`, `tests/scripts-27.test.ts`) that goes red the day the engine fixes it, and listed in ROADMAP.md (upstream issues are drafted locally and submitted by a human):
+Known **engine limits** (pdfnative 1.8.0), each pinned by an `it.fails` test (`tests/upstream-limits.test.ts`, `tests/scripts.test.ts`) that goes red the day the engine fixes it, and listed in ROADMAP.md (upstream issues are drafted locally and submitted by a human):
 
 1. `ecdsaVerifyHash` is still not exported — `verify_pdf` keeps its local P-256 verifier.
 2. `extractText` swallows per-page decode failures under the inflate cap (silent empty text, no error).
@@ -735,7 +735,7 @@ Inline steps (no npm script behind them): `dist-check` (the expected files exist
 ### Engine-surface matrix, upstream limits, fuzz
 
 - `tests/_fixtures/engine-surface.json` ties each of the 85 bullets of the engine's 1.8.0 changelog to named tests and examples (34 tested) or to a written waiver (51 waived: library-only seams, tooling, documentation, behaviour tested upstream, upstream limits). `tests/engine-surface.test.ts` holds it to the tree and fails when the `pdfnative` pin moves without the matrix.
-- `tests/upstream-limits.test.ts` (and `tests/scripts-27.test.ts`) pin each known engine limit with `it.fails`: the test states the behaviour the server wants and cannot have yet, so the suite goes red the day the engine fixes it — delete the marker then. The same limits are listed under `upstreamLimits` in the matrix and in ROADMAP.md.
+- `tests/upstream-limits.test.ts` (and `tests/scripts.test.ts`) pin each known engine limit with `it.fails`: the test states the behaviour the server wants and cannot have yet, so the suite goes red the day the engine fixes it — delete the marker then. The same limits are listed under `upstreamLimits` in the matrix and in ROADMAP.md.
 - `tests/engine-surface.fuzz.test.ts` is a seeded fuzz suite (`tests/_fuzz.ts`) over the 1.7.0 surface: the only acceptable failure is a `ToolError` with a documented code. It found the uncoded failures on damaged PDFs that `classifyUnexpected()` now closes.
 - `tests/tools/` holds the tests of the repository tooling itself: `gate`, `verify-docs`, `mcp-surface`, `release-prepare`, `json-schema-lite`, `hermetic-env`, `pdfx`, `verapdf`, `markdown-anchors`, `build-claude-rules`, `agent-config`, `guard`, `workflows`.
 

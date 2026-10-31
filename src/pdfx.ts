@@ -31,7 +31,7 @@ export const PdfXSchema = z.enum(PDF_X_CONFORMANCE_TARGETS as unknown as readonl
 
 /** Shared JSON Schema description with the prerequisites an agent cannot guess. */
 export const PDF_X_FIELD_DESCRIPTION =
-    "PDF/X-4 print exchange (ISO 15930-7). REQUIRES outputIntent with the printer's ICC profile (device class 'prtr'; CMYK or Gray — none is bundled); needs embedFonts:true for a conformant file (PDFX_NO_FONT_ENTRIES otherwise, strict:true refuses). Exclusive with pdfA and encrypt; metadata.trapped must be 'True' or 'False'; TrimBox or ArtBox, not both. Links and form fields are reported (PDFX_ANNOTATIONS). Check with validate_pdf standard:'pdf-x-4'. See the print_ready prompt.";
+    "PDF/X-4 print exchange (ISO 15930-7). REQUIRES outputIntent with the printer's ICC profile (device class 'prtr'; CMYK or Gray — none is bundled); needs embedFonts:true for a conformant file (PDFX_NO_FONT_ENTRIES otherwise, strict:true refuses). Combines with pdfA:'pdfa2b' | 'pdfa2u' (dual claim) but not pdfa1b / pdfa3b; exclusive with encrypt; metadata.trapped must be 'True' or 'False'; TrimBox or ArtBox, not both. Links and form fields are reported (PDFX_ANNOTATIONS). Check with validate_pdf standard:'pdf-x-4'. See the print_ready prompt.";
 
 /** JSON Schema fragment — spread into a tool's `properties`. */
 export const PDFX_INPUT_PROPERTIES = {
@@ -62,8 +62,14 @@ export interface PdfXContext {
  */
 export function assertPdfXCompatible(ctx: PdfXContext): void {
     if (ctx.pdfx === undefined) return;
-    if (ctx.pdfA !== undefined) {
-        throw new ToolError('VALIDATION_ERROR', 'pdfx and pdfA are mutually exclusive: one conformance claim per file. PDF/A is for archiving, PDF/X for print exchange — drop one of them.');
+    // pdfnative 1.9.0: PDF/X-4 and PDF/A-2 may share one file (the dual claim);
+    // PDF/A-1 (PDF 1.4 under a PDF 1.6 standard) and PDF/A-3 (embedded files,
+    // which PDF/X forbids) still cannot — one message per excluded level, as the engine.
+    if (ctx.pdfA === 'pdfa1b') {
+        throw new ToolError('VALIDATION_ERROR', "pdfx cannot be combined with pdfA:'pdfa1b' — PDF/A-1 is PDF 1.4 and PDF/X-4 is PDF 1.6; claim 'pdfa2b' or 'pdfa2u' alongside PDF/X-4.");
+    }
+    if (ctx.pdfA === 'pdfa3b') {
+        throw new ToolError('VALIDATION_ERROR', "pdfx cannot be combined with pdfA:'pdfa3b' — PDF/A-3 allows embedded files, which PDF/X-4 forbids; claim 'pdfa2b' or 'pdfa2u' alongside PDF/X-4.");
     }
     if (ctx.encrypt !== undefined) {
         throw new ToolError('VALIDATION_ERROR', 'pdfx and encrypt are mutually exclusive: PDF/X forbids encryption (ISO 15930-7). Drop one of them.');

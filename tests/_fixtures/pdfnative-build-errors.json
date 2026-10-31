@@ -1,6 +1,6 @@
 {
   "$comment": "Copy of pdfnative docs/data/errors.json -> buildErrors, with the ${placeholders} substituted by sample values and the ToolError code this server maps each message to (src/diagnostics.ts mapBuildError). pdfnative does not ship docs/ in its npm tarball, so this fixture is refreshed by hand at every engine bump; tests/build-errors.test.ts asserts the mapping, that no known engine build error falls through to GENERATION_FAILED, and - where the sibling checkout exists - that the list is still the engine's.",
-  "engine": "1.8.0",
+  "engine": "1.9.0",
   "source": "docs/data/errors.json#buildErrors",
   "messages": [
     {
@@ -11,9 +11,57 @@
     },
     {
       "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (resolvePdfXConfig)",
-      "since": "1.8.0",
-      "message": "layout.pdfx and layout.tagged cannot be combined — pdfnative writes one conformance claim per file; drop one of them",
+      "since": "1.9.0",
+      "message": "layout.pdfx cannot be combined with tagged: 'pdfa1b' — PDF/A-1 is PDF 1.4 and PDF/X-4 is PDF 1.6; claim 'pdfa2b' or 'pdfa2u' alongside PDF/X-4",
       "code": "VALIDATION_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (resolvePdfXConfig)",
+      "since": "1.9.0",
+      "message": "layout.pdfx cannot be combined with tagged: 'pdfa3b' — PDF/A-3 allows embedded files, which PDF/X-4 forbids; claim 'pdfa2b' or 'pdfa2u' alongside PDF/X-4",
+      "code": "VALIDATION_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (spotColourResources)",
+      "since": "1.9.0",
+      "message": "Spot colour 'PANTONE 300 C' is not declared — add { name: 'PANTONE 300 C', alternate: [c, m, y, k] } to layout.print.spotColours",
+      "code": "VALIDATION_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (spotColourResources)",
+      "since": "1.9.0",
+      "message": "Ink mix PANTONE 300 C + Varnish: every ink of a mix needs the same alternate space (all CMYK or all RGB)",
+      "code": "VALIDATION_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (validatePrintOptions)",
+      "since": "1.9.0",
+      "message": "print.spotColours: every ink needs a non-empty name",
+      "code": "PRINT_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (validatePrintOptions)",
+      "since": "1.9.0",
+      "message": "print.spotColours: 'Varnish' has a CMYK alternate out of range — percentages 0–100",
+      "code": "PRINT_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (validatePrintOptions)",
+      "since": "1.9.0",
+      "message": "print.spotColours: 'Varnish' has an RGB alternate out of range — 0–255",
+      "code": "PRINT_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (validatePrintOptions)",
+      "since": "1.9.0",
+      "message": "print.spotColours: 'Varnish' needs an alternate of four CMYK percentages or three RGB values",
+      "code": "PRINT_ERROR"
+    },
+    {
+      "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (validatePrintOptions)",
+      "since": "1.9.0",
+      "message": "print.spotColours: ink 'Varnish' is declared twice",
+      "code": "PRINT_ERROR"
     },
     {
       "thrownBy": "buildDocumentPDFBytes / buildPDFBytes (resolvePdfXConfig)",
@@ -140,6 +188,18 @@
       "since": "1.7.0",
       "message": "print.userUnit requires PDF 1.6+ and is not allowed under PDF/A-1 (PDF 1.4) — use pdfa2b or later",
       "code": "PDF_A_COMPLIANCE_VIOLATION"
+    },
+    {
+      "thrownBy": "buildAnnotationBody / buildAnnotation",
+      "since": "1.9.0",
+      "message": "Unknown annotation type \"stamp\" — expected one of: text, highlight, underline, strikeout, squiggly, square, circle, line, freetext, link",
+      "code": "VALIDATION_ERROR"
+    },
+    {
+      "thrownBy": "inflateSync / applyDecodeFilter, rethrown by extractText (onStreamError: 'limit' default), openPdf().decodeStream, validatePdfX, validatePdfUA (class PdfStreamLimitError, code PDF_STREAM_LIMIT)",
+      "since": "1.9.0",
+      "message": "FlateDecode output exceeds the 1024-byte limit (potential zip bomb) — raise setMaxInflateOutputSize() if this document is trusted",
+      "code": "PDF_PARSE_FAILED"
     }
   ]
 }

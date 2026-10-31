@@ -1,7 +1,8 @@
 /**
  * Shared print-production schema (pdfnative ≥ 1.7; colour bars and CMYK / Gray
- * OutputIntents since 1.8): page boxes / bleed, printer's marks, `/UserUnit`, a
- * caller-supplied OutputIntent ICC profile and
+ * OutputIntents since 1.8; spot inks since 1.9): page boxes / bleed, printer's
+ * marks, `/UserUnit`, the `spotColours` ink declarations, a caller-supplied
+ * OutputIntent ICC profile and
  * the document-level `/Info` + XMP metadata (author / subject / keywords /
  * `/Trapped`).
  *
@@ -12,7 +13,7 @@
  * (pdfnative itself is byte-identical when `print` / `outputIntent` /
  * `metadata` are unused).
  */
-import type { ColourBarOptions, CustomOutputIntent, DocumentMetadata, PageBox, PrintOptions, PrinterMarksOptions } from 'pdfnative';
+import type { ColourBarOptions, CustomOutputIntent, DocumentMetadata, PageBox, PrintOptions, PrinterMarksOptions, SpotColourDef } from 'pdfnative';
 import { z } from 'zod';
 
 import { decodeBase64Field } from './base64.js';
@@ -32,7 +33,7 @@ export const PRINT_INPUT_PROPERTIES = {
         type: 'object',
         additionalProperties: false,
         description:
-            "Print production (ISO 32000-1 §14.11): page boxes, `bleed` shorthand (TrimBox = MediaBox inset), crop/registration marks outside the TrimBox, /UserUnit for large formats (PDF 1.7; not under pdfa1b). See docs/guides/PRINT.md.",
+            "Print production (ISO 32000-1 §14.11): page boxes, `bleed` shorthand (TrimBox = MediaBox inset), crop/registration marks outside the TrimBox, /UserUnit for large formats (PDF 1.7; not under pdfa1b), `spotColours` ink declarations. See docs/guides/PRINT.md.",
         properties: {
             bleed: {
                 type: 'number',
@@ -81,6 +82,28 @@ export const PRINT_INPUT_PROPERTIES = {
                 maximum: 75000,
                 description: '/UserUnit (multiples of 1/72 in) for pages over 14400 pt. Rejected under pdfa1b.',
             },
+            spotColours: {
+                type: 'array',
+                minItems: 1,
+                maxItems: 32,
+                description:
+                    "Spot inks (/Separation plates) the document may paint with { spot:'name', tint } or { inks:{ name: tint } } anywhere a colour is accepted. Undeclared ink → VALIDATION_ERROR; empty / duplicate name → PRINT_ERROR.",
+                items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['name', 'alternate'],
+                    properties: {
+                        name: { type: 'string', minLength: 1, maxLength: 100, description: "'PANTONE 300 C', 'Varnish', …" },
+                        alternate: {
+                            description: 'Process alternate for proofing: [c, m, y, k] 0–100 or [r, g, b] 0–255.',
+                            anyOf: [
+                                { type: 'array', minItems: 4, maxItems: 4, items: { type: 'number', minimum: 0, maximum: 100 } },
+                                { type: 'array', minItems: 3, maxItems: 3, items: { type: 'number', minimum: 0, maximum: 255 } },
+                            ],
+                        },
+                    },
+                },
+            },
         },
     },
     outputIntent: {
@@ -122,6 +145,13 @@ export const PRINT_INPUT_PROPERTIES = {
 
 const BoxSchema = z.tuple([z.number(), z.number(), z.number(), z.number()]);
 
+const pct = z.number().min(0).max(100);
+const byte = z.number().min(0).max(255);
+const SpotColourDefSchema = z.strictObject({
+    name: z.string().min(1).max(100),
+    alternate: z.union([z.tuple([pct, pct, pct, pct]), z.tuple([byte, byte, byte])]),
+});
+
 const PrintSchema = z
     .strictObject({
         bleed: z.number().gt(0).max(200).optional(),
@@ -143,6 +173,7 @@ const PrintSchema = z
             ])
             .optional(),
         userUnit: z.number().min(1).max(75000).optional(),
+        spotColours: z.array(SpotColourDefSchema).min(1).max(32).optional(),
     })
     .refine((p) => !(p.bleed !== undefined && p.trimBox !== undefined), {
         message: 'print.bleed and print.trimBox are mutually exclusive (the bleed shorthand derives the TrimBox).',
@@ -218,7 +249,13 @@ export function toPrintOptions(p: PrintInput): PrintOptions {
         ...(cropBox !== undefined ? { cropBox } : {}),
         ...(marks !== undefined ? { marks } : {}),
         ...(p.userUnit !== undefined ? { userUnit: p.userUnit } : {}),
+        ...(p.spotColours !== undefined ? { spotColours: p.spotColours.map(toSpotColourDef) } : {}),
     };
+}
+
+function toSpotColourDef(s: z.infer<typeof SpotColourDefSchema>): SpotColourDef {
+    const a = s.alternate;
+    return { name: s.name, alternate: a.length === 4 ? [a[0], a[1], a[2], a[3]] : [a[0], a[1], a[2]] };
 }
 
 function toColourBars(bars: boolean | { tints?: boolean | undefined; size?: number | undefined }): boolean | ColourBarOptions {

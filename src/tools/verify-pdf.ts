@@ -34,6 +34,7 @@ import { createHash } from 'node:crypto';
 import {
     decodeEcPublicKey,
     derDecode,
+    ecdsaVerifyHash,
     isSelfSigned,
     isSerialRevoked,
     openPdf,
@@ -443,109 +444,6 @@ function extractEcPublicPoint(cert: X509Certificate): { x: bigint; y: bigint } {
     /* v8 ignore next */
     throw new ToolError('VERIFY_FAILED', `unsupported EC public key encoding (first byte 0x${bytes[0]?.toString(16)})`);
 }
-
-function ecdsaVerifyHash(
-    hash: Uint8Array,
-    r: bigint,
-    s: bigint,
-    pub: { x: bigint; y: bigint },
-): boolean {
-    // pdfnative exports `ecdsaVerify(message, r, s, pub)` which itself hashes the
-    // message internally. Since CMS-with-signedAttrs verification needs to verify
-    // an already-computed digest, we bypass by passing the hash as message and
-    // letting pdfnative's internal sha256 collide — but that would double-hash.
-    //
-    // Workaround: encode a single-byte message whose sha256 equals `hash`. That
-    // is infeasible. Instead we call the lower-level path: build a 32-byte input
-    // that, after sha256, matches `hash`. Also infeasible.
-    //
-    // The robust path is to call the unexported `ecdsaVerifyHash` via the
-    // exported `ecdsaVerify`'s computed-hash branch. Since pdfnative does not
-    // re-export `ecdsaVerifyHash`, we ship a small reimplementation here using
-    // the curve parameters of P-256.
-    return ecdsaVerifyP256(hash, r, s, pub);
-}
-
-// P-256 curve parameters (FIPS 186-4 D.1.2.3 / SEC2)
-const P256_P = 0xffffffff00000001000000000000000000000000ffffffffffffffffffffffffn;
-const P256_N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
-const P256_A = 0xffffffff00000001000000000000000000000000fffffffffffffffffffffffcn;
-const P256_GX = 0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296n;
-const P256_GY = 0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5n;
-
-interface Point {
-    readonly x: bigint;
-    readonly y: bigint;
-    readonly inf: boolean;
-}
-const INF: Point = { x: 0n, y: 0n, inf: true };
-
-function mod(a: bigint, m: bigint): bigint {
-    const r = a % m;
-    return r < 0n ? r + m : r;
-}
-
-function modInv(a: bigint, m: bigint): bigint {
-    let [g, x] = [m, 0n];
-    let [g1, x1] = [mod(a, m), 1n];
-    while (g1 !== 0n) {
-        const q = g / g1;
-        [g, g1] = [g1, g - q * g1];
-        [x, x1] = [x1, x - q * x1];
-    }
-    /* v8 ignore next */
-    if (g !== 1n) throw new ToolError('VERIFY_FAILED', 'modular inverse does not exist');
-    return mod(x, m);
-}
-
-function pointDouble(p: Point): Point {
-    if (p.inf) return p;
-    const s = mod((3n * p.x * p.x + P256_A) * modInv(2n * p.y, P256_P), P256_P);
-    const x = mod(s * s - 2n * p.x, P256_P);
-    const y = mod(s * (p.x - x) - p.y, P256_P);
-    return { x, y, inf: false };
-}
-
-function pointAdd(p: Point, q: Point): Point {
-    if (p.inf) return q;
-    if (q.inf) return p;
-    if (p.x === q.x) {
-        if (mod(p.y + q.y, P256_P) === 0n) return INF;
-        return pointDouble(p);
-    }
-    const s = mod((q.y - p.y) * modInv(q.x - p.x, P256_P), P256_P);
-    const x = mod(s * s - p.x - q.x, P256_P);
-    const y = mod(s * (p.x - x) - p.y, P256_P);
-    return { x, y, inf: false };
-}
-
-function scalarMul(k: bigint, p: Point): Point {
-    let result = INF;
-    let addend = p;
-    let scalar = mod(k, P256_N);
-    while (scalar > 0n) {
-        if ((scalar & 1n) === 1n) result = pointAdd(result, addend);
-        addend = pointDouble(addend);
-        scalar >>= 1n;
-    }
-    return result;
-}
-
-function ecdsaVerifyP256(hash: Uint8Array, r: bigint, s: bigint, pub: { x: bigint; y: bigint }): boolean {
-    if (r <= 0n || r >= P256_N || s <= 0n || s >= P256_N) return false;
-    let e = 0n;
-    for (const b of hash) e = (e << 8n) | BigInt(b);
-    // P-256 nlen = 256 bits = hash length; no truncation needed.
-    const w = modInv(s, P256_N);
-    const u1 = mod(e * w, P256_N);
-    const u2 = mod(r * w, P256_N);
-    const G: Point = { x: P256_GX, y: P256_GY, inf: false };
-    const Q: Point = { x: pub.x, y: pub.y, inf: false };
-    const point = pointAdd(scalarMul(u1, G), scalarMul(u2, Q));
-    if (point.inf) return false;
-    return mod(point.x, P256_N) === mod(r, P256_N);
-}
-
 
 // ── Per-widget verification ───────────────────────────────────────────
 

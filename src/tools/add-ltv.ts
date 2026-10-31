@@ -4,7 +4,7 @@
  * (OCSP responses / CRLs) that future verifiers need once the issuing CAs
  * and responders have disappeared.
  *
- * Two modes, both faithful to pdfnative 1.7:
+ * Two modes, both faithful to pdfnative 1.9:
  *   - `online` — `addValidationInfo()`: the engine walks every signed
  *     signature (and the TSA certificates inside embedded timestamp tokens),
  *     asks the **operator-configured** revocation provider for OCSP/CRL
@@ -13,23 +13,24 @@
  *     engine sees it, so an HTTP-200 error page from a responder never lands
  *     in `/DSS`. Fails fast with `REVOCATION_NOT_CONFIGURED` when nothing is
  *     configured: the server never contacts the network otherwise.
- *   - `offline` — `embedValidationInfo()`: the caller supplies DER material
+ *   - `offline` — `composeLtvData()` + `embedValidationInfo()`: the caller supplies DER material
  *     collected out-of-band (air-gapped pipelines, corporate PKI exports);
  *     every blob is parsed before embedding so garbage never lands in `/DSS`.
  *     The `/VRI` entry of every signed signature references all supplied
- *     items (the Adobe-tolerant superset).
+ *     items (`match: 'all'`, the Adobe-tolerant superset) or only what
+ *     validates that signature (`match: 'chain'`, pdfnative 1.9.0).
  *
  * Incremental and idempotent-ish: an existing `/DSS` is merged, never
  * replaced; earlier revisions (and their signatures) stay byte-identical.
  */
 import {
     addValidationInfo,
+    composeLtvData,
     embedValidationInfo,
     listSignatures,
     parseCertificate,
     parseCrl,
     parseOcspResponse,
-    vriKeyForContents,
     type LtvData,
     type RevocationProvider,
 } from 'pdfnative';
@@ -67,6 +68,13 @@ export const ADD_LTV_INPUT_SCHEMA = {
         certificatesDerBase64: DER_LIST(64, 'offline: DER X.509 certificates to embed in /DSS /Certs.'),
         ocspResponsesDerBase64: DER_LIST(64, 'offline: DER OCSPResponse (RFC 6960) blobs to embed in /DSS /OCSPs.'),
         crlsDerBase64: DER_LIST(16, 'offline: DER CertificateList (RFC 5280) blobs to embed in /DSS /CRLs.'),
+        match: {
+            type: 'string',
+            enum: ['all', 'chain'],
+            default: 'all',
+            description:
+                "offline: what each signature's /VRI references. 'all' (default): every item (Adobe-tolerant superset). 'chain': only the material that validates that signature (its certificates and issuers, the OCSP responses naming them, their issuers' CRLs); the rest still ships in /DSS.",
+        },
         outputMode: { type: 'string', enum: ['base64', 'file'], default: 'base64', description: "'base64' (default) returns the PDF inline; 'file' writes it inside the PDFNATIVE_MCP_OUTPUT_DIR sandbox (SECURITY_VIOLATION when the sandbox is not configured)." },
         outputPath: { type: 'string', description: "Relative path inside PDFNATIVE_MCP_OUTPUT_DIR (required when outputMode='file')." },
     },
@@ -83,6 +91,7 @@ const InputSchema = z
         certificatesDerBase64: derList(64),
         ocspResponsesDerBase64: derList(64),
         crlsDerBase64: derList(16),
+        match: z.enum(['all', 'chain']).default('all'),
         outputMode: z.enum(['base64', 'file']).default('base64'),
         outputPath: z.string().optional(),
     })
@@ -209,31 +218,20 @@ export async function addLtv(rawInput: unknown): Promise<OutputResult> {
             validateMaterial('ocspResponsesDerBase64', ocspResponses, parseOcspResponse);
             validateMaterial('crlsDerBase64', crls, parseCrl);
 
-            // Every signed field — including document timestamps, which PAdES
-            // re-timestamping chains also validate through /VRI — gets an entry.
-            const signed = listSignatures(pdf).filter((s) => !s.isPlaceholder);
-            if (signed.length === 0) {
-                throw new ToolError('LTV_NO_SIGNATURE', 'The document has no signed signature to enable LTV for — run sign_pdf first.');
-            }
-            const all = (n: number): number[] => Array.from({ length: n }, (_, i) => i);
-            const data: LtvData = {
-                certificates,
-                ocspResponses,
-                crls,
-                vri: signed.map((s) => ({
-                    key: vriKeyForContents(s.contents),
-                    certs: all(certificates.length),
-                    ocsps: all(ocspResponses.length),
-                    crls: all(crls.length),
-                })),
-            };
+            // pdfnative 1.9.0 composes the /DSS + /VRI data itself: every signed
+            // field — including document timestamps, which PAdES re-timestamping
+            // chains also validate through /VRI — gets an entry; `match` decides
+            // whether an entry references all the material or only its chain.
+            // (`no signed signature` → LTV_NO_SIGNATURE through mapLtvError.)
+            const data: LtvData = composeLtvData(pdf, { certificates, ocspResponses, crls }, { match: input.match });
             out = embedValidationInfo(pdf, data);
             summary = {
                 mode: 'offline',
-                signatures: signed.length,
+                signatures: data.vri.length,
                 certificates: certificates.length,
                 ocspResponses: ocspResponses.length,
                 crls: crls.length,
+                ...(input.match === 'chain' ? { match: 'chain' } : {}),
             };
         }
     } catch (err) {

@@ -27,14 +27,14 @@ const DEFAULT_IMAGE_WATERMARK_OPACITY = 0.1;
 /** Upper bound on the decoded watermark image (keeps the per-page XObject bounded). */
 const MAX_WATERMARK_IMAGE_BYTES = 8 * 1024 * 1024;
 
-const MIME_TYPES = ['image/jpeg', 'image/png'] as const;
+const MIME_TYPES = ['image/jpeg', 'image/png', 'image/jp2'] as const;
 
 /** JSON-Schema fragment for the optional `watermark` property (text and/or image). */
 export const WATERMARK_INPUT_SCHEMA = {
     type: 'object',
     additionalProperties: false,
     description:
-        "Optional semi-transparent watermark rendered centred on every page: `text` (e.g. 'DRAFT'), `image` (JPEG/PNG), or both combined. At least one of text / image is required. opacity < 1.0 (text or image, including the defaults) is rejected under pdfA='pdfa1b' (ISO 19005-1 forbids transparency).",
+        "Optional semi-transparent watermark rendered centred on every page: `text` (e.g. 'DRAFT'), `image` (JPEG/PNG/JPEG 2000), or both combined. At least one of text / image is required. opacity < 1.0 (text or image, including the defaults) is rejected under pdfA='pdfa1b' (ISO 19005-1 forbids transparency).",
     properties: {
         text: {
             type: 'string',
@@ -69,18 +69,18 @@ export const WATERMARK_INPUT_SCHEMA = {
             additionalProperties: false,
             required: ['imageBase64', 'mimeType'],
             description:
-                'Image watermark (JPEG or PNG) centred on every page, optionally combined with `text`. Bytes are validated against the JPEG/PNG magic numbers; mimeType must match.',
+                'Image watermark (JPEG, PNG or JPEG 2000) centred on every page, optionally combined with `text`. Bytes are validated against the format magic numbers; mimeType must match.',
             properties: {
                 imageBase64: {
                     type: 'string',
                     minLength: 4,
                     maxLength: IMAGE_BASE64_MAX_CHARS,
-                    description: 'Base64-encoded JPEG or 8-bit opaque PNG bytes (max 8 MiB decoded; alpha-channel, palette and interlaced PNGs are rejected with a remedy). Plain base64, no data: URI prefix.',
+                    description: 'Base64-encoded JPEG, 8-bit opaque PNG or JPEG 2000 (JP2 / raw codestream) bytes (max 8 MiB decoded; alpha-channel, palette and interlaced PNGs are rejected with a remedy; a JPEG 2000 opacity channel raises PDFA_JPX_IMAGE under PDF/A). Plain base64, no data: URI prefix.',
                 },
                 mimeType: {
                     type: 'string',
                     enum: [...MIME_TYPES],
-                    description: "'image/jpeg' or 'image/png' — must match the actual bytes.",
+                    description: "'image/jpeg', 'image/png' or 'image/jp2' — must match the actual bytes.",
                 },
                 opacity: {
                     type: 'number',

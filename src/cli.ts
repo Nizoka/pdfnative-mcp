@@ -42,7 +42,9 @@
  * ```
  */
 import { createServer, ensureCompressionReady } from './server.js';
+import { FONT_DIR_ENV, loadCustomFonts } from './font-dir.js';
 import { applyInflateCap, MAX_INFLATE_ENV } from './inflate-cap.js';
+import { OUTPUT_BASE_URL_ENV_NAME, assertOutputBaseUrl } from './output.js';
 import { applyPinnedCreationDate } from './reproducible.js';
 
 /**
@@ -62,6 +64,20 @@ async function main(): Promise<void> {
     // (PDFNATIVE_MCP_MAX_INFLATE_BYTES). Read once; an invalid value throws before serving.
     if (process.env[MAX_INFLATE_ENV] !== undefined && process.env[MAX_INFLATE_ENV] !== '') {
         log(`decompression cap set to ${applyInflateCap()} bytes (${MAX_INFLATE_ENV})`);
+    }
+    // Optional operator font sandbox (PDFNATIVE_MCP_FONT_DIR): every .ttf / .otf is parsed by the
+    // engine and registered under custom:<slug> before serving; an invalid directory or file
+    // throws here. Results and errors name slugs only, never the directory.
+    const fonts = loadCustomFonts();
+    if (fonts.length > 0) {
+        log(`${fonts.length} custom font(s) registered from ${FONT_DIR_ENV}: ${fonts.join(', ')}`);
+    }
+    // Optional public base URL of the output sandbox (PDFNATIVE_MCP_OUTPUT_BASE_URL): file-mode
+    // results then name a URL instead of the host's path. Validated once; an invalid value, or a
+    // base URL without PDFNATIVE_MCP_OUTPUT_DIR, throws before serving. No request is ever made to it.
+    const baseUrl = assertOutputBaseUrl();
+    if (baseUrl !== null) {
+        log(`file-mode results carry public URLs under ${baseUrl} (${OUTPUT_BASE_URL_ENV_NAME})`);
     }
     // Optional operator pin of the creation instant (PDFNATIVE_MCP_CREATION_DATE, then
     // SOURCE_DATE_EPOCH). Read once; an invalid value throws before serving. Always logged:

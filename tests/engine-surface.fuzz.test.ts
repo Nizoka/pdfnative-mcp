@@ -184,7 +184,7 @@ describe('fuzz — print marks, ICC profiles, PDF/X', () => {
             args['print'] = r.bool() ? { bleed: r.float(1, 30), marks: r.bool() ? true : { colourBars: r.bool() ? true : { tints: r.bool(), size: r.float(4, 72) } } } : undefined;
             if (!coherent) {
                 const breakIt = r.int(0, 4);
-                if (breakIt === 0) args['pdfA'] = 'pdfa2b';
+                if (breakIt === 0) args['pdfA'] = 'pdfa1b'; // 1.9.0: pdfa2b / pdfa2u combine with pdfx (dual claim); pdfa1b never does
                 if (breakIt === 1) args['encrypt'] = { ownerPassword: 'owner-secret' };
                 if (breakIt === 2) delete args['outputIntent'];
                 if (breakIt === 3) args['metadata'] = { trapped: 'Unknown' };

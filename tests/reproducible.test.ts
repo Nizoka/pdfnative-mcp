@@ -18,6 +18,7 @@ import { addTable } from '../src/tools/add-table.js';
 import { generateBasicPdf } from '../src/tools/generate-basic-pdf.js';
 import type { OutputResult } from '../src/output.js';
 import { PDFNATIVE_MCP_VERSION } from '../src/version.js';
+import { escapeRegExp } from '../scripts/lib/escape-regexp.js';
 
 const latin1 = (out: OutputResult): string => Buffer.from(out.base64!, 'base64').toString('latin1');
 const DOC = { title: 'Pinned', blocks: [{ type: 'paragraph', text: 'Body.' }], footerTemplate: { left: 'Built {date}' } };
@@ -110,7 +111,7 @@ describe('applyPinnedCreationDate — effect on generated documents', () => {
 describe('response cache — the pin is part of the namespace', () => {
     it('is the plain API / server version without a pin, and carries the instant with one', () => {
         expect(creationDateCacheTag()).toBe('');
-        expect(cacheNamespace()).toMatch(new RegExp(`^\\d+\\.\\d+\\.\\d+/${PDFNATIVE_MCP_VERSION.replace(/\./g, '\\.')}$`));
+        expect(cacheNamespace()).toMatch(new RegExp(`^\\d+\\.\\d+\\.\\d+/${escapeRegExp(PDFNATIVE_MCP_VERSION)}$`));
         setDefaultCreationDate(new Date('2026-01-01T00:00:00Z'));
         expect(creationDateCacheTag()).toBe('/cd=1767225600000');
         expect(cacheNamespace().endsWith('/cd=1767225600000')).toBe(true);

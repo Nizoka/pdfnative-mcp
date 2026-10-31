@@ -54,7 +54,7 @@ export const EXTENDED_BLOCK_SCHEMAS = [
         type: 'object',
         additionalProperties: false,
         required: ['type', 'imageBase64', 'mimeType'],
-        description: 'Inline JPEG/PNG image. Without width/height the pixel size is used as points and clamped to the content width; with one dimension the aspect ratio is kept. The decoded bytes of all image blocks in one call are capped at 24 MiB (a watermark image has its own 8 MiB cap).',
+        description: 'Inline JPEG / PNG / JPEG 2000 image. Without width/height the pixel size is used as points and clamped to the content width; with one dimension the aspect ratio is kept. The decoded bytes of all image blocks in one call are capped at 24 MiB (a watermark image has its own 8 MiB cap).',
         properties: {
             type: { const: 'image' },
             ...BOUNDED_IMAGE_PAYLOAD_PROPERTIES,

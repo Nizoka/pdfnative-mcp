@@ -157,7 +157,7 @@ describe('tool-shape: the catalogue size budget', () => {
     });
 
     it('fails above the tools/list budget, above the instructions budget, and when the manifest figure drifted', () => {
-        expect(judgeCatalogueBudget({ toolsBytes: TOOLS_LIST_BUDGET_BYTES + 1, instructionsBytes: 100, declaredToolsBytes: null })).toEqual([expect.stringMatching(/tools\/list is \d+ bytes — the budget is 327680/)]);
+        expect(judgeCatalogueBudget({ toolsBytes: TOOLS_LIST_BUDGET_BYTES + 1, instructionsBytes: 100, declaredToolsBytes: null })).toEqual([expect.stringMatching(/tools\/list is \d+ bytes — the budget is 393216/)]);
         expect(judgeCatalogueBudget({ toolsBytes: 100, instructionsBytes: INSTRUCTIONS_BUDGET_BYTES + 1, declaredToolsBytes: null })).toEqual([expect.stringMatching(/instructions is \d+ bytes — the budget is 8192/)]);
         expect(judgeCatalogueBudget({ toolsBytes: 306_000, instructionsBytes: 100, declaredToolsBytes: 280_000 })).toEqual([expect.stringMatching(/declared\.toolsListBytes says 280000 but tools\/list measures 306000/)]);
     });

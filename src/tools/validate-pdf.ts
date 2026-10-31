@@ -126,7 +126,7 @@ export interface ValidatePdfResult {
  */
 export const PDF_X_CAVEATS = [
     'Structural prerequisites only: this is not a certified preflight. Confirm a press job with callas pdfToolbox or Acrobat Preflight — veraPDF does not cover PDF/X and no open reference validator exists.',
-    'Not checked: colour inside Form XObjects and images, transparency blend spaces, optional content, and anything that needs rendering (overprint, ink coverage, resolution).',
+    'Not checked: transparency blend spaces, optional content, and anything that needs rendering (overprint, ink coverage, resolution). Colour inside Form XObjects and images, Separation / DeviceN / Indexed alternates and type-4 tint transforms are checked since pdfnative 1.9.',
 ] as const;
 
 const LABEL: Record<ValidateStandard, string> = { 'pdf-ua-1': 'PDF/UA', 'pdf-x-4': 'PDF/X-4' };

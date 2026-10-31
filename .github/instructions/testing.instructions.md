@@ -31,7 +31,7 @@ applyTo: "tests/**,scripts/**,examples/**"
 
 ## Engine surface
 - `tests/engine-surface.test.ts` holds `tests/_fixtures/engine-surface.json` to the tree: every engine changelog bullet is tied to named tests / samples or waived with a reason. It fails when the `pdfnative` pin moves without the matrix.
-- A limit of the engine is pinned with `it.fails` (`tests/upstream-limits.test.ts`, `tests/scripts-27.test.ts`) and listed in ROADMAP.md: when the engine fixes it the suite goes red — delete the marker.
+- A limit of the engine is pinned with `it.fails` (`tests/upstream-limits.test.ts`, `tests/scripts.test.ts`) and listed in ROADMAP.md: when the engine fixes it the suite goes red — delete the marker.
 - `tests/engine-surface.fuzz.test.ts` is seeded (`tests/_fuzz.ts`): the only acceptable failure is a `ToolError` with a documented code.
 
 ## Test focus

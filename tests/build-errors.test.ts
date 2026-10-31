@@ -49,7 +49,7 @@ describe('mapBuildError over the engine build-error registry', () => {
 
     it('every PDF/X coherence message is an argument error, even though it names the OutputIntent', () => {
         const pdfx = fixture.messages.filter((m) => m.thrownBy.includes('resolvePdfXConfig') || m.thrownBy.includes('pdfxBoxes'));
-        expect(pdfx).toHaveLength(7);
+        expect(pdfx).toHaveLength(8);
         for (const entry of pdfx) expect(entry.code, entry.message).toBe('VALIDATION_ERROR');
     });
 

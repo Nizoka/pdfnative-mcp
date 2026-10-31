@@ -87,15 +87,15 @@
    "changelog": "feat(shaping): Lao, Tai Tham, New Tai Lue, Tai Le and Cham",
    "tests": [
     {
-     "file": "tests/scripts-27.test.ts",
+     "file": "tests/scripts.test.ts",
      "name": "SCRIPT_CODES is the 27-script list, and every code has a native sample"
     },
     {
-     "file": "tests/scripts-27.test.ts",
+     "file": "tests/scripts.test.ts",
      "name": "builds under strict at the level veraPDF accepts for it, with no diagnostic"
     },
     {
-     "file": "tests/scripts-27.test.ts",
+     "file": "tests/scripts.test.ts",
      "name": "mix in one document with Latin and emoji (multi-font run splitting)"
     }
    ],
@@ -110,11 +110,11 @@
    "changelog": "feat(shaping): a data-driven Universal Shaping Engine",
    "tests": [
     {
-     "file": "tests/scripts-27.test.ts",
+     "file": "tests/scripts.test.ts",
      "name": "every script renders: valid PDF, embedded font, extractable text"
     },
     {
-     "file": "tests/scripts-27.test.ts",
+     "file": "tests/scripts.test.ts",
      "name": "tagged output extracts the SOURCE text: extract_text honours /ActualText (pdfnative 1.8.0)"
     }
    ],
@@ -129,7 +129,7 @@
    "changelog": "feat(fonts): COLRv1 transforms, variable paints and masks",
    "waiver": {
     "kind": "tested-upstream",
-    "transmission": "tests/scripts-27.test.ts",
+    "transmission": "tests/scripts.test.ts",
     "reason": "COLRv1 transform paints, variable paints and masks are internals of the colour-glyph renderer, tested in the engine paint by paint. The server transmits lang \"emoji\"; the skin-tone and emoji tests render real COLRv1 glyphs through it."
    }
   },
@@ -139,7 +139,7 @@
    "changelog": "feat(fonts): bundled skin tones",
    "tests": [
     {
-     "file": "tests/scripts-27.test.ts",
+     "file": "tests/scripts.test.ts",
      "name": "each of the five Fitzpatrick tones of one gesture draws its own glyph"
     }
    ],
@@ -311,7 +311,7 @@
    "changelog": "feat(parser): `extractText()` honours `/ActualText`",
    "tests": [
     {
-     "file": "tests/scripts-27.test.ts",
+     "file": "tests/scripts.test.ts",
      "name": "tagged output extracts the SOURCE text: extract_text honours /ActualText (pdfnative 1.8.0)"
     }
    ],
@@ -325,11 +325,11 @@
    "changelog": "feat(shaping): Indic OpenType engine",
    "tests": [
     {
-     "file": "tests/scripts-27.test.ts",
+     "file": "tests/scripts.test.ts",
      "name": "every script renders: valid PDF, embedded font, extractable text"
     },
     {
-     "file": "tests/scripts-27.test.ts",
+     "file": "tests/scripts.test.ts",
      "name": "text survives a round trip in logical order"
     }
    ]
@@ -340,11 +340,11 @@
    "changelog": "feat(shaping): `shapeLatinMarksText()`",
    "tests": [
     {
-     "file": "tests/scripts-27.test.ts",
+     "file": "tests/scripts.test.ts",
      "name": "renders through the latin module and keeps every base letter"
     },
     {
-     "file": "tests/scripts-27.test.ts",
+     "file": "tests/scripts.test.ts",
      "name": "an alias is the latin module: same bytes as lang:latin, and it de-duplicates against it"
     }
    ],
@@ -367,7 +367,7 @@
    "changelog": "feat(core): `ShapedGlyph.cps`",
    "tests": [
     {
-     "file": "tests/scripts-27.test.ts",
+     "file": "tests/scripts.test.ts",
      "name": "text survives a round trip in logical order"
     }
    ],
@@ -407,7 +407,7 @@
    "changelog": "feat(samples): twenty-nine one-page language conformance documents",
    "waiver": {
     "kind": "TOOLING",
-    "reason": "Sample documents of the engine repository; this repository renders every script through tests/scripts-27.test.ts and its own corpus."
+    "reason": "Sample documents of the engine repository; this repository renders every script through tests/scripts.test.ts and its own corpus."
    }
   },
   {
@@ -657,11 +657,11 @@
    "changelog": "fix(shaping): Thai and Lao sara am under a tone mark",
    "tests": [
     {
-     "file": "tests/scripts-27.test.ts",
+     "file": "tests/scripts.test.ts",
      "name": "every script renders: valid PDF, embedded font, extractable text"
     },
     {
-     "file": "tests/scripts-27.test.ts",
+     "file": "tests/scripts.test.ts",
      "name": "tagged output extracts the SOURCE text: extract_text honours /ActualText (pdfnative 1.8.0)"
     }
    ],
@@ -739,8 +739,8 @@
    "changelog": "fix(fonts): GSUB single substitutions",
    "waiver": {
     "kind": "tested-upstream",
-    "transmission": "tests/scripts-27.test.ts",
-    "reason": "GSUB single substitutions for CJK and Lao: a rule of the engine's shaper, tested there glyph by glyph. The server transmits text and a lang code; tests/scripts-27.test.ts renders every script with the real fonts and reads the text back, which proves the path is reached."
+    "transmission": "tests/scripts.test.ts",
+    "reason": "GSUB single substitutions for CJK and Lao: a rule of the engine's shaper, tested there glyph by glyph. The server transmits text and a lang code; tests/scripts.test.ts renders every script with the real fonts and reads the text back, which proves the path is reached."
    }
   },
   {
@@ -749,8 +749,8 @@
    "changelog": "fix(fonts): GPOS mark classes",
    "waiver": {
     "kind": "tested-upstream",
-    "transmission": "tests/scripts-27.test.ts",
-    "reason": "Per-subtable GPOS mark anchors: a rule of the engine's shaper, tested there glyph by glyph. The server transmits text and a lang code; tests/scripts-27.test.ts renders every script with the real fonts and reads the text back, which proves the path is reached."
+    "transmission": "tests/scripts.test.ts",
+    "reason": "Per-subtable GPOS mark anchors: a rule of the engine's shaper, tested there glyph by glyph. The server transmits text and a lang code; tests/scripts.test.ts renders every script with the real fonts and reads the text back, which proves the path is reached."
    }
   },
   {
@@ -759,8 +759,8 @@
    "changelog": "fix(shaping): Indic shapers",
    "waiver": {
     "kind": "tested-upstream",
-    "transmission": "tests/scripts-27.test.ts",
-    "reason": "The Indic shapers (Devanagari, Bengali, Tamil, Telugu, Sinhala): a rule of the engine's shaper, tested there glyph by glyph. The server transmits text and a lang code; tests/scripts-27.test.ts renders every script with the real fonts and reads the text back, which proves the path is reached."
+    "transmission": "tests/scripts.test.ts",
+    "reason": "The Indic shapers (Devanagari, Bengali, Tamil, Telugu, Sinhala): a rule of the engine's shaper, tested there glyph by glyph. The server transmits text and a lang code; tests/scripts.test.ts renders every script with the real fonts and reads the text back, which proves the path is reached."
    }
   },
   {
@@ -769,8 +769,8 @@
    "changelog": "fix(shaping): Bengali and Tamil",
    "waiver": {
     "kind": "tested-upstream",
-    "transmission": "tests/scripts-27.test.ts",
-    "reason": "Bengali and Tamil script detection: a rule of the engine's shaper, tested there glyph by glyph. The server transmits text and a lang code; tests/scripts-27.test.ts renders every script with the real fonts and reads the text back, which proves the path is reached."
+    "transmission": "tests/scripts.test.ts",
+    "reason": "Bengali and Tamil script detection: a rule of the engine's shaper, tested there glyph by glyph. The server transmits text and a lang code; tests/scripts.test.ts renders every script with the real fonts and reads the text back, which proves the path is reached."
    }
   },
   {
@@ -779,8 +779,8 @@
    "changelog": "fix(fonts): `head.checkSumAdjustment`",
    "waiver": {
     "kind": "tested-upstream",
-    "transmission": "tests/scripts-27.test.ts",
-    "reason": "head.checkSumAdjustment is a field of the embedded TrueType subset, asserted in the engine. tests/scripts-27.test.ts proves every script embeds a /FontFile2 subset through the server."
+    "transmission": "tests/scripts.test.ts",
+    "reason": "head.checkSumAdjustment is a field of the embedded TrueType subset, asserted in the engine. tests/scripts.test.ts proves every script embeds a /FontFile2 subset through the server."
    }
   },
   {
@@ -798,8 +798,8 @@
    "changelog": "fix(fonts): modules advertised undrawable glyphs",
    "waiver": {
     "kind": "tested-upstream",
-    "transmission": "tests/scripts-27.test.ts",
-    "reason": "Glyphs a font module advertised but could not draw: a rule of the engine's shaper, tested there glyph by glyph. The server transmits text and a lang code; tests/scripts-27.test.ts renders every script with the real fonts and reads the text back, which proves the path is reached."
+    "transmission": "tests/scripts.test.ts",
+    "reason": "Glyphs a font module advertised but could not draw: a rule of the engine's shaper, tested there glyph by glyph. The server transmits text and a lang code; tests/scripts.test.ts renders every script with the real fonts and reads the text back, which proves the path is reached."
    }
   },
   {
@@ -808,8 +808,8 @@
    "changelog": "fix(shaping): Khmer subscripts, Myanmar kinzi and stacked marks",
    "waiver": {
     "kind": "tested-upstream",
-    "transmission": "tests/scripts-27.test.ts",
-    "reason": "Khmer subscripts, Myanmar kinzi and stacked marks: a rule of the engine's shaper, tested there glyph by glyph. The server transmits text and a lang code; tests/scripts-27.test.ts renders every script with the real fonts and reads the text back, which proves the path is reached."
+    "transmission": "tests/scripts.test.ts",
+    "reason": "Khmer subscripts, Myanmar kinzi and stacked marks: a rule of the engine's shaper, tested there glyph by glyph. The server transmits text and a lang code; tests/scripts.test.ts renders every script with the real fonts and reads the text back, which proves the path is reached."
    }
   },
   {
@@ -818,8 +818,8 @@
    "changelog": "fix(shaping): U+061C ARABIC LETTER MARK",
    "waiver": {
     "kind": "tested-upstream",
-    "transmission": "tests/scripts-27.test.ts",
-    "reason": "U+061C ARABIC LETTER MARK: a rule of the engine's shaper, tested there glyph by glyph. The server transmits text and a lang code; tests/scripts-27.test.ts renders every script with the real fonts and reads the text back, which proves the path is reached."
+    "transmission": "tests/scripts.test.ts",
+    "reason": "U+061C ARABIC LETTER MARK: a rule of the engine's shaper, tested there glyph by glyph. The server transmits text and a lang code; tests/scripts.test.ts renders every script with the real fonts and reads the text back, which proves the path is reached."
    }
   },
   {
@@ -828,7 +828,7 @@
    "changelog": "fix(fonts): COLRv1 sweep angles",
    "waiver": {
     "kind": "tested-upstream",
-    "transmission": "tests/scripts-27.test.ts",
+    "transmission": "tests/scripts.test.ts",
     "reason": "A geometry fix inside the COLRv1 renderer, asserted in the engine. The server transmits lang \"emoji\"."
    }
   },
@@ -853,7 +853,7 @@
    "changelog": "fix(core): colour-emoji alpha ramps",
    "waiver": {
     "kind": "tested-upstream",
-    "transmission": "tests/scripts-27.test.ts",
+    "transmission": "tests/scripts.test.ts",
     "reason": "A rendering fix inside the colour-glyph renderer, asserted in the engine. The server transmits lang \"emoji\"."
    }
   },
@@ -863,7 +863,7 @@
    "changelog": "fix(fonts): embedded subsets keep the hinting tables",
    "waiver": {
     "kind": "tested-upstream",
-    "transmission": "tests/scripts-27.test.ts",
+    "transmission": "tests/scripts.test.ts",
     "reason": "The hinting tables of an embedded subset are asserted in the engine. Their effect here is a byte change of every output embedding a TrueType subset, declared in docs/API_STABILITY.md and the release notes."
    }
   },
@@ -1116,7 +1116,7 @@
    "id": "extract-text-visual-order",
    "summary": "extractText() returns right-to-left and pre-base glyph runs in visual order, and some stacked clusters as U+FFFD, on UNTAGGED output (tagged output round-trips through /ActualText).",
    "pinnedBy": {
-    "file": "tests/scripts-27.test.ts",
+    "file": "tests/scripts.test.ts",
     "name": "text survives a round trip in logical order"
    },
    "roadmap": "logical-order text extraction"

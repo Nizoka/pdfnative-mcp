@@ -25,6 +25,78 @@ export function __resetDeprecationWarning(): void {
 }
 
 /**
+ * Optional public base URL of the sandbox (1.8.0, issue #66): when the operator
+ * serves `PDFNATIVE_MCP_OUTPUT_DIR` over HTTP (a static location behind their
+ * own authentication), every file-mode result also carries `url` — the base
+ * plus the sandbox-relative path, each segment percent-encoded — and the text
+ * block names that URL instead of the server's filesystem path, which is
+ * meaningless to a remote user and discloses the host's layout. Pure string
+ * formatting: the server never requests that URL (the offline guarantee holds).
+ *
+ * Read at boot by the CLI (`assertOutputBaseUrl()`): an absolute `http:` /
+ * `https:` URL with no credentials, query or fragment, normalised to a trailing
+ * slash; any other value — or a base URL without an output directory — refuses
+ * to start. Per call it is re-read through the same validator, so a result can
+ * never carry a URL the boot check would have refused.
+ */
+const OUTPUT_BASE_URL_ENV = 'PDFNATIVE_MCP_OUTPUT_BASE_URL';
+/** The variable's name, for boot logs. */
+export const OUTPUT_BASE_URL_ENV_NAME = OUTPUT_BASE_URL_ENV;
+
+/**
+ * Validate and normalise the base URL, or `null` when unset. Throws a plain
+ * `Error` (a boot refusal, not a tool error) on an invalid value.
+ */
+export function readOutputBaseUrl(env: NodeJS.ProcessEnv = process.env): string | null {
+    const raw = env[OUTPUT_BASE_URL_ENV];
+    if (raw === undefined || raw.trim() === '') return null;
+    let url: URL;
+    try {
+        url = new URL(raw.trim());
+    } catch {
+        throw new Error(`${OUTPUT_BASE_URL_ENV} must be an absolute http: or https: URL (e.g. https://files.example.com/pdf/); got "${raw}".`);
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        throw new Error(`${OUTPUT_BASE_URL_ENV} must use http: or https:; got "${url.protocol}".`);
+    }
+    if (url.username !== '' || url.password !== '') {
+        throw new Error(`${OUTPUT_BASE_URL_ENV} must not carry credentials.`);
+    }
+    if (url.search !== '' || url.hash !== '') {
+        throw new Error(`${OUTPUT_BASE_URL_ENV} must not carry a query string or a fragment; got "${raw}".`);
+    }
+    if (!url.pathname.endsWith('/')) url.pathname = `${url.pathname}/`;
+    return url.href;
+}
+
+/**
+ * Boot-time check: the base URL must be valid and must accompany an output
+ * directory (a URL that maps nothing is a misconfiguration, not a no-op).
+ * Returns the normalised URL, or `null` when unset.
+ */
+export function assertOutputBaseUrl(env: NodeJS.ProcessEnv = process.env): string | null {
+    const base = readOutputBaseUrl(env);
+    if (base !== null && getOutputSandbox() === null) {
+        throw new Error(`${OUTPUT_BASE_URL_ENV} is set but ${OUTPUT_DIR_ENV} is not: the base URL maps the output directory, set both or neither.`);
+    }
+    return base;
+}
+
+/**
+ * Public URL of a file written inside the sandbox, or `undefined` when no
+ * base URL is configured: the base plus the sandbox-relative path, one
+ * percent-encoded segment per directory level (`reports/Q3 plan.pdf` →
+ * `…/reports/Q3%20plan.pdf`).
+ */
+export function publicUrlFor(resolvedPath: string): string | undefined {
+    const base = readOutputBaseUrl();
+    const sandbox = getOutputSandbox();
+    if (base === null || sandbox === null) return undefined;
+    const relative = path.relative(sandbox, resolvedPath).split(path.sep);
+    return base + relative.map((segment) => encodeURIComponent(segment)).join('/');
+}
+
+/**
  * Detect Windows absolute and UNC paths even when running on POSIX CI.
  */
 const WINDOWS_ABSOLUTE_OR_UNC = /^(?:[A-Za-z]:[\\/]|\\\\)/;
@@ -113,6 +185,8 @@ export interface OutputResult {
     sizeBytes: number;
     /** Absolute file path (when `mode === 'file'`). */
     filePath?: string;
+    /** Public URL of the file (file mode, only when `PDFNATIVE_MCP_OUTPUT_BASE_URL` is set). */
+    url?: string;
     /** Base64-encoded PDF (when `mode === 'base64'`). */
     base64?: string;
     /** PDF/A conformance diagnostics (only when the caller opted in via `includeDiagnostics`). */
@@ -129,6 +203,8 @@ export interface MultiOutputPart {
     sizeBytes: number;
     /** Absolute file path (when `mode === 'file'`). */
     filePath?: string;
+    /** Public URL of the file (file mode, only when `PDFNATIVE_MCP_OUTPUT_BASE_URL` is set). */
+    url?: string;
     /** Base64-encoded PDF (when `mode === 'base64'`). */
     base64?: string;
 }
@@ -180,7 +256,8 @@ export async function emitPdf(
         const resolved = resolveSandboxedPath(options.outputPath);
         await fs.mkdir(path.dirname(resolved), { recursive: true });
         await fs.writeFile(resolved, bytes, { flag: 'wx' });
-        return { mode: 'file', sizeBytes: bytes.byteLength, filePath: resolved };
+        const url = publicUrlFor(resolved);
+        return { mode: 'file', sizeBytes: bytes.byteLength, filePath: resolved, ...(url !== undefined ? { url } : {}) };
     }
 
     return {
@@ -232,7 +309,8 @@ export async function emitPdfMulti(
             const resolved = resolveSandboxedPath(indexedOutputPath(options.outputPath, i + 1));
             await fs.mkdir(path.dirname(resolved), { recursive: true });
             await fs.writeFile(resolved, parts[i] as Uint8Array, { flag: 'wx' });
-            resultParts.push({ index: i, sizeBytes: (parts[i] as Uint8Array).byteLength, filePath: resolved });
+            const url = publicUrlFor(resolved);
+            resultParts.push({ index: i, sizeBytes: (parts[i] as Uint8Array).byteLength, filePath: resolved, ...(url !== undefined ? { url } : {}) });
         }
         return { mode: 'file', count: parts.length, totalBytes, parts: resultParts };
     }
@@ -263,7 +341,7 @@ export async function writeSandboxedText(
     text: string,
     outputPath: string,
     extension = '.md',
-): Promise<{ filePath: string; sizeBytes: number }> {
+): Promise<{ filePath: string; sizeBytes: number; url?: string }> {
     const bytes = Buffer.from(text, 'utf8');
     if (bytes.byteLength > MAX_OUTPUT_BYTES) {
         throw new ToolError(
@@ -274,5 +352,6 @@ export async function writeSandboxedText(
     const resolved = resolveSandboxedPath(outputPath, extension);
     await fs.mkdir(path.dirname(resolved), { recursive: true });
     await fs.writeFile(resolved, bytes, { flag: 'wx' });
-    return { filePath: resolved, sizeBytes: bytes.byteLength };
+    const url = publicUrlFor(resolved);
+    return { filePath: resolved, sizeBytes: bytes.byteLength, ...(url !== undefined ? { url } : {}) };
 }
