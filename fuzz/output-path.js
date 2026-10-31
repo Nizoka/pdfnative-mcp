@@ -19,11 +19,23 @@ import path from 'node:path';
 import { resolveSandboxedPath, ToolError } from '../dist/fuzz-surface.js';
 
 const SANDBOX = path.resolve('/pdfnative-mcp-fuzz-sandbox');
-process.env.PDFNATIVE_MCP_OUTPUT_DIR = SANDBOX;
 
 /** @param {Buffer} data Bytes chosen by the fuzzer. */
 export function fuzz(data) {
-    const userPath = data.toString('utf8');
+    // Set around the call, not at import time: the targets share one process in
+    // tests/fuzzing/targets.test.ts and the tool-call target must keep file output disabled.
+    const previous = process.env.PDFNATIVE_MCP_OUTPUT_DIR;
+    process.env.PDFNATIVE_MCP_OUTPUT_DIR = SANDBOX;
+    try {
+        check(data.toString('utf8'));
+    } finally {
+        if (previous === undefined) delete process.env.PDFNATIVE_MCP_OUTPUT_DIR;
+        else process.env.PDFNATIVE_MCP_OUTPUT_DIR = previous;
+    }
+}
+
+/** @param {string} userPath The `outputPath` a model would send. */
+function check(userPath) {
     for (const extension of ['.pdf', '.md']) {
         let resolved;
         try {

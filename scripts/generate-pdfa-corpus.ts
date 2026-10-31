@@ -101,7 +101,8 @@ async function main(): Promise<number> {
             expectPdfXClaim: claims === 'pdfx' || claims === 'both',
             expectPdfXCompliant: (claims === 'pdfx' || claims === 'both') && compliant,
         });
-        const tag = claims === 'none' ? 'no claim' : `${claims === 'pdfa' ? 'PDF/A' : 'PDF/X'}${compliant ? '' : ', NEGATIVE canary'}`;
+        const label = claims === 'pdfa' ? 'PDF/A' : claims === 'pdfx' ? 'PDF/X' : 'PDF/X + PDF/A';
+        const tag = claims === 'none' ? 'no claim' : `${label}${compliant ? '' : ', NEGATIVE canary'}`;
         say(`  wrote  ${entry.file.padEnd(44)} ${String(bytes.byteLength).padStart(8)} B  (${entry.tool}, ${tag})`);
     }
 

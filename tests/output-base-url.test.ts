@@ -52,6 +52,8 @@ describe('readOutputBaseUrl — the boot validator', () => {
         ['credentials', 'https://user:pw@files.example.com/pdf/', /must not carry credentials/],
         ['a query string', 'https://files.example.com/pdf/?token=1', /query string or a fragment/],
         ['a fragment', 'https://files.example.com/pdf/#x', /query string or a fragment/],
+        ['a bare ? (WHATWG keeps it in href with an empty search)', 'https://files.example.com/pdf?', /query string or a fragment/],
+        ['a bare #', 'https://files.example.com/pdf/#', /query string or a fragment/],
     ])('refuses %s', (_label, value, message) => {
         expect(() => readOutputBaseUrl({ [BASE]: value })).toThrow(message);
     });
@@ -63,6 +65,14 @@ describe('readOutputBaseUrl — the boot validator', () => {
         expect(assertOutputBaseUrl(process.env)).toBe('https://files.example.com/pdf/');
         delete process.env[BASE];
         expect(assertOutputBaseUrl(process.env)).toBeNull();
+    });
+
+    it('assertOutputBaseUrl reads both variables from the environment it is given, never from process.env', () => {
+        delete process.env[DIR];
+        delete process.env[BASE];
+        expect(assertOutputBaseUrl({ [BASE]: 'https://files.example.com/pdf', [DIR]: sandbox })).toBe('https://files.example.com/pdf/');
+        process.env[DIR] = sandbox;
+        expect(() => assertOutputBaseUrl({ [BASE]: 'https://files.example.com/pdf' })).toThrow(/is set but PDFNATIVE_MCP_OUTPUT_DIR is not/);
     });
 });
 

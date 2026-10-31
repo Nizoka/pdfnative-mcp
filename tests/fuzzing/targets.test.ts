@@ -145,6 +145,7 @@ describe('fuzz targets', () => {
         for (const probe of ['../x.pdf', '/etc/passwd.pdf', 'C:\\Windows\\x.pdf', 'a\0.pdf', 'fine/report.pdf', 'draft.md']) {
             expect(() => fuzz(Buffer.from(probe)), probe).not.toThrow();
         }
-        expect(process.env['PDFNATIVE_MCP_OUTPUT_DIR']).toContain('pdfnative-mcp-fuzz-sandbox');
+        // The target sets the sandbox variable around each call only: nothing leaks into the shared process.
+        expect(process.env['PDFNATIVE_MCP_OUTPUT_DIR'] ?? '').not.toContain('pdfnative-mcp-fuzz-sandbox');
     });
 });

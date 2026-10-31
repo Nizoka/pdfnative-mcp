@@ -78,15 +78,20 @@ export function loadCustomFonts(env: NodeJS.ProcessEnv = process.env): readonly 
         throw new Error(`${FONT_DIR_ENV} must name an existing, readable directory: ${err instanceof Error ? err.message : String(err)}`);
     }
     // Sorted by slug (not by raw name) so the registration order is the same on every file system.
-    const files = entries.filter((name) => FONT_EXTENSIONS.has(path.extname(name).toLowerCase())).sort((a, b) => (fontSlug(a) < fontSlug(b) ? -1 : fontSlug(a) > fontSlug(b) ? 1 : a < b ? -1 : 1));
+    const files = entries
+        .filter((name) => FONT_EXTENSIONS.has(path.extname(name).toLowerCase()))
+        .map((name) => ({ name, slug: fontSlug(name) }))
+        .sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : a.name < b.name ? -1 : 1));
     if (files.length === 0) throw new Error(`${FONT_DIR_ENV} holds no .ttf / .otf file.`);
     if (files.length > MAX_FONT_FILES) throw new Error(`${FONT_DIR_ENV} holds ${files.length} font files; at most ${MAX_FONT_FILES} are registered.`);
 
-    const next = new Map<string, CustomFont>();
-    for (const file of files) {
-        const slug = fontSlug(file);
+    // Every file is checked and parsed before the first registration: the engine registry is
+    // process-global, so a refusal on a later file must leave nothing of the earlier ones behind.
+    const parsed: Array<{ font: CustomFont; data: FontData }> = [];
+    const taken = new Set<string>();
+    for (const { name: file, slug } of files) {
         if (!FONT_SLUG_RE.test(slug)) throw new Error(`${FONT_DIR_ENV}: "${file}" folds to an empty or invalid slug — rename it to letters, digits and dashes.`);
-        if (next.has(slug)) throw new Error(`${FONT_DIR_ENV}: "${file}" folds to the slug "${slug}" already taken by another file — rename one of them.`);
+        if (taken.has(slug)) throw new Error(`${FONT_DIR_ENV}: "${file}" folds to the slug "${slug}" already taken by another file — rename one of them.`);
         const full = path.join(dir, file);
         const size = statSync(full).size;
         if (size > MAX_FONT_FILE_BYTES) throw new Error(`${FONT_DIR_ENV}: "${file}" is ${size} bytes, over the ${MAX_FONT_FILE_BYTES}-byte limit.`);
@@ -96,9 +101,13 @@ export function loadCustomFonts(env: NodeJS.ProcessEnv = process.env): readonly 
         } catch (err) {
             throw new Error(`${FONT_DIR_ENV}: "${file}" is not a TrueType / OpenType font the engine can parse: ${err instanceof Error ? err.message : String(err)}`);
         }
-        const lang = `${CUSTOM_FONT_PREFIX}${slug}`;
-        registerFont(lang, () => Promise.resolve(data));
-        next.set(slug, { slug, lang, fontName: data.fontName });
+        taken.add(slug);
+        parsed.push({ font: { slug, lang: `${CUSTOM_FONT_PREFIX}${slug}`, fontName: data.fontName }, data });
+    }
+    const next = new Map<string, CustomFont>();
+    for (const { font, data } of parsed) {
+        registerFont(font.lang, () => Promise.resolve(data));
+        next.set(font.slug, font);
     }
     registry = next;
     return [...next.keys()];

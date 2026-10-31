@@ -188,6 +188,11 @@ describe('link annotations (pdfnative 1.9.0)', () => {
         const source = await generateBasicPdf({ title: 'L', blocks: TEXT, creationDate: PINNED });
         await expect(annotatePdf({ pdfBase64: source.base64!, annotations: [{ page: 0, type: 'link', rect: [0, 0, 10, 10] }] })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
         await expect(annotatePdf({ pdfBase64: source.base64!, annotations: [{ page: 0, type: 'link', rect: [0, 0, 10, 10], url: 'javascript:alert(1)' }] })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+        // A scheme without an authority or an address is not a link either.
+        for (const url of ['https:', 'http:foo', 'mailto:', 'mailto:nobody']) {
+            await expect(annotatePdf({ pdfBase64: source.base64!, annotations: [{ page: 0, type: 'link', rect: [0, 0, 10, 10], url }] }), url).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+        }
+        await expect(annotatePdf({ pdfBase64: source.base64!, annotations: [{ page: 0, type: 'link', rect: [0, 0, 10, 10], url: 'mailto:someone@example.com' }] })).resolves.toBeDefined();
     });
 });
 

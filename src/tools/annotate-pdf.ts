@@ -52,7 +52,8 @@ const ANNOTATION_TYPES = [
     'link',
 ] as const;
 
-const LINK_SCHEMES = /^(?:https?:|mailto:)/i;
+// `http://` / `https://` with a host, or `mailto:` with an address — a bare `https:` is not a link.
+const LINK_SCHEMES = /^(?:https?:\/\/[^\s/?#]+|mailto:[^\s@]+@[^\s@]+)/i;
 // eslint-disable-next-line no-control-regex -- C0 / DEL are exactly what the engine rejects
 const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/;
 

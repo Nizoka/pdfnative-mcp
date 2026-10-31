@@ -62,7 +62,9 @@ export function readOutputBaseUrl(env: NodeJS.ProcessEnv = process.env): string 
     if (url.username !== '' || url.password !== '') {
         throw new Error(`${OUTPUT_BASE_URL_ENV} must not carry credentials.`);
     }
-    if (url.search !== '' || url.hash !== '') {
+    // WHATWG reports an empty `search` / `hash` for a bare `?` or `#` yet keeps them in `href`,
+    // so the raw string is checked too: a path appended after `…/?` would land in the query.
+    if (url.search !== '' || url.hash !== '' || /[?#]/.test(raw)) {
         throw new Error(`${OUTPUT_BASE_URL_ENV} must not carry a query string or a fragment; got "${raw}".`);
     }
     if (!url.pathname.endsWith('/')) url.pathname = `${url.pathname}/`;
@@ -76,7 +78,8 @@ export function readOutputBaseUrl(env: NodeJS.ProcessEnv = process.env): string 
  */
 export function assertOutputBaseUrl(env: NodeJS.ProcessEnv = process.env): string | null {
     const base = readOutputBaseUrl(env);
-    if (base !== null && getOutputSandbox() === null) {
+    const hasOutputDir = [OUTPUT_DIR_ENV, DEPRECATED_OUTPUT_DIR_ENV].some((name) => (env[name] ?? '').trim() !== '');
+    if (base !== null && !hasOutputDir) {
         throw new Error(`${OUTPUT_BASE_URL_ENV} is set but ${OUTPUT_DIR_ENV} is not: the base URL maps the output directory, set both or neither.`);
     }
     return base;
@@ -254,9 +257,10 @@ export async function emitPdf(
             throw new ToolError('MISSING_OUTPUT_PATH', "outputPath is required when outputMode='file'.");
         }
         const resolved = resolveSandboxedPath(options.outputPath);
+        // The URL is computed before the write: an invalid base URL fails the call with nothing on disk.
+        const url = publicUrlFor(resolved);
         await fs.mkdir(path.dirname(resolved), { recursive: true });
         await fs.writeFile(resolved, bytes, { flag: 'wx' });
-        const url = publicUrlFor(resolved);
         return { mode: 'file', sizeBytes: bytes.byteLength, filePath: resolved, ...(url !== undefined ? { url } : {}) };
     }
 
@@ -307,9 +311,9 @@ export async function emitPdfMulti(
         const resultParts: MultiOutputPart[] = [];
         for (let i = 0; i < parts.length; i++) {
             const resolved = resolveSandboxedPath(indexedOutputPath(options.outputPath, i + 1));
+            const url = publicUrlFor(resolved);
             await fs.mkdir(path.dirname(resolved), { recursive: true });
             await fs.writeFile(resolved, parts[i] as Uint8Array, { flag: 'wx' });
-            const url = publicUrlFor(resolved);
             resultParts.push({ index: i, sizeBytes: (parts[i] as Uint8Array).byteLength, filePath: resolved, ...(url !== undefined ? { url } : {}) });
         }
         return { mode: 'file', count: parts.length, totalBytes, parts: resultParts };
@@ -350,8 +354,8 @@ export async function writeSandboxedText(
         );
     }
     const resolved = resolveSandboxedPath(outputPath, extension);
+    const url = publicUrlFor(resolved);
     await fs.mkdir(path.dirname(resolved), { recursive: true });
     await fs.writeFile(resolved, bytes, { flag: 'wx' });
-    const url = publicUrlFor(resolved);
     return { filePath: resolved, sizeBytes: bytes.byteLength, ...(url !== undefined ? { url } : {}) };
 }

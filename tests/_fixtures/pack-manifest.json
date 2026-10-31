@@ -43,6 +43,8 @@
     "dist/form.js",
     "dist/fuzz-surface.d.ts",
     "dist/fuzz-surface.js",
+    "dist/governance-embed.d.ts",
+    "dist/governance-embed.js",
     "dist/governance.d.ts",
     "dist/governance.js",
     "dist/http.d.ts",
