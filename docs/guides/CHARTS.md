@@ -1,6 +1,6 @@
 # Charts guide (for AI agents)
 
-Applies to pdfnative-mcp v1.7.0 · pdfnative 1.8.0.
+Applies to pdfnative-mcp v1.8.0 · pdfnative 1.9.0.
 
 Native vector charts arrived in **pdfnative-mcp v1.5.0** (on pdfnative's <!-- verify-docs:allow version-token -->
 `ChartBlock`); **charts v2** arrived in **v1.6.0** (pdfnative v1.7.0); **CMYK chart <!-- verify-docs:allow version-token -->
@@ -105,7 +105,7 @@ Both build the identical pdfnative block, so pick whichever composes better.
 | Field | Notes |
 | --- | --- |
 | `chartType` (required) | One of the nine kinds above. |
-| `series` (required) | `[{ label, values[], color?, xValues?, yAxis? }]`. Pie/donut: one series. `xValues` (numbers, or ISO-8601 dates / epoch ms for a time axis) must match `values` in length. `yAxis: 'right'` binds the series to `axis2`. |
+| `series` (required) | `[{ label?, values[], color?, colors?, xValues?, yAxis? }]`. `label` is optional since v1.8.0 (an unlabelled series is listed as `Series N` in the legend); `colors` (v1.8.0) gives one colour per value on the four bar kinds — hex, CMYK or a declared spot ink — while the legend swatch keeps `color` ([`examples/chart-per-value-colours.json`](../../examples/chart-per-value-colours.json)). Pie/donut: one series. `xValues` (numbers, or ISO-8601 dates / epoch ms for a time axis) must match `values` in length. `yAxis: 'right'` binds the series to `axis2`. |
 | `categories` | X-axis / slice labels. Defaults to 1-based indices. Ignored for positional x axes. |
 | `axis` | `{ yMin?, yMax?, ticks?, grid?, scale? }` — left value axis (cartesian kinds). `scale: 'log'` needs strictly positive values and no stacking. Values are clamped to the plot band. |
 | `axis2` | `{ yMin?, yMax?, ticks?, scale? }` — secondary **right** value axis; drawn only when a series sets `yAxis: 'right'`. |
@@ -115,7 +115,7 @@ Both build the identical pdfnative block, so pick whichever composes better.
 | `labelRotation` | Rotate category labels counter-clockwise (0–90°); disables the automatic stride. |
 | `legend` | `'bottom'` (default for multi-series/pie) or `'none'`. |
 | `markers` | Draw point markers on line series. |
-| `colors` | Palette override (per-series or per-slice): CSS hex like `#3366cc`, or — since v1.7.0 — CMYK as `'C M Y K'` (each 0.0–1.0) or `[c, m, y, k]` (ink percentages 0–100). `series[].color` takes the same three forms. |
+| `colors` | Palette override (per-series or per-slice; per value: `series[].colors`, v1.8.0): CSS hex like `#3366cc`, or — since v1.7.0 — CMYK as `'C M Y K'` (each 0.0–1.0) or `[c, m, y, k]` (ink percentages 0–100). `series[].color` takes the same three forms. |
 | `align` | `'left'` (default) / `'center'` / `'right'`. |
 | `width` / `height` | Plot width (clamped to the content width, default 460) / plot-area height (default 240), in points. |
 | `altText` | Tagged `/Alt`. **Auto-generated when omitted** — leave it out unless you need a specific description. |
@@ -126,7 +126,8 @@ Both build the identical pdfnative block, so pick whichever composes better.
 ## Pitfalls
 
 - **Colours are hex strings**, e.g. `"#3366cc"` (with or without the leading `#`), **or CMYK**
-  (`"1 0.6 0 0.1"`, `[100, 60, 0, 10]`). Do not pass RGB tuples: a three-number array is
+  (`"1 0.6 0 0.1"`, `[100, 60, 0, 10]`), **or a declared spot ink** (`{ "spot": "Brand Blue", "tint": 0.6 }`,
+  v1.8.0 — see [PRINT.md](PRINT.md#spot-colours-v180)). Do not pass RGB tuples: a three-number array is
   refused. Use CMYK for a print job with a CMYK `outputIntent`; under a PDF/A claim with the
   default sRGB intent a CMYK colour raises `PDFA_DEVICE_CMYK_CONTENT`, and under PDF/X with
   an RGB or Gray intent `PDFX_DEVICE_CMYK`.

@@ -11,7 +11,7 @@ paths:
 
 ## Transport and lifecycle
 - stdio transport by default; Streamable HTTP when `PDFNATIVE_MCP_PORT` is set (loopback bind + Host/Origin guard; opt-in bearer token via `PDFNATIVE_MCP_HTTP_TOKEN`, see `src/auth.ts`).
-- SDK: `@modelcontextprotocol/server` ^2.0.0 (MCP 2026-07-28, automatic 2025-era fallback).
+- SDK: `@modelcontextprotocol/server` ^2.4.0 (MCP 2026-07-28, automatic 2025-era fallback; since 2.4 a modern envelope without the `MCP-Protocol-Version` header is a 400).
 - Gracefully close the server on SIGINT/SIGTERM; stdin EOF ends the stdio server with exit 0.
 - **stdout is the JSON-RPC channel.** Never `console.log` in `src/` — logs go to stderr. The gate's `smoke` and `dist-probe` steps fail on a stray stdout line.
 
@@ -25,21 +25,22 @@ paths:
 - **Every failure carries a `ToolError` code.** pdfnative parses lazily, so a damaged PDF can throw from any accessor after `openPdf()`; `classifyUnexpected()` in `src/server.ts` reports whatever escapes a handler as `PDF_PARSE_FAILED`. Map the failures you expect yourself; the net is the last line, not the first.
 - Every tool registered in `src/server.ts` must ship `_meta.apiVersion` (current `TOOL_API_VERSION`, see `docs/API_STABILITY.md`) and one or two executable `_meta.examples` (they are validated against `inputSchema` in tests; more examples belong in `examples/*.json`).
 - `tools/list` structure is pinned by `tests/_fixtures/tool-shape.json` (`tests/catalogue-parity.test.ts`, gate step `verify:tool-shape`). Wording is free; any change to types, enums, defaults, constraints, `required`, `additionalProperties` or example count needs `npm run build && npx tsx scripts/tool-shape.ts --write` and a review under `docs/API_STABILITY.md` §5. `tests/catalogue-superset.test.ts` additionally rejects any removal / narrowing against the frozen 1.5.0 fixture (`tests/_fixtures/tool-shape.v1.5.0.json`); widening a plain schema into `anyOf` is accepted only when a member still accepts every published value.
-- No `$ref` / `$defs` and no `$schema` keyword in input schemas (host compatibility); shared fragments are therefore inlined in every tool — keep their descriptions terse (`tools/list` ≈ 306 kB, budgeted at 320 KiB by `tool-shape.ts --check`) and put the long form in a prompt or a guide.
+- No `$ref` / `$defs` and no `$schema` keyword in input schemas (host compatibility); shared fragments are therefore inlined in every tool — keep their descriptions terse (`tools/list` ≈ 355 kB, budgeted at 384 KiB by `tool-shape.ts --check`; a colour member is inlined at 46 sites, a layout option at nine tools) and put the long form in a prompt or a guide.
 - Update `SERVER_INSTRUCTIONS` (decision tree + pitfalls) and the relevant prompt whenever you add a tool or change its behaviour.
 
 ## Engine surface
 - Thin, faithful wrapper: expose what pdfnative does, do not reimplement it on raw primitives, and say what a result does NOT establish (`validate_pdf` `caveats[]`).
-- `strict` is classified HERE, by diagnostic code (`escalate()` in `src/diagnostics.ts`): `PDFA_*` → `PDF_A_COMPLIANCE_VIOLATION`, `PDFX_*` → `PDF_X_COMPLIANCE_VIOLATION`, other → `DIAGNOSTIC_ESCALATED`. It is never forwarded to the engine.
-- A colour reaches the engine through `toEngineColor()` (`src/color.ts`): the engine reads a bare three-number tuple as 0–255.
+- `strict` is classified HERE, by diagnostic code (`escalate()` in `src/diagnostics.ts`): `PDFA_*` / `PDFA1_*` → `PDF_A_COMPLIANCE_VIOLATION`, `PDFX_*` → `PDF_X_COMPLIANCE_VIOLATION`, other (`TYPOGRAPHY_*`, `TEXT_GLYPH_NOT_COVERED`) → `DIAGNOSTIC_ESCALATED`. It is never forwarded to the engine. The 13 codes are a compile-time witness (`DIAGNOSTIC_CODE_TABLE`) with an executed trigger each (`tests/_diagnostic-triggers.ts`). A `PdfStreamLimitError` (`code === 'PDF_STREAM_LIMIT'`, never matched on its message) is `PDF_PARSE_FAILED` with the operator remedy (`throwIfInflateCapError`).
+- A colour reaches the engine through `toEngineColor()` (`src/color.ts`): the engine reads a bare three-number tuple as 0–255; the `{ spot, tint }` and `{ inks }` forms (1.9) pass through and name inks declared in `print.spotColours` — an undeclared ink is the engine's error, mapped to `VALIDATION_ERROR` by `mapBuildError`.
+- Every document tool forwards the whole layout fragment — `direction`, `actualText` included — to `toLayoutOptions()`; a key accepted by the schema but not forwarded is a silent no-op the catalogue would still advertise. The `font` input (`src/font-dir.ts`, operator sandbox) is the primary `FontEntry` (`/F3`), the bundled faces follow.
 - Moving the `pdfnative` pin means adopting the release: extend `tests/_fixtures/engine-surface.json` in the same change (CONTRIBUTING.md §Bumping the engine pin).
 
 ## Safety
 - Never trust tool arguments — validate at the boundary with Zod.
 - Validate size limits and enum boundaries. Current bounds: 50 MiB output, 24 MiB decoded images per call (`ImageByteBudget`, `src/image.ts`; 12 M base64 chars per inline `image` block / watermark image — `embed_image.imageBase64` stays unbounded, 1.5.0 contract), 8 MiB watermark image and ICC profile, 100 000-char `svg` data, 50 000 engine blocks after newline splitting, 256 MiB stdio frame / HTTP body.
-- Operator knobs are read once at boot and an invalid value refuses to start: `PDFNATIVE_MCP_MAX_INFLATE_BYTES` (`src/inflate-cap.ts`), `PDFNATIVE_MCP_CREATION_DATE` / `SOURCE_DATE_EPOCH` (`src/reproducible.ts`). Never from a tool argument.
-- Keep output bounded (50 MiB cap) and deterministic when possible; any call carrying `encrypt` is never cached, and the cache namespace carries the pinned creation instant.
-- Shared fragments live in `src/layout.ts` (layout + `typography` + `encrypt`), `src/print.ts`, `src/pdfx.ts`, `src/color.ts`, `src/blocks.ts`, `src/table.ts`, `src/barcode.ts`, `src/form.ts`, `src/image.ts`, `src/watermark.ts` — a dedicated tool and its inline block must validate and render identically.
+- Operator knobs are read once at boot and an invalid value refuses to start: `PDFNATIVE_MCP_MAX_INFLATE_BYTES` (`src/inflate-cap.ts`), `PDFNATIVE_MCP_CREATION_DATE` / `SOURCE_DATE_EPOCH` (`src/reproducible.ts`), `PDFNATIVE_MCP_OUTPUT_BASE_URL` (`src/output.ts`), `PDFNATIVE_MCP_FONT_DIR` (`src/font-dir.ts`). Never from a tool argument.
+- Keep output bounded (50 MiB cap) and deterministic when possible; any call carrying `encrypt` or `password` is never cached, and the cache namespace carries the pinned creation instant.
+- Shared fragments live in `src/layout.ts` (layout + `typography` + `direction` / `actualText` + `encrypt`), `src/print.ts` (+ `spotColours`), `src/pdfx.ts` (the PDF/X-4 + PDF/A-2 dual claim; 1b / 3b refused), `src/color.ts`, `src/blocks.ts`, `src/table.ts`, `src/barcode.ts`, `src/form.ts`, `src/image.ts` (JPEG, PNG, JPEG 2000), `src/watermark.ts`, `src/font-dir.ts` — a dedicated tool and its inline block must validate and render identically.
 - Never echo key material in error messages or stderr.
 
 ## Compatibility

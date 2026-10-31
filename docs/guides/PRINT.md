@@ -1,6 +1,6 @@
 # Print-production guide (for AI agents)
 
-pdfnative-mcp v1.7.0 (on pdfnative 1.8.0) lets every document-producing tool emit a
+pdfnative-mcp v1.8.0 (on pdfnative 1.9.0) lets every document-producing tool emit a
 **print-ready** PDF: page boxes and bleed, printer's marks and a colour control strip,
 `/UserUnit` for large formats, the `/Trapped` flag, an RGB, CMYK or Gray ICC output
 intent, CMYK colours, a **PDF/X-4** claim, and print-dialog defaults.
@@ -51,7 +51,7 @@ to the edge. `margins` and running `headerTemplate` / `footerTemplate` (v1.6.0) 
 where content flows, not the boxes; a header reserves 15 pt at the top of the content
 area.
 
-Since pdfnative 1.8.0 every mark **stops 0.5 pt short of the trim line** (or the stroke
+Since pdfnative 1.8.0 every mark **stops 0.5 pt short of the trim line** (or the stroke <!-- verify-docs:allow version-token -->
 weight, if heavier) and of the media edge, so no ink prints on the cut. The bytes of
 every document drawing `print.marks` therefore differ from those of v1.6.0 — rebaseline
 once if you compare bytes. Under a CMYK output intent the marks are stroked in the
@@ -91,7 +91,7 @@ Next to `metadata`, the same nine tools accept an opt-in `creationDate` (ISO-860
 e.g. `'2026-01-15T09:00:00Z'`). Pinning it fixes `/CreationDate`, the XMP dates
 under PDF/A, the `{date}` placeholder of a header / footer template and therefore the
 trailer `/ID`, so a proof re-generated with identical inputs is **byte-identical on
-every host and in every time zone** (since pdfnative 1.8.0 every date is written in
+every host and in every time zone** (since pdfnative 1.8.0 every date is written in <!-- verify-docs:allow version-token -->
 UTC). Omitted, the operator's pin (`PDFNATIVE_MCP_CREATION_DATE`, else
 `SOURCE_DATE_EPOCH`) applies, else the wall clock — and then every call differs. See
 [REPRODUCIBLE.md](REPRODUCIBLE.md). Two MCP prompts cover this ground: `print_ready`
@@ -165,6 +165,64 @@ A three-number tuple is never CMYK: `[1, 0, 0]` on a watermark or an annotation 
 documented 0–1 RGB triple (and, since v1.7.0, renders the red it names). Example:
 [`examples/cmyk-colours.json`](../../examples/cmyk-colours.json).
 
+## Spot colours (v1.8.0)
+
+A spot colour is a named ink the press prints from its own plate — a Pantone shade, a
+varnish, a metallic — rather than a mix of the four process inks. pdfnative 1.9.0
+writes them as `/Separation` (one ink) and `/DeviceN` (a mix of declared inks)
+colour spaces; the server exposes both on **every colour input** of every document
+tool, once the inks are declared.
+
+**Declare the plates** in `print.spotColours` (1–32 entries):
+
+| Key | Meaning |
+| --- | --- |
+| `name` | The ink as the press knows it — `'PANTONE 300 C'`, `'Varnish'` (1–100 characters, unique). |
+| `alternate` | The process alternate a RIP or a proof uses when the plate is absent: `[c, m, y, k]` ink percentages 0–100, or `[r, g, b]` 0–255. |
+
+**Paint with them** wherever a colour is accepted (watermark, header / footer template,
+table borders, outline entries, chart series and slices, `link` and `svg` blocks,
+`annotate_pdf`):
+
+| Form | Example | Colour space |
+| --- | --- | --- |
+| `{ spot, tint? }` | `{ "spot": "Brand Blue", "tint": 0.4 }` | `/Separation` — one ink at `tint` 0–1 (default 1, solid) |
+| `{ inks }` | `{ "inks": { "Brand Blue": 1, "Varnish": 0.3 } }` | `/DeviceN` — several declared inks, each at its tint |
+
+```json
+{ "tool": "generate_basic_pdf", "arguments": {
+  "title": "Spot colour brochure",
+  "print": {
+    "spotColours": [
+      { "name": "Brand Blue", "alternate": [100, 60, 0, 10] },
+      { "name": "Varnish", "alternate": [0, 0, 0, 15] }
+    ]
+  },
+  "headerTemplate": { "left": "{title}", "right": "{page}/{pages}", "color": { "spot": "Brand Blue" } },
+  "blocks": [
+    { "type": "heading", "text": "Two plates, one file", "level": 1 },
+    { "type": "table", "headers": ["Plate", "Colour space"], "rows": [["Brand Blue 40 %", "/Separation, tint 0.4"]],
+      "cellBorders": { "all": true, "color": { "spot": "Brand Blue", "tint": 0.4 } } },
+    { "type": "table", "headers": ["Mix", "Colour space"], "rows": [["Blue + varnish", "/DeviceN"]],
+      "cellBorders": { "all": true, "color": { "inks": { "Brand Blue": 1, "Varnish": 0.3 } } } }
+  ]
+}}
+```
+
+Rules, all enforced before any page is drawn or by the engine with its own message:
+
+- An ink painted without a declaration is refused **by name** — `VALIDATION_ERROR`
+  (`toEngineColor` passes the object through; the engine's rejection is mapped).
+- An empty or duplicate `name` in `spotColours` is `PRINT_ERROR`.
+- A tint outside 0–1 is `VALIDATION_ERROR` at the boundary.
+- Spot inks are PDF/A- and PDF/X-safe: the `/Separation` and `/DeviceN` tint
+  transforms carry the process alternate, so a viewer without the plates still shows the
+  colour, and no `PDFA_DEVICE_CMYK_CONTENT` is raised for the alternate.
+- Everything else about the colour pipeline is unchanged: a CMYK or RGB value next to a
+  spot one keeps its 1.7.0 meaning.
+
+Worked example: [`examples/spot-colours.json`](../../examples/spot-colours.json).
+
 ## PDF/X-4
 
 `pdfx: 'pdfx4'` claims PDF/X-4 (ISO 15930-7), the print-exchange standard. It is
@@ -207,8 +265,13 @@ OutputIntent carrying your ICC profile, a TrimBox on every page (the MediaBox wh
 
 **Five combinations are refused with `VALIDATION_ERROR` before any work is done:**
 
-1. `pdfx` with `pdfA` — one conformance claim per file (PDF/A is for archiving, PDF/X
-   for print exchange).
+1. `pdfx` with `pdfA: 'pdfa1b'` or `'pdfa3b'` — PDF/A-1 is PDF 1.4 (PDF/X-4 is 1.6) and
+   PDF/A-3 allows embedded files, which PDF/X-4 forbids. Since v1.8.0 (pdfnative 1.9.0)
+   `pdfA: 'pdfa2b'` or `'pdfa2u'` **may** accompany `pdfx` — the *dual claim*: one file
+   carries the PDF/X-4 identification (`GTS_PDFXVersion`, the `/GTS_PDFX` output intent)
+   and the PDF/A-2 one (`pdfaid:part 2`, tagged, every font embedded). Check both
+   afterwards: `validate_pdf standard: 'pdf-x-4'` and veraPDF —
+   [`examples/dual-claim-pdfx-pdfa.json`](../../examples/dual-claim-pdfx-pdfa.json).
 2. `pdfx` with `encrypt` — PDF/X forbids encryption.
 3. `pdfx` without `outputIntent`.
 4. `pdfx` with `metadata.trapped: 'Unknown'`.
@@ -266,8 +329,9 @@ In addition to the viewer hints (`pageMode`, `hideToolbar`, …), v1.6.0 adds:
   PDF/A-safe. Colour must match the intent: CMYK colours or colour bars against the
   default sRGB intent raise `PDFA_DEVICE_CMYK_CONTENT`; under `pdfa1b` the profile must
   be ICC v2 (`PDFA_ICC_PROFILE_VERSION` otherwise).
-- `pdfA` and `pdfx` are **mutually exclusive** (`VALIDATION_ERROR`): one conformance
-  claim per file.
+- `pdfA` and `pdfx` combine only as the **dual claim** (v1.8.0): `pdfx: 'pdfx4'` with
+  `pdfA: 'pdfa2b'` or `'pdfa2u'`; `pdfa1b` and `pdfa3b` beside `pdfx` are
+  `VALIDATION_ERROR`.
 - Remember that a *valid* PDF/A claim on Latin text also needs `embedFonts: true`
   (see [PDFA.md](PDFA.md)).
 
@@ -288,10 +352,10 @@ PDF/X claim.
 
 | Code | Meaning |
 | --- | --- |
-| `PRINT_ERROR` | The engine rejected `print` / `outputIntent`: box outside the MediaBox, `marks` without a TrimBox, an ICC payload that is not an ICC profile (no `acsp` signature, declared size larger than the bytes, a colour space other than RGB / CMYK / Gray), … |
+| `PRINT_ERROR` | The engine rejected `print` / `outputIntent`: an empty or duplicate `spotColours` name (v1.8.0), box outside the MediaBox, `marks` without a TrimBox, an ICC payload that is not an ICC profile (no `acsp` signature, declared size larger than the bytes, a colour space other than RGB / CMYK / Gray), … |
 | `PDF_A_COMPLIANCE_VIOLATION` | `print.userUnit` combined with `pdfA: 'pdfa1b'`; under `strict: true`, any `PDFA_*` diagnostic. |
 | `PDF_X_COMPLIANCE_VIOLATION` | Under `strict: true` only: a `PDFX_*` diagnostic (`PDFX_NO_FONT_ENTRIES`, `PDFX_DEVICE_CMYK`, `PDFX_ANNOTATIONS`). |
-| `VALIDATION_ERROR` | `bleed` and `trimBox` both given, a box with fewer than 4 numbers, an ICC payload that is not base64 / empty / over 8 MiB, `colourBars.size` outside 4–72, a malformed CMYK colour, and the PDF/X refusals listed under [PDF/X-4](#pdfx-4). |
+| `VALIDATION_ERROR` | `bleed` and `trimBox` both given, a `{ spot }` / `{ inks }` colour naming an ink absent from `print.spotColours` (v1.8.0), a box with fewer than 4 numbers, an ICC payload that is not base64 / empty / over 8 MiB, `colourBars.size` outside 4–72, a malformed CMYK colour, and the PDF/X refusals listed under [PDF/X-4](#pdfx-4). |
 
 ## Units cheat-sheet
 

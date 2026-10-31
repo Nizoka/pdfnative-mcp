@@ -8,6 +8,7 @@ applyTo: "tests/**,scripts/**,examples/**"
 - `npm run gate` (CI profile) is the single definition of green; `npm run gate:fast` while iterating; `npx tsx scripts/gate.ts --publish --require-all` before a release (needs veraPDF). One line per step, logs under `test-output/.gate/`. Summarise its output — do not paste logs.
 - PowerShell swallows a bare `--` after `npm run`: call `npx tsx scripts/<name>.ts <flags>` directly.
 - Build before the suites that need `dist/`: `tests/cli-stdio.test.ts`, `tests/reproducible-build.test.ts` (they skip locally, fail under CI / `GATE_REQUIRE_ARTIFACTS=1`). `.npmrc` disables install-time scripts.
+- The CI profile also runs `pack-manifest`: the files `npm pack` ships are held to `tests/_fixtures/pack-manifest.json` and the package is packed twice (byte-identical). A file added to `package.json` `files` is a reviewed change to that fixture.
 
 ## Framework
 - vitest 4, `TZ=UTC`, `pool: 'forks'`, no shuffle, `dot` reporter. Tests are flat under `tests/`; shared fixtures are `_`-prefixed; repository-tooling tests live in `tests/tools/`.
@@ -21,7 +22,7 @@ applyTo: "tests/**,scripts/**,examples/**"
 - `tests/error-codes.test.ts` inventories every `ToolError` code in `src/` and asserts `docs/AGENT_CONTRACT.md` §6 documents it and a test names it.
 
 ## Samples and the byte baseline
-- `npm run build && npm run test:generate` drives the BUILT server and writes `test-output/samples/`; `npm run verify:samples` compares it with `tests/_fixtures/samples.sha256.json`. The baseline is a chain: an unchanged entry keeps its `since`.
+- `npm run build && npm run test:generate` drives the BUILT server and writes `test-output/samples/`; `npm run verify:samples` compares it with `tests/_fixtures/samples.sha256.json`. The baseline is a chain: an unchanged entry keeps its `since`. `examples/README.md` indexes every example (read by `verify:docs`); a hermetic example resolves its placeholders from the runner (`<base64 from step N>`, `<any PDF base64>`, `<synthetic CMYK prtr ICC, base64>`, `<synthetic RGB JP2, base64>`).
 - An intended output change is rebaselined with `npx tsx scripts/verify-samples.ts --update`, explained in the manifest's `provenance` note and declared in the release notes. Never `--update` to silence a surprise.
 - A sample that cannot repeat its bytes (CSPRNG, per-run key, TSA clock) is listed explicitly in `ENCRYPTED_SAMPLES` / `SIGNED_SAMPLES` / `TIMESTAMPED_SAMPLES` / `HOST_DEPENDENT_SAMPLES` (a result that reports the host, such as `draft_governance_issue`; `scripts/lib/sample-fingerprint.ts`) — prove it with a double run first.
 
@@ -32,7 +33,8 @@ applyTo: "tests/**,scripts/**,examples/**"
 ## Engine surface
 - `tests/engine-surface.test.ts` holds `tests/_fixtures/engine-surface.json` to the tree: every engine changelog bullet is tied to named tests / samples or waived with a reason. It fails when the `pdfnative` pin moves without the matrix.
 - A limit of the engine is pinned with `it.fails` (`tests/upstream-limits.test.ts`, `tests/scripts.test.ts`) and listed in ROADMAP.md: when the engine fixes it the suite goes red — delete the marker.
-- `tests/engine-surface.fuzz.test.ts` is seeded (`tests/_fuzz.ts`): the only acceptable failure is a `ToolError` with a documented code.
+- `tests/engine-surface.fuzz.test.ts` is seeded (`tests/_fuzz.ts`): the only acceptable failure is a `ToolError` with a documented code. `tests/engine-1-9.test.ts` exercises the pdfnative 1.9.0 surface the matrix cites (72 bullets: 37 tested, 35 waived).
+- `tests/fuzzing/targets.test.ts` runs the five ClusterFuzzLite targets of `fuzz/` against `src/` (alias in `vitest.config.ts`) on the seeds of `tests/fuzzing/_fuzz-seeds.ts`; a target that stops loading, swallows a programming error or misses an uncoded failure goes red here, not in the container. `.clusterfuzzlite/build.sh` names every target; the engine lockfile under `.clusterfuzzlite/engine/` is pinned by integrity.
 
 ## Test focus
 - Validate tool success, each error code, and file mode.

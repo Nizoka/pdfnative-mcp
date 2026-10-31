@@ -16,6 +16,7 @@ You audit one release of pdfnative-mcp. Your angle: **does everything a reader o
 | Examples | `examples/*.json` | Every feature the release note names has an example; its description is true; `npm run examples:check` is green |
 | Baseline and corpus | `tests/_fixtures/samples.sha256.json`, `scripts/lib/pdfa-corpus.ts` | A rebaseline is declared in the release note; new claiming corpus entries bump `declared.pdfaSamples` / `pdfxSamples`; each negative canary still says why |
 | Security and support | `SECURITY.md`, `CONTRIBUTING.md`, `ROADMAP.md` | Supported-versions table, new input validations, operator knobs, supply-chain statements; every pinned upstream limit is listed in ROADMAP.md |
+| Pipeline and fuzzing | `.github/workflows/*.yml`, `.github/rulesets/main.json`, `fuzz/`, `.clusterfuzzlite/`, `tests/fuzzing/` | `tests/tools/workflows.test.ts` and `tests/fuzzing/targets.test.ts` are green; every required check names a job; every audit-mode runner carries a dated reason; the five targets are the ones `build.sh` compiles; the engine lockfile is pinned by integrity |
 
 ## Method
 

@@ -88,7 +88,7 @@ AcroForms — a template made by `add_form`, or any third-party fillable PDF.
   and in every time zone (dates are written in UTC — see
   [REPRODUCIBLE.md](REPRODUCIBLE.md)); omitted, every call differs by the wall clock
   (`encrypt` output is randomised regardless, and never cached).
-- **An archival form needs `embedFonts: true`.** Since pdfnative 1.8.0 (upstream fix
+- **An archival form needs `embedFonts: true`.** Since pdfnative 1.8.0 (upstream fix <!-- verify-docs:allow version-token -->
   #74) `add_form` (or a `formField` block) + `pdfA` + `embedFonts: true` **validates**
   under veraPDF: the AcroForm default-resources font (`/AcroForm /DR`) is now the
   embedded Noto Sans, like the page text. It is the `form-pdfa2b.pdf` entry of the
