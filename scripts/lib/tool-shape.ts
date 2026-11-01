@@ -68,7 +68,8 @@ export function serializeShape(tools: readonly ListedTool[]): string {
  * documents quote a number `--check` has seen.
  */
 export const TOOLS_LIST_BUDGET_BYTES = 384 * 1024;
-export const INSTRUCTIONS_BUDGET_BYTES = 8 * 1024;
+/** 8 KiB until 1.8.0; raised when the decision tree gained the 1.9.0 behaviours (≈ 8.4 kB live). */
+export const INSTRUCTIONS_BUDGET_BYTES = 10 * 1024;
 /** `declared.toolsListBytes` may drift this far from the measurement before the manifest must move. */
 export const TOOLS_LIST_TOLERANCE = 0.02;
 

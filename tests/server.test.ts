@@ -37,10 +37,22 @@ describe('server', () => {
         expect(__serverMetadata.description).toMatch(/28 tools/);
     });
 
-    it('SERVER_INSTRUCTIONS advertises decision tree and pitfalls for AI clients', () => {
-        expect(__serverInstructions).toMatch(/pdfnative.*v1\.8/);
-        expect(__serverInstructions).toContain('Tool API 1.7.0');
+    it('SERVER_INSTRUCTIONS advertises decision tree and pitfalls for AI clients', async () => {
+        // The engine line and the tool API version are derived, never typed: 1.8.0 was
+        // prepared with "pdfnative v1.8 … Tool API 1.7.0" still in the text and a test
+        // pinning those very literals.
+        const pkg = JSON.parse(await fs.readFile(path.resolve(__dirname, '..', 'package.json'), 'utf8')) as { dependencies: { pdfnative: string } };
+        const engineLine = pkg.dependencies.pdfnative.replace(/^[\^~]/, '').split('.').slice(0, 2).join('.');
+        const { tools } = await rpc<{ tools: Array<{ _meta?: { apiVersion?: string } }> }>('tools/list');
+        const apiVersion = tools[0]?._meta?.apiVersion;
+        expect(apiVersion).toMatch(/^\d+\.\d+\.\d+$/);
+        expect(__serverInstructions).toContain(`pdfnative v${engineLine} PDF engine`);
+        expect(__serverInstructions).toContain(`Tool API ${apiVersion}`);
         expect(__serverInstructions).toContain('MCP 2026-07-28');
+        // Every 1.8.0 behaviour an agent cannot guess from a schema alone is named.
+        for (const needle of ['print.spotColours', "direction:'auto'", 'PDFNATIVE_MCP_FONT_DIR', 'FONT_NOT_FOUND', "pdfA:'pdfa2b' | 'pdfa2u'", 'image/jp2', 'link with url', "onStreamError:'skip' | 'throw'", 'pdfnative://governance/policy', 'PDFNATIVE_MCP_OUTPUT_BASE_URL']) {
+            expect(__serverInstructions).toContain(needle);
+        }
         expect(__serverInstructions).toContain('NETWORK POLICY');
         expect(__serverInstructions).toContain('DECISION TREE');
         expect(__serverInstructions).toContain('COMMON PITFALLS');

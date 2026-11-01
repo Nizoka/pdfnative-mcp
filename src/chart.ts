@@ -55,7 +55,7 @@ const CHART_SERIES_SCHEMA = {
             minItems: 1,
             maxItems: 1000,
             items: HEX_COLOR,
-            description: "One colour per value (bar, barH, stackedBar, stackedBarH only; exactly values.length entries — CHART_ERROR otherwise). The legend swatch keeps 'color'; other chart types ignore it.",
+            description: "One colour per value, painted on bar, barH, stackedBar and stackedBarH; the length must equal values.length on every chart type (CHART_ERROR otherwise). The legend swatch keeps 'color'; line, area, scatter, pie and donut paint 'color' only.",
         },
         xValues: {
             type: 'array',

@@ -87,7 +87,7 @@ export const PRINT_INPUT_PROPERTIES = {
                 minItems: 1,
                 maxItems: 32,
                 description:
-                    "Spot inks (/Separation plates) the document may paint with { spot:'name', tint } or { inks:{ name: tint } } anywhere a colour is accepted. Undeclared ink → VALIDATION_ERROR; empty / duplicate name → PRINT_ERROR.",
+                    "Spot inks (/Separation plates) the document may paint with { spot:'name', tint } or { inks:{ name: tint } } anywhere a colour is accepted. Undeclared ink → VALIDATION_ERROR; blank or duplicate name → PRINT_ERROR (an empty string is VALIDATION_ERROR).",
                 items: {
                     type: 'object',
                     additionalProperties: false,
