@@ -481,7 +481,8 @@ describe('dependency review, audit and Dependabot', () => {
         expect(review).toMatch(/^on:\s*\n\s*pull_request:/m);
         expect(review).toMatch(/uses: actions\/dependency-review-action@[0-9a-f]{40}/);
         expect(review).toMatch(/fail-on-severity:\s*high/);
-        expect(review).toMatch(/allow-licenses:\s*MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, 0BSD, CC0-1.0, Unlicense/);
+        // BlueOak-1.0.0 and CC-BY-4.0 are the fuzz engine's (tar, minipass, caniuse-lite), never the package's.
+        expect(review).toMatch(/allow-licenses:\s*MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, 0BSD, CC0-1.0, Unlicense, BlueOak-1\.0\.0, CC-BY-4\.0/);
         expect(review).toMatch(/comment-summary-in-pr:\s*on-failure/);
         // The action's Scorecard column resolves packages through api.deps.dev and reads
         // api.securityscorecards.dev; in block mode a missing host is a bare "fetch failed".
