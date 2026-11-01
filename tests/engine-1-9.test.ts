@@ -9,6 +9,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import { callToolDirect, ensureCompressionReady, listToolsPayload } from '../src/server.js';
 import { addChart } from '../src/tools/add-chart.js';
+import { addForm } from '../src/tools/add-form.js';
 import { addInternationalText } from '../src/tools/add-international-text.js';
 import { annotatePdf } from '../src/tools/annotate-pdf.js';
 import { embedImage } from '../src/tools/embed-image.js';
@@ -16,6 +17,7 @@ import { extractText } from '../src/tools/extract-text.js';
 import { generateBasicPdf } from '../src/tools/generate-basic-pdf.js';
 import { inspectLayout } from '../src/tools/inspect-layout.js';
 import { inspectPdf } from '../src/tools/inspect-pdf.js';
+import { readFormFieldsTool as readFormFields } from '../src/tools/read-form-fields.js';
 import { updateMetadata } from '../src/tools/update-metadata.js';
 import { validatePdf } from '../src/tools/validate-pdf.js';
 import type { OutputResult } from '../src/output.js';
@@ -211,9 +213,18 @@ describe('fonts and layout (pdfnative 1.9.0)', () => {
         expect(layout.totalPages).toBe(pages);
     });
 
-    it('a table row holding deep descenders (a Myanmar stack) builds and keeps the document valid', async () => {
-        const out = await addInternationalText({ title: 'R', lang: ['my', 'latin'], paragraphs: ['မင်္ဂလာပါ ကမ္ဘာ'], creationDate: PINNED });
-        assertValidPdf(bytes(out));
+    it('a table whose rows hold deep descenders builds, stays valid, and inspect_layout agrees with the build', async () => {
+        // The row-height fix (#80) is the engine's; the server transmits the table block
+        // unchanged, so the proof here is the path: the same rows through the build and
+        // through the dry run give one page count, and the document stays valid.
+        const rows = Array.from({ length: 60 }, (_, i) => [`Row ${i + 1}`, 'gjpqy — Çğş ÿ', 'Typography: descenders reserved']);
+        const blocks = [{ type: 'table' as const, headers: ['#', 'Glyphs', 'Note'], rows }];
+        const built = await generateBasicPdf({ title: 'R', blocks, creationDate: PINNED });
+        assertValidPdf(bytes(built));
+        const pages = (await inspectPdf({ pdfBase64: built.base64! })).pageCount;
+        const layout = await inspectLayout({ title: 'R', blocks });
+        expect(pages).toBeGreaterThan(1);
+        expect(layout.totalPages).toBe(pages);
     });
 });
 
@@ -222,6 +233,12 @@ describe('PDF text strings (pdfnative 1.9.0, #85)', () => {
 
     // A non-Latin-1 FORM value does not round-trip yet (the engine writes the low
     // bytes under needAppearances): pinned in tests/upstream-limits.test.ts.
+
+    it('add_form writes a non-Latin-1 field name (/T) that read_form_fields reads back', async () => {
+        const form = await addForm({ title: 'F', fields: [{ fieldType: 'text', name: VALUE, label: 'City' }] });
+        const fields = (await readFormFields({ pdfBase64: form.base64! })) as unknown as { fields: Array<{ name: string }> };
+        expect(fields.fields.map((f) => f.name)).toContain(VALUE);
+    });
 
     it('update_metadata writes a non-Latin-1 title that inspect_pdf reads back', async () => {
         const source = await generateBasicPdf({ title: 'M', blocks: TEXT, creationDate: PINNED });

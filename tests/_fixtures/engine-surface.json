@@ -143,7 +143,7 @@
     },
     {
      "file": "tests/engine-1-9.test.ts",
-     "name": "a table row holding deep descenders (a Myanmar stack) builds and keeps the document valid"
+     "name": "a table whose rows hold deep descenders builds, stays valid, and inspect_layout agrees with the build"
     }
    ]
   },
@@ -174,6 +174,10 @@
     {
      "file": "tests/inflate-cap.test.ts",
      "name": "extract_text fails a capped content stream with PDF_PARSE_FAILED naming the env var (1.9.0), unless onStreamError:skip asks for the empty page"
+    },
+    {
+     "file": "tests/inflate-cap.test.ts",
+     "name": "extract_text onStreamError:'throw' fails on any undecodable stream, 'limit' and 'skip' read past it (1.9.0)"
     }
    ]
   },
@@ -586,7 +590,7 @@
    "tests": [
     {
      "file": "tests/engine-1-9.test.ts",
-     "name": "a table row holding deep descenders (a Myanmar stack) builds and keeps the document valid"
+     "name": "a table whose rows hold deep descenders builds, stays valid, and inspect_layout agrees with the build"
     }
    ]
   },
@@ -622,8 +626,8 @@
      "name": "update_metadata writes a non-Latin-1 title that inspect_pdf reads back"
     },
     {
-     "file": "tests/upstream-limits.test.ts",
-     "name": "fill_form round-trips a non-Latin-1 value under nonWinAnsi:needAppearances"
+     "file": "tests/engine-1-9.test.ts",
+     "name": "add_form writes a non-Latin-1 field name (/T) that read_form_fields reads back"
     }
    ]
   },

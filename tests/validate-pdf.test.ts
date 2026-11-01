@@ -33,6 +33,24 @@ describe('validate_pdf', () => {
         expect(out.summary).toContain('PDF/UA');
     });
 
+    it('a tagged table of pdfnative 1.9.0 passes the PDF/UA header rules (/TH with /Scope, /TD naming its headers)', async () => {
+        const r = await generateBasicPdf({
+            title: 'Tabular',
+            pdfA: 'pdfa2u',
+            blocks: [
+                { type: 'heading', text: 'Quarterly figures', level: 1 },
+                { type: 'table', headers: ['Quarter', 'Revenue', 'Margin'], rows: [['Q1', '120', '31 %'], ['Q2', '134', '33 %']] },
+            ],
+        });
+        const out = (await validatePdf({ pdfBase64: r.base64!, standard: 'pdf-ua-1' })) as ValidatePdfResult;
+        expect(out.valid).toBe(true);
+        expect(out.errors).toEqual([]);
+        // The 1.9.0 engine writes /Scope on every /TH and /Headers on every /TD (engine ledger C12);
+        // its PDF/UA checker would otherwise report both — neither reaches the result.
+        const findings = [...out.errors, ...out.warnings].map((f) => JSON.stringify(f));
+        expect(findings.filter((f) => /\/?Scope|\/?Headers/.test(f))).toEqual([]);
+    });
+
     it('reports blocking errors for an untagged PDF', async () => {
         const pdfBase64 = await buildPdf(); // no pdfA → not tagged
         const out = (await validatePdf({ pdfBase64 })) as ValidatePdfResult;

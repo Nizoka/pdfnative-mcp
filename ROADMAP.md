@@ -202,11 +202,12 @@ pinned by `it.fails` tests that go red the day the engine lifts them.
 ### Next
 
 - [ ] **Dev-toolchain majors** — vitest 5 / `@vitest/coverage-v8` 5, TypeScript 7, ESLint 10 (Dependabot ignores the majors on purpose): each may change the reporter, the config format and the coverage figures, so they move one at a time with a gate run and a threshold review, outside an engine-alignment release.
-- [ ] **Catalogue compaction, Tier 2** — `tools/list` is ≈ 355 kB under a 384 KiB budget; the next step is structural (shared output schemas, a shorter inline colour union) and needs a fixture refresh reviewed under `docs/API_STABILITY.md` §5 — `$ref` / `$defs` stay excluded by policy (host compatibility).
+- [ ] **Catalogue compaction, Tier 2** — `tools/list` is ≈ 357 kB under a 384 KiB budget; the next step is structural (shared output schemas, a shorter inline colour union) and needs a fixture refresh reviewed under `docs/API_STABILITY.md` §5 — `$ref` / `$defs` stay excluded by policy (host compatibility).
 - [ ] **A storage repository for the fuzz corpora** — ClusterFuzzLite keeps its corpora in the GitHub Actions cache (evicted); a dedicated repository (the ClusterFuzzLite `storage-repo` option) keeps them across evictions. Needs a repository the maintainer creates.
 - [ ] **The remaining audit-mode jobs to block mode** — `verapdf.yml`, `scorecard.yml`, `codeql.yml`, `fuzz.yml`, the `workflow-lint` job and the `build` / `registry` jobs of `publish.yml` carry a dated audit reason; once a run has baselined their hosts (software.verapdf.org, Adoptium, ghcr.io, the ClusterFuzzLite images, the Scorecard API, registry.modelcontextprotocol.io) each moves to `egress-policy: block` with its allow-list. Windows runners stay in audit mode (the action's limit); macOS stays without the action.
 - [ ] **OpenSSF Best Practices badge** — register the project at bestpractices.dev (a maintainer step: the account is theirs) and link the badge in the README; the self-assessment answers are already true of the repository (tests, CI, signed releases, vulnerability policy).
 - [ ] **ORCID / DOI in `CITATION.cff`** — the identifiers are the maintainer's to provide (an ORCID for the author, a Zenodo DOI for the archived release).
+- [ ] **Table column kinds** — pdfnative 1.9.0's `ColumnDef.kind: 'amount'` (right-aligned, figure-spaced numeric columns) has no `add_table` / `table`-block input yet; exposing it is a `columns[]` fragment on both, a catalogue change reviewed under `docs/API_STABILITY.md` §5 (found by the 1.8.0 release audit).
 
 ### Long-Term
 

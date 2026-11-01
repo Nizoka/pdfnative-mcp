@@ -65,10 +65,10 @@ export const EXTRACT_TEXT_INPUT_SCHEMA = {
         password: PASSWORD_INPUT_SCHEMA,
         onStreamError: {
             type: 'string',
-            enum: ['limit', 'skip'],
+            enum: ['limit', 'skip', 'throw'],
             default: 'limit',
             description:
-                "'limit' (default): a stream over the decompression cap (PDFNATIVE_MCP_MAX_INFLATE_BYTES) fails with PDF_PARSE_FAILED; other damaged streams are skipped. 'skip': skip the over-cap stream too and read the rest (1.7.0 behaviour — that page reads as empty).",
+                "'limit' (default): a stream over the decompression cap (PDFNATIVE_MCP_MAX_INFLATE_BYTES) fails with PDF_PARSE_FAILED; other damaged streams are skipped. 'throw': any undecodable stream fails the call (PDF_PARSE_FAILED). 'skip': skip the over-cap stream too and read the rest (1.7.0 behaviour — that page reads as empty).",
         },
         maxTextLength: {
             type: 'integer',
@@ -142,7 +142,7 @@ const InputSchema = z.strictObject({
     pages: z.array(z.number().int().min(0)).max(1000).optional(),
     includeRuns: z.boolean().default(false),
     password: PasswordSchema.optional(),
-    onStreamError: z.enum(['limit', 'skip']).default('limit'),
+    onStreamError: z.enum(['limit', 'skip', 'throw']).default('limit'),
     maxTextLength: z.number().int().positive().optional(),
     verbosity: z.enum(['summary', 'full']).optional(),
     fields: z.array(z.string().min(1)).max(16).optional(),
