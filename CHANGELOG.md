@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.8.0] - 2026-10-31
+## [1.8.0] - 2026-11-01
 
 A minor, backward-compatible release that aligns the server with
 [pdfnative v1.9.0](https://github.com/Nizoka/pdfnative) and ports the engine's release
@@ -27,7 +27,7 @@ error (see `release-notes/v1.8.0.md` → Upgrade); the superset gate against the
 
 #### Engine 1.9.0 surface
 
-- **feat(color):** spot colours and ink mixes — `print.spotColours[]` (`{ name, alternate }`, ≤ 32 inks) on the nine document tools; `{ spot, tint? }` (`/Separation`) and `{ inks }` (`/DeviceN`) accepted at all 46 colour sites of the catalogue. An undeclared ink is `VALIDATION_ERROR` naming it; an empty or duplicate declaration is `PRINT_ERROR`.
+- **feat(color):** spot colours and ink mixes — `print.spotColours[]` (`{ name, alternate }`, ≤ 32 inks) on the nine document tools; `{ spot, tint? }` (`/Separation`) and `{ inks }` (`/DeviceN`) accepted at all 46 colour sites of the catalogue. An undeclared ink is `VALIDATION_ERROR` naming it; a blank or duplicate declaration is `PRINT_ERROR` (an empty name is `VALIDATION_ERROR` at the boundary).
 - **feat(layout):** `direction` (`auto` | `ltr` | `rtl`) and `actualText` (default true) on the nine document tools and `inspect_layout`; `paragraph.direction` overrides the document setting. Omitted, the bytes are those of 1.7.0.
 - **feat(print):** the PDF/X-4 + PDF/A-2 dual claim — `pdfx: 'pdfx4'` with `pdfA: 'pdfa2b' | 'pdfa2u'`; `pdfa1b` and `pdfa3b` refused before the build with the engine's level-specific messages.
 - **feat(validate):** `validate_pdf { standard: 'pdf-x-4' }` reads colour inside Form XObjects, images and Separation / DeviceN / Indexed alternates (engine 1.9.0); the stale caveat is gone and `caveats[]` states the new scope.
@@ -36,7 +36,7 @@ error (see `release-notes/v1.8.0.md` → Upgrade); the superset gate against the
 - **feat(chart):** `series[].colors` (one colour per bar on the four bar types; a length mismatch is `CHART_ERROR`) and an optional series `label` (`Series N`).
 - **feat(i18n):** `lang` gains `gu`, `pa`, `kn`, `ml`, `or` — 32 scripts; every shaper reports its glyphs to ToUnicode, so the five claim PDF/A-2u under `strict` and extract logically untagged.
 - **feat(diagnostics):** `PDFA1_JPX_IMAGE`, `PDFA_JPX_IMAGE`, `PDFA_GLYPH_WITHOUT_UNICODE` (reported behind its root cause `TEXT_GLYPH_NOT_COVERED`, so `strict` escalates to `DIAGNOSTIC_ESCALATED`), `TEXT_GLYPH_NOT_COVERED` — 13 codes, each with an executed trigger; `PDFA1_*` escalates like `PDFA_*`.
-- **feat(extract):** `extract_text.onStreamError` — `'limit'` (default) fails an over-cap stream with `PDF_PARSE_FAILED` naming `PDFNATIVE_MCP_MAX_INFLATE_BYTES`; `'skip'` restores the empty page of 1.7.0. `PdfStreamLimitError` is classified by its `code`, never by its message.
+- **feat(extract):** `extract_text.onStreamError` — `'limit'` (default) fails an over-cap stream with `PDF_PARSE_FAILED` naming `PDFNATIVE_MCP_MAX_INFLATE_BYTES`; `'skip'` restores the empty page of 1.7.0; `'throw'` fails the call on any undecodable stream (the engine's third policy). `PdfStreamLimitError` is classified by its `code`, never by its message; the remedy keeps the engine's per-filter text and names `onStreamError: 'skip'` beside the FlateDecode variable.
 - **feat(ltv):** `add_ltv mode: 'offline'` composes `/DSS` + `/VRI` through `composeLtvData()`; new input `match: 'all' | 'chain'`.
 - **feat(verify):** `verify_pdf` verifies ECDSA through the engine's `ecdsaVerifyHash()`; the local P-256 verifier is deleted.
 - **feat(inspect):** `inspect_pdf` decodes `/Info` text strings (`decodePdfTextString`).
@@ -44,7 +44,7 @@ error (see `release-notes/v1.8.0.md` → Upgrade); the superset gate against the
 
 #### Operator knobs
 
-- **feat(fonts):** `PDFNATIVE_MCP_FONT_DIR` — `.ttf` / `.otf` files (≤ 64, ≤ 16 MiB each) parsed by the engine's `parseFontData` and registered at boot under the slug of their file name; the `font` input of `add_international_text`, `generate_basic_pdf` and `inspect_layout` names one (primary entry, bundled faces as fallbacks). New code **`FONT_NOT_FOUND`**. An invalid directory or file refuses to start; the schema is static and no tool argument carries a path.
+- **feat(fonts):** `PDFNATIVE_MCP_FONT_DIR` — `.ttf` / `.otf` files (≤ 64, ≤ 16 MiB each) parsed by the engine's `parseFontData` and registered at boot under the slug of their file name; the `font` input of `add_international_text`, `generate_basic_pdf` and `inspect_layout` names one (primary entry, bundled faces as fallbacks). New code **`FONT_NOT_FOUND`**. An invalid directory or file refuses to start; the schema is static and no tool argument carries a path. The registry's fingerprint (slug, size, SHA-256 of every file) joins the response-cache namespace, so a face replaced on disk is never served from an earlier render.
 - **feat(output):** `PDFNATIVE_MCP_OUTPUT_BASE_URL` (#66) — every file-mode result (`emitPdf`, each `split_pdf` part, the governance draft) carries `url` = base + percent-encoded sandbox-relative path and the text names it instead of the host path; `filePath` stays. Validated at boot, refused without `PDFNATIVE_MCP_OUTPUT_DIR`; the server never requests it.
 - **feat(governance):** `pdfnative://governance/policy` and `pdfnative://governance/rules` serve the contract byte for byte from `src/governance-embed.ts` (`npm run agents:governance`; `verify:docs` rule `governance-embed`), listed with or without an output sandbox; `verification.validator_covered_by` in the policy.
 
@@ -56,7 +56,7 @@ error (see `release-notes/v1.8.0.md` → Upgrade); the superset gate against the
 - **feat(gate):** `pack-manifest` — the files `npm pack` ships held to `tests/_fixtures/pack-manifest.json`, two packs byte-identical.
 - **test(conformance):** veraPDF corpus 41 → 45 files (JPEG 2000, spot colours, the dual claim, the Indic scripts); the Tai Tham PDF/A-2u canary flipped to compliant. veraPDF 1.30.2: 32 PASS, 5 expected failures, 0 unexpected; PDF/X-4: 5 PASS, 2 expected failures. JPEG 2000 under PDF/A-1b is not a canary (veraPDF 1.30.2 accepts it; the engine diagnostic has its own trigger).
 - **test:** `tests/_fixtures/engine-surface.json` ties the 72 bullets of the 1.9.0 changelog to tests (37) or waivers (35); `tests/engine-1-9.test.ts`; `tests/client-compat.test.ts` (#65); a unit test holds `scripts/lib/synthetic-icc.ts` to `pdfnative/tools`.
-- **feat(docs-as-code):** `verify:docs` rules `governance-embed` and `keyword-count`; `THIRD-PARTY-NOTICES.md` in the verified set; the Developer Certificate of Origin paragraph in CONTRIBUTING.
+- **feat(docs-as-code):** `verify:docs` rules `governance-embed`, `keyword-count`, `third-party-ranges` (the notices quote the dependency ranges of `package.json`) and `release-date-parity` (the release note, the CHANGELOG heading, the PR draft and every "Verified on" stamp carry the manifest's date); `THIRD-PARTY-NOTICES.md` in the verified set; `scripts/release-prepare.ts` restamps every dated surface, the release note and the PR draft included; `.git-blame-ignore-revs` names the 1.7.0 renormalisation commit; `package.json` exports `./package.json`; the Developer Certificate of Origin paragraph in CONTRIBUTING.
 
 ### Changed
 
@@ -64,17 +64,19 @@ error (see `release-notes/v1.8.0.md` → Upgrade); the superset gate against the
 - **api:** `TOOL_API_VERSION` `1.7.0` → `1.8.0` (new optional inputs, enum values, one new error code); the cache namespace follows.
 - **cache:** a call carrying `password` is never persisted to the response cache.
 - **registry:** `server.json` declares fourteen operator variables.
-- **catalogue size:** `tools/list` ≈ 355 kB (306 kB in 1.7.0); the budget moves from 320 to 384 KiB, deliberately (46 colour sites × 2 members, 5 options × 9 tools).
+- **catalogue size:** `tools/list` ≈ 357 kB (306 kB in 1.7.0); the budget moves from 320 to 384 KiB, deliberately (46 colour sites × 2 members, 5 options × 9 tools). `serverInfo.instructions` ≈ 8.4 kB (its budget 8 → 10 KiB): the decision tree names every 1.9.0 behaviour.
 - **#65:** `prepare_signature_placeholder.blocks` takes 5000 items (2000 broke llama.cpp's grammar compiler); no bound sits between 1000 and 5000.
-- **test:** 1791 tests across 103 files; coverage 93.93 % / 86.95 % / 99.12 % / 95.72 % (statements / branches / functions / lines); thresholds raised to 90 / 83 / 95 / 92.
-- **samples:** 112 entries (16 new); 52 of the 96 inherited entries moved under the engine ledger C1–C28, 44 byte-identical.
+- **test:** 1804 tests across 103 files; coverage 94.02 % / 87.08 % / 99.13 % / 95.77 % (statements / branches / functions / lines); thresholds raised to 90 / 83 / 95 / 92.
+- **samples:** 112 entries (16 new); 52 of the 96 inherited entries moved under the engine ledger C1–C28 (C9–C12 reach base-14 documents too), 43 byte-identical, one equal by its semantic fingerprint.
 - **upstream limits:** twelve of the thirteen limits pinned at 1.7.0 lifted (ten untagged-extraction limits, `ecdsaVerifyHash`, the swallowed decode failure); markers deleted, assertions kept; the Thai pair remains and one new limit (form values) is pinned.
 - **SDK:** with `@modelcontextprotocol/server` 2.4 a modern request without the `MCP-Protocol-Version` header is `400` / `-32020`.
 
 ### Fixed
 
 - **fix(security):** CodeQL — `escapeRegExp` (`scripts/lib/escape-regexp.ts`) at the three incomplete-sanitization sites, a generic `400` body in the mock TSA, the password cache policy.
-- **fix(extract):** an over-cap content stream fails with `PDF_PARSE_FAILED` instead of reading as an empty page.
+- **fix(extract):** an over-cap content stream fails with `PDF_PARSE_FAILED` instead of reading as an empty page; the remedy keeps the engine's per-filter message (the FlateDecode cap follows `PDFNATIVE_MCP_MAX_INFLATE_BYTES`; ASCIIHex / ASCII85 / LZW / RunLength carry a fixed 256 MiB cap) and names `onStreamError: 'skip'` beside it.
+- **fix(surface):** `serverInfo.instructions` still quoted pdfnative v1.8 and Tool API 1.7.0, and the `print_ready` prompt called PDF/X-4 exclusive with `pdfA`: both, the `extract_text` / `annotate_pdf` / `add_chart` descriptions and the typography texts now describe the 1.8.0 behaviour; the test derives the versions from `package.json` and `_meta.apiVersion` instead of pinning literals (found by the release audit).
+- **fix(cache):** the font sandbox fingerprint joins the response-cache namespace — a face replaced on disk was served from cache under its unchanged slug.
 - **fix(embed_image):** a strict diagnostic keeps its own code instead of `VALIDATION_ERROR`; `PDFA1_*` escalates like `PDFA_*`.
 - **fix(docs):** the ROADMAP quoted a keyword figure nearly twice the real one; `keyword-count` holds the figure to `package.json`.
 
@@ -90,7 +92,7 @@ Closed upstream, and therefore closed here (all listed as blocked in the 1.7.0 R
 
 ### Upgrade notes
 
-No breaking changes. Drop-in replacement for v1.7.0. The sample baseline was rebaselined once: 52 of the 96 inherited entries moved under pdfnative 1.9.0's ledger C1–C28 (font subsets, `/ActualText` spans, one text object per line, the danda routing, unused fonts), 44 are byte-identical, 12 are new.
+No breaking changes. Drop-in replacement for v1.7.0. The sample baseline was rebaselined once: 52 of the 96 inherited entries moved under pdfnative 1.9.0's ledger C1–C28 (font subsets, `/ActualText` spans, one text object per line, the danda routing, unused fonts), 43 are byte-identical, one is equal by its semantic fingerprint, 16 are new; four causes (C9 long TOC, C10 base-14 narrow space, C11 page transparency group, C12 tagged tables) reach base-14 documents too.
 
 #### Migrating from 1.7.0
 
@@ -101,7 +103,7 @@ No breaking changes. Drop-in replacement for v1.7.0. The sample baseline was reb
 5. **One new error code**, `FONT_NOT_FOUND` (only with `font`); `PDF_PARSE_FAILED`, `VALIDATION_ERROR`, `PRINT_ERROR`, `CHART_ERROR` gained triggers. 48 codes.
 6. **`strict` on `embed_image`** keeps the diagnostic's own code.
 7. **Protected documents are never cached.**
-8. **The catalogue is ≈ 355 kB** under a 384 KiB budget.
+8. **The catalogue is ≈ 357 kB** under a 384 KiB budget.
 9. **`TOOL_API_VERSION` is `1.8.0`.**
 10. **`resources/list` always carries the two governance resources** (first; `text`, not `blob`).
 11. **Operators:** `PDFNATIVE_MCP_FONT_DIR`, `PDFNATIVE_MCP_OUTPUT_BASE_URL`; an invalid value refuses to start.

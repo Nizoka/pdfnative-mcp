@@ -61,7 +61,7 @@ export default defineConfig({
             // from; `html` stays for local drill-down.
             reporter: ['text-summary', 'json-summary', 'html'],
             thresholds: {
-                // v1.8.0 measured on the final branch: 93.93 / 86.95 / 99.12 / 95.72 (statements /
+                // v1.8.0 measured on the final branch (release day): 94.02 / 87.08 / 99.13 / 95.77 (statements /
                 // branches / functions / lines); v1.7.0 was 93.53 / 86.08 / 98.88 / 95.45.
                 // Thresholds sit about 4 points below the measured values so a regression fails
                 // CI while ordinary churn does not. All four were raised in 1.8.0.

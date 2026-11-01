@@ -1,5 +1,7 @@
 # PDF/A authoring guide (for AI agents)
 
+Applies to pdfnative-mcp v1.8.0 · pdfnative 1.9.0.
+
 This guide tells you, in two pages, **when to pick which PDF/A part** and **which pitfalls trip up automated PDF/A generators**. It is intentionally short and copy-paste friendly.
 
 ## TL;DR — pick a conformance level

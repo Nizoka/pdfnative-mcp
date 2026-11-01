@@ -57,7 +57,7 @@ A bump of `_meta.apiVersion` happens **only** in the cases listed in §3.
 > `$schema` keyword** by policy: MCP ≥ 2025-11-25 defaults to JSON Schema 2020-12, and some
 > hosts forward `inputSchema` verbatim to LLM function-calling APIs that reject unknown
 > keywords. Likewise there is no `$ref` / `$defs`, which is why the 13-kind block union is
-> repeated inline in `inspect_layout` and `tools/list` weighs ≈ 355 kB, under a 384 KiB budget enforced by `scripts/tool-shape.ts --check` (≈ 246 kB in 1.6.0, ≈ 306 kB in 1.7.0: the
+> repeated inline in `inspect_layout` and `tools/list` weighs ≈ 357 kB, under a 384 KiB budget enforced by `scripts/tool-shape.ts --check` (≈ 246 kB in 1.6.0, ≈ 306 kB in 1.7.0: the
 > `typography` fragment and the widened colour schemas of 1.7.0, then the two spot-colour members at
 > 46 colour sites and the five layout / print options of 1.8.0, are inlined in every tool that
 > carries them; the budget moved from 320 to 384 KiB in 1.8.0, deliberately — §5).
@@ -142,7 +142,7 @@ All 28 tools shipped through pdfnative-mcp 1.8.0 are at `_meta.apiVersion = '1.8
 > | `embed_image` | the same, plus `mimeType` value `image/jp2` (JP2 file or raw codestream) |
 > | `add_international_text` | the same, plus `font` and the `lang` enum values `gu`, `pa`, `kn`, `ml`, `or` |
 > | `annotate_pdf` | `type` value `link` and the input `url` (required when `type` is `link`) |
-> | `extract_text` | `onStreamError` (`limit`, the default, or `skip`) |
+> | `extract_text` | `onStreamError` (`limit`, the default, `skip` or `throw`) |
 > | `add_ltv` | `match` (`all`, the default, or `chain`), offline mode only |
 > | `validate_pdf` | `caveats[]` wording for `pdf-x-4` (the XObject clause is gone — a description, not a schema change) |
 > | `inspect_pdf` | `info` values are decoded text strings (a `/Info` title in any script reads back as text) |
@@ -186,7 +186,7 @@ All 28 tools shipped through pdfnative-mcp 1.8.0 are at `_meta.apiVersion = '1.8
 > page); `VALIDATION_ERROR` covers an undeclared spot ink or ink mix, a `pdfx` request with
 > `pdfa1b` / `pdfa3b` (two messages replace the single 1.7.0 refusal, which is gone), a `link`
 > annotation without `url` or with a scheme outside `http:` / `https:` / `mailto:`, and a spot tint
-> outside 0–1; `PRINT_ERROR` covers a `print.spotColours` entry the engine refuses (empty or duplicate
+> outside 0–1; `PRINT_ERROR` covers a `print.spotColours` entry the engine refuses (blank or duplicate
 > name, an alternate out of range); `CHART_ERROR` covers a series `colors` array whose length differs
 > from `values`. `embed_image` no longer re-wraps a strict diagnostic as `VALIDATION_ERROR`: it
 > carries its own code (`PDF_A_COMPLIANCE_VIOLATION`, `PDF_X_COMPLIANCE_VIOLATION`,
@@ -204,7 +204,7 @@ All 28 tools shipped through pdfnative-mcp 1.8.0 are at `_meta.apiVersion = '1.8
 > `link` and the five `lang` codes are enum additions. The enumerated `ACCEPTED_DELTAS` are
 > unchanged since 1.6.0; each must still occur. The catalogue budget of `scripts/tool-shape.ts
 > --check` moves from 320 KiB to **384 KiB**: 46 colour sites × two members and five options × nine
-> tools weigh about 47 kB (≈ 306 kB → ≈ 355 kB), the member descriptions were cut to one line, and
+> tools weigh about 47 kB (≈ 306 kB → ≈ 357 kB), the member descriptions were cut to one line, and
 > `$ref` / `$defs` stay excluded by policy — raising the budget was the honest choice, recorded
 > here and in `declared.toolsListBytes`.
 >
@@ -214,8 +214,8 @@ All 28 tools shipped through pdfnative-mcp 1.8.0 are at `_meta.apiVersion = '1.8
 >
 > **Engine-inherited byte changes 1.8 → 1.9, default inputs.** pdfnative 1.9.0 changes the bytes
 > of the following outputs; in each case the previous output was wrong or incomplete, so per §3
-> these are correctness fixes, not "default value changes". Documents on base-14 fonts without
-> these features are byte-identical to 1.7.0. The engine's own release note carries the full ledger
+> these are correctness fixes, not "default value changes". Four causes (C9–C12) reach base-14
+> documents too; a document with none of these features is byte-identical to 1.7.0. The engine's own release note carries the full ledger
 > (C1–C28); the ledger tags below are its.
 >
 > | Output | What changed | Why |
@@ -225,6 +225,10 @@ All 28 tools shipped through pdfnative-mcp 1.8.0 are at `_meta.apiVersion = '1.8
 > | Every document with a shaped run or a line that changes font | the text objects | one `BT … ET` per line with `TJ` arrays and relative `Td` moves (C25), instead of one text object per glyph |
 > | Every Odia, Gurmukhi, Gujarati, Kannada or Malayalam line ending in a danda | the shaping of the last cluster | U+0964 / U+0965 route to the line's own shaper (C26) |
 > | Every document registering a font it never draws | a far smaller embedded program | a `.notdef`-only lean subset with `/W []` (C18) |
+> | Every page that paints with constant alpha (a watermark) | the page dictionary | a `/Group << /S /Transparency /CS … /I true >>` (C11) — the two base-14 watermark samples moved for this reason alone |
+> | Every table of contents longer than its page | pagination | the TOC breaks at entry boundaries and continues on the next page (C9); a fitting TOC is byte-identical |
+> | Every base-14 line under `punctuationSpacing: 'fr'` | the `TJ` array | the narrow no-break space is a 167/1000 em adjustment instead of an ordinary space (C10) |
+> | Every tagged table | the structure tree | `/TH` carries `/Scope` and an `/ID`, `/TD` names its headers, `/StructTreeRoot` registers an `/IDTree` (C12) |
 > | `extract_text` on untagged output of those scripts | `text` / `fullText` | logical order (the `/ActualText` spans above); tagged output is unchanged |
 > | `extract_text` on a content stream over the decompression cap | an error instead of an empty page | `PdfStreamLimitError` → `PDF_PARSE_FAILED`, the server-side classification above — listed here because a consumer sees a different result |
 >

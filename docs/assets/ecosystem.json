@@ -1,6 +1,6 @@
 {
   "$comment": "Single source of every count and version quoted in the docs, the agent files and the release notes. `npm run verify:docs` holds every document to it; `npm run release:prepare` bumps `packages.pdfnative-mcp.version` and `verifiedOn`. `declared` holds figures no filesystem walk can derive (measured at release, or an inventory of the engine); `derived` holds figures verify:docs recomputes from the source tree (the TOOLS and PROMPTS tables, every ToolError code, server.json, examples/, tests/, the sample baseline, the corpus table) and fails when they drift. `assertions` are the prose tokens each listed file must carry verbatim. `declared.toolsListBytes` is the UTF-8 size of the built `tools/list` payload, held within 2 % by `npx tsx scripts/tool-shape.ts --check` (gate step `verify:tool-shape`), which also enforces the 384 KiB catalogue and 8 KiB instructions budgets.",
-  "verifiedOn": "2026-10-31",
+  "verifiedOn": "2026-11-01",
   "packages": {
     "pdfnative-mcp": {
       "version": "1.8.0",
@@ -23,16 +23,16 @@
     }
   },
   "declared": {
-    "tests": 1791,
+    "tests": 1804,
     "coverageStatements": 90,
-    "coverageMeasured": 93.93,
+    "coverageMeasured": 94.02,
     "pdfaSamples": 37,
     "pdfxSamples": 7,
     "unicodeScripts": 32,
     "blockKinds": 13,
     "chartTypes": 9,
     "diagnosticCodes": 13,
-    "toolsListBytes": 354982
+    "toolsListBytes": 356662
   },
   "derived": {
     "tools": 28,

@@ -131,7 +131,8 @@
         ".": {
             "types": "./dist/index.d.ts",
             "import": "./dist/index.js"
-        }
+        },
+        "./package.json": "./package.json"
     },
     "bin": {
         "pdfnative-mcp": "./dist/cli.js"

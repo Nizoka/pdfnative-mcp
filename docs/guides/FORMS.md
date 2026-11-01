@@ -1,5 +1,7 @@
 # Forms guide (for AI agents)
 
+Applies to pdfnative-mcp v1.8.0 · pdfnative 1.9.0.
+
 pdfnative-mcp has **three** form tools (plus `formField` blocks inside `generate_basic_pdf`). Pick by intent:
 
 | Intent | Tool |

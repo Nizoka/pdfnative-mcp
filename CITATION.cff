@@ -27,7 +27,7 @@ abstract: >-
   continuously and published with provenance and SBOMs.
 license: MIT
 version: 1.8.0
-date-released: "2026-10-31"
+date-released: "2026-11-01"
 keywords:
   - mcp
   - model-context-protocol

@@ -7,7 +7,7 @@ stable anchors — tests, prompts and other documents cite them.
 
 Agents **contributing** to this repository read [AGENTS.md](../AGENTS.md) instead.
 
-Verified on 2026-10-31 against pdfnative-mcp 1.8.0 and pdfnative 1.9.0.
+Verified on 2026-11-01 against pdfnative-mcp 1.8.0 and pdfnative 1.9.0.
 
 The server also returns the §2 decision tree in `serverInfo.instructions`. Deeper
 references: [AI_GUIDE.md](AI_GUIDE.md) (pitfalls + recipes),
@@ -134,7 +134,7 @@ Need to READ a PDF?      (all accept `password` for encrypted sources)
  ├─ PDF/X-4 structure?   → validate_pdf  standard:'pdf-x-4'  (read caveats[]: not a certified preflight)
  ├─ embedded files?      → extract_attachments
  ├─ form fields?         → read_form_fields
- └─ plain text (+runs)?  → extract_text  (onStreamError:'skip' to read past a stream over the decompression cap)
+ └─ plain text (+runs)?  → extract_text  (onStreamError:'skip' to read past a stream over the decompression cap, 'throw' to fail on any undecodable stream)
 Preview pagination of NEW blocks?  → inspect_layout (read-only; totalPages + block geometry)
 Propose a bug/feature to GitHub? → draft_governance_issue (local draft; a human reviews & submits)
 ```
@@ -205,7 +205,7 @@ content block (`data:application/pdf;base64,…`), not duplicated into
   decompression cap (integer ≥ 1024; an invalid value refuses to start). A capped
   attachment stream fails `extract_attachments includeData:true` with `PDF_PARSE_FAILED`;
   since v1.8.0 `extract_text` fails the same way (`onStreamError: 'limit'`, the default) instead of
-  returning empty page text — `onStreamError: 'skip'` restores the 1.7.0 behaviour.
+  returning empty page text — `onStreamError: 'skip'` restores the 1.7.0 behaviour, `'throw'` fails on any undecodable stream.
 - `PDFNATIVE_MCP_TSA_URL` — RFC 3161 TSA for `sign_pdf timestamp:true` and `timestamp_pdf`
   (unset ⇒ `TSA_NOT_CONFIGURED`). `PDFNATIVE_MCP_TSA_AUTH` — optional `Authorization`
   header value (secret, never echoed).
@@ -295,7 +295,7 @@ placeholder, `inspect_layout` by `generate_basic_pdf` itself).
 | `PDF_A_COMPLIANCE_VIOLATION` | Watermark `opacity < 1.0` (text or image, defaults included) under `pdfA:'pdfa1b'`; `strict:true` and the engine raised a `PDFA_*` diagnostic — `strict` escalates by diagnostic code: `PDFA_*` → this code, `PDFX_*` → `PDF_X_COMPLIANCE_VIOLATION`, anything else → `DIAGNOSTIC_ESCALATED`, so a client that matched this code for every strict failure should match the three (`PDFA_NO_FONT_ENTRIES` — unembedded Latin text; `PDFA_UNEMBEDDED_FORM_FONT` — a form built without `embedFonts`; `PDFA_DEVICE_CMYK_IMAGE` — CMYK JPEG against an RGB intent; `PDFA_DEVICE_CMYK_CONTENT` — CMYK colours against an RGB intent; `PDFA_ICC_PROFILE_VERSION` — ICC v4 profile under `pdfa1b`; `PDFA1_JPX_IMAGE` — a JPEG 2000 image under `pdfa1b`; `PDFA_JPX_IMAGE` — a JPEG 2000 image with an opacity channel or an unusual channel count; `PDFA_GLYPH_WITHOUT_UNICODE` would be this code too, but the engine reports `TEXT_GLYPH_NOT_COVERED` for the same character first, so `strict` stops with `DIAGNOSTIC_ESCALATED`); `print.userUnit` under `pdfa1b` | Use `opacity:1.0` or `pdfa2b`+; add `embedFonts:true` (forms included); keep images and colours RGB, or supply a CMYK `outputIntent`; use an ICC v2 profile or `pdfa2b`+; drop `userUnit` or target `pdfa2b`+. `includeDiagnostics:true` echoes the codes without failing. |
 | `PDF_X_COMPLIANCE_VIOLATION` | `strict:true` and the engine raised a `PDFX_*` diagnostic under `pdfx:'pdfx4'` (`PDFX_NO_FONT_ENTRIES` — text not embedded; `PDFX_DEVICE_CMYK` — CMYK content under a non-CMYK printing condition; `PDFX_ANNOTATIONS` — a link or form field on a print page) | Add `embedFonts:true`; match the colours to the `outputIntent` (CMYK profile for CMYK content, or Gray / RGB colours under a Gray condition); remove `link` / `formField` blocks. `includeDiagnostics:true` echoes the codes without failing; afterwards check the file with `validate_pdf standard:'pdf-x-4'`. |
 | `DIAGNOSTIC_ESCALATED` | `strict:true` and the engine raised a diagnostic that is neither PDF/A nor PDF/X — `TYPOGRAPHY_FEATURE_INEFFECTIVE` (`typography.fontFeatures` `tnum` / `lnum` on Noto Sans, or a feature without an embedded font) or, since v1.8.0, `TEXT_GLYPH_NOT_COVERED` (a character no registered font covers — drawn as a box, or written as `?` by base-14 Helvetica; it is also what a level-U claim over that character escalates to, as it is reported before `PDFA_GLYPH_WITHOUT_UNICODE`). The message starts with `[CODE]` | Read the `[CODE]` in the message: drop the ineffective feature (`tnum` / `lnum` are already the default figures of Noto Sans), add `embedFonts:true` or a `font` / `lang` that covers the character, or drop `strict` and read the diagnostic with `includeDiagnostics:true`. |
-| `PRINT_ERROR` | Engine rejected `print` / `outputIntent`: box outside the MediaBox, marks without a TrimBox, a `print.spotColours` declaration with an empty or duplicate name or an alternate out of range (v1.8.0), or an ICC profile that is not one (no `acsp` signature at byte 36, declared size larger than the bytes supplied, unsupported colour space — RGB, CMYK and Gray are accepted) | Fix the box coordinates / supply `bleed` or `trimBox` / pass a real ICC profile, base64-encoded exactly once — hand-made stubs are rejected since v1.7.0. (Under `pdfx`, a real profile of the wrong device class is `VALIDATION_ERROR`, not this code.) |
+| `PRINT_ERROR` | Engine rejected `print` / `outputIntent`: box outside the MediaBox, marks without a TrimBox, a `print.spotColours` declaration with a blank or duplicate name (an empty string is `VALIDATION_ERROR`) or an alternate out of range (v1.8.0), or an ICC profile that is not one (no `acsp` signature at byte 36, declared size larger than the bytes supplied, unsupported colour space — RGB, CMYK and Gray are accepted) | Fix the box coordinates / supply `bleed` or `trimBox` / pass a real ICC profile, base64-encoded exactly once — hand-made stubs are rejected since v1.7.0. (Under `pdfx`, a real profile of the wrong device class is `VALIDATION_ERROR`, not this code.) |
 | `METADATA_ERROR` | `update_metadata` could not rewrite `/Info` | Check the PDF opens; report with a reproduction if it persists. |
 | `GENERATION_FAILED` | Generic engine throw while building a document | The message carries the engine text; fix the input it names. |
 | `TSA_NOT_CONFIGURED` | `sign_pdf timestamp:true` / `timestamp_pdf` without `PDFNATIVE_MCP_TSA_URL` (or not an absolute URL) | Operator sets the TSA variables; no request is made otherwise. |

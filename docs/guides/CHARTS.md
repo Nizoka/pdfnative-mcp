@@ -121,7 +121,7 @@ Both build the identical pdfnative block, so pick whichever composes better.
 | `altText` | Tagged `/Alt`. **Auto-generated when omitted** — leave it out unless you need a specific description. |
 | `pdfA` (`add_chart` only) | `pdfa1b` / `pdfa2b` / `pdfa2u` / `pdfa3b`. |
 | `print` / `metadata` / `outputIntent` / `embedFonts` / `strict` / `includeDiagnostics` (`add_chart` only) | Print-production and PDF/A options shared by every document tool — see [PRINT.md](PRINT.md) and [PDFA.md](PDFA.md). |
-| `pdfx` / `typography` (`add_chart` only) | `pdfx: 'pdfx4'` for a PDF/X-4 print file (needs `outputIntent` + `embedFonts: true`; exclusive with `pdfA` and `encrypt`) — see [PRINT.md](PRINT.md#pdfx-4); `typography` for the text around the chart — see [TYPOGRAPHY.md](TYPOGRAPHY.md). |
+| `pdfx` / `typography` (`add_chart` only) | `pdfx: 'pdfx4'` for a PDF/X-4 print file (needs `outputIntent` + `embedFonts: true`; combines with `pdfA: 'pdfa2b' | 'pdfa2u'` since 1.8.0 (`pdfa1b` / `pdfa3b` refused); exclusive with `encrypt`) — see [PRINT.md](PRINT.md#pdfx-4); `typography` for the text around the chart — see [TYPOGRAPHY.md](TYPOGRAPHY.md). |
 
 ## Pitfalls
 

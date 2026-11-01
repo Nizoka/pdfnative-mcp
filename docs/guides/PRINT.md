@@ -1,5 +1,7 @@
 # Print-production guide (for AI agents)
 
+Applies to pdfnative-mcp v1.8.0 · pdfnative 1.9.0.
+
 pdfnative-mcp v1.8.0 (on pdfnative 1.9.0) lets every document-producing tool emit a
 **print-ready** PDF: page boxes and bleed, printer's marks and a colour control strip,
 `/UserUnit` for large formats, the `/Trapped` flag, an RGB, CMYK or Gray ICC output
@@ -213,7 +215,7 @@ Rules, all enforced before any page is drawn or by the engine with its own messa
 
 - An ink painted without a declaration is refused **by name** — `VALIDATION_ERROR`
   (`toEngineColor` passes the object through; the engine's rejection is mapped).
-- An empty or duplicate `name` in `spotColours` is `PRINT_ERROR`.
+- A blank or duplicate `name` in `spotColours` is `PRINT_ERROR`; an empty string is `VALIDATION_ERROR` at the boundary.
 - A tint outside 0–1 is `VALIDATION_ERROR` at the boundary.
 - Spot inks are PDF/A- and PDF/X-safe: the `/Separation` and `/DeviceN` tint
   transforms carry the process alternate, so a viewer without the plates still shows the
@@ -352,7 +354,7 @@ PDF/X claim.
 
 | Code | Meaning |
 | --- | --- |
-| `PRINT_ERROR` | The engine rejected `print` / `outputIntent`: an empty or duplicate `spotColours` name (v1.8.0), box outside the MediaBox, `marks` without a TrimBox, an ICC payload that is not an ICC profile (no `acsp` signature, declared size larger than the bytes, a colour space other than RGB / CMYK / Gray), … |
+| `PRINT_ERROR` | The engine rejected `print` / `outputIntent`: a blank or duplicate `spotColours` name (v1.8.0), box outside the MediaBox, `marks` without a TrimBox, an ICC payload that is not an ICC profile (no `acsp` signature, declared size larger than the bytes, a colour space other than RGB / CMYK / Gray), … |
 | `PDF_A_COMPLIANCE_VIOLATION` | `print.userUnit` combined with `pdfA: 'pdfa1b'`; under `strict: true`, any `PDFA_*` diagnostic. |
 | `PDF_X_COMPLIANCE_VIOLATION` | Under `strict: true` only: a `PDFX_*` diagnostic (`PDFX_NO_FONT_ENTRIES`, `PDFX_DEVICE_CMYK`, `PDFX_ANNOTATIONS`). |
 | `VALIDATION_ERROR` | `bleed` and `trimBox` both given, a `{ spot }` / `{ inks }` colour naming an ink absent from `print.spotColours` (v1.8.0), a box with fewer than 4 numbers, an ICC payload that is not base64 / empty / over 8 MiB, `colourBars.size` outside 4–72, a malformed CMYK colour, and the PDF/X refusals listed under [PDF/X-4](#pdfx-4). |

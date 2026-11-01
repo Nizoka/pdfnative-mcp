@@ -1,5 +1,7 @@
 # Long-term validation guide — the PAdES ladder (for AI agents and operators)
 
+Applies to pdfnative-mcp v1.8.0 · pdfnative 1.9.0.
+
 This guide explains, in two pages, how pdfnative-mcp v1.8.0 (on pdfnative 1.9.0)
 exposes the **PAdES baseline levels** of ETSI EN 319 142-1 — B-B, B-T, B-LT and
 B-LTA — through four tools, what the **operator** must configure before any

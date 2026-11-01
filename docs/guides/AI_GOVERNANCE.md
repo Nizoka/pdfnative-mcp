@@ -1,5 +1,7 @@
 # AI Governance & Human-In-The-Loop (HITL)
 
+Applies to pdfnative-mcp v1.8.0 · pdfnative 1.9.0.
+
 > How an AI agent may propose bugs and improvements for the pdfnative project
 > **without ever writing to GitHub**. The agent is a **draftsman**; a human is the
 > only gate that submits.

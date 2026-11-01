@@ -123,7 +123,7 @@ export const MANIFEST_REL = 'docs/assets/ecosystem.json';
 export const SELF_PACKAGE = 'pdfnative-mcp';
 
 /** Files whose `Verified on YYYY-MM-DD` stamp must equal the manifest's `verifiedOn`. */
-export const STAMPED_FILES: readonly string[] = ['llms.txt', 'docs/KNOWLEDGE_BASE.md', 'docs/AGENT_CONTRACT.md'];
+export const STAMPED_FILES: readonly string[] = ['llms.txt', 'docs/KNOWLEDGE_BASE.md', 'docs/AGENT_CONTRACT.md', 'docs/guides/REPRODUCIBLE.md', 'docs/guides/TYPOGRAPHY.md'];
 
 /** Every registered tool must be named, in backticks, in each of these. */
 export const TOOL_DOCS: readonly string[] = ['README.md', 'llms.txt', 'docs/AGENT_CONTRACT.md', 'docs/AI_GUIDE.md', 'docs/API_STABILITY.md'];
@@ -165,6 +165,8 @@ export const OFFLINE_RULES = [
     'prose-language', // docs, examples README and release notes are English unless marked demo-language
     'governance-embed', // .github/ai-governance.json and .github/AGENT_RULES.md equal the copies embedded in src/governance-embed.ts (npm run agents:governance)
     'keyword-count', // every "N keywords" token in the docs equals package.json keywords.length
+    'third-party-ranges', // THIRD-PARTY-NOTICES.md quotes every runtime dependency with its package.json range
+    'release-date-parity', // the release note, the CHANGELOG heading and the PR draft of the current version carry manifest.verifiedOn
 ] as const;
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -1072,11 +1074,59 @@ export async function verifyDocs(root: string, options: VerifyOptions = {}): Pro
     for (const relPath of STAMPED_FILES) {
         const text = readOr(relPath);
         if (text === null) continue; // parity rules elsewhere report missing files
-        const m = /(?:"verifiedOn"\s*:\s*"|Verified on )(\d{4}-\d{2}-\d{2})/.exec(text);
-        if (!m) {
+        // Every stamp of the file, not the first one: 1.8.0 was prepared with the second
+        // stamp of docs/KNOWLEDGE_BASE.md a day behind the first.
+        const stamps = [...text.matchAll(/(?:"verifiedOn"\s*:\s*"|Verified on )(\d{4}-\d{2}-\d{2})/g)];
+        if (stamps.length === 0) {
             fail(relPath, 1, 'verified-on-parity', `carries no "Verified on" stamp (manifest says ${manifest.verifiedOn})`);
-        } else if (m[1] !== manifest.verifiedOn) {
-            fail(relPath, lineOf(text, m.index), 'verified-on-parity', `stamped ${m[1]} but the manifest was verified on ${manifest.verifiedOn}`);
+        }
+        for (const m of stamps) {
+            if (m[1] !== manifest.verifiedOn) {
+                fail(relPath, lineOf(text, m.index), 'verified-on-parity', `stamped ${m[1]} but the manifest was verified on ${manifest.verifiedOn}`);
+            }
+        }
+    }
+
+    // ── Rule: third-party-ranges ──────────────────────────────────
+    // The notices file ships in the tarball and quotes the version ranges of
+    // package.json; 1.8.0 was prepared with every range two minors behind.
+    {
+        const notices = readOr('THIRD-PARTY-NOTICES.md');
+        const pkgText = readOr('package.json');
+        if (notices !== null && pkgText !== null) {
+            const deps = (JSON.parse(pkgText) as { dependencies?: Record<string, string> }).dependencies ?? {};
+            for (const [name, range] of Object.entries(deps)) {
+                const m = new RegExp(`\`${escapeRegExp(name)}\` \\(\`([^\`]*)\`\\)`).exec(notices);
+                if (!m) {
+                    fail('THIRD-PARTY-NOTICES.md', 1, 'third-party-ranges', `does not quote \`${name}\` (\`${range}\`) — every runtime dependency is listed with its package.json range`);
+                } else if (m[1] !== range) {
+                    fail('THIRD-PARTY-NOTICES.md', lineOf(notices, m.index), 'third-party-ranges', `quotes ${name} as \`${m[1]}\` but package.json says \`${range}\``);
+                }
+            }
+        }
+    }
+
+    // ── Rule: release-date-parity ─────────────────────────────────
+    // The dated surfaces of the current version — the release note's
+    // `_Released_` line, the CHANGELOG heading and the PR draft's `Prepared`
+    // line — say the day the manifest was verified. A missing file is not a
+    // finding here (the note and the draft exist once scaffolded; the heading
+    // once the entry is written): only a stale date is.
+    if (SEMVER.test(selfVersion)) {
+        const checks: ReadonlyArray<readonly [string, RegExp, string]> = [
+            [`release-notes/v${selfVersion}.md`, /^_Released (\d{4}-\d{2}-\d{2})_/m, '_Released_ line'],
+            ['CHANGELOG.md', new RegExp(`^## \\[${escapeRegExp(selfVersion)}\\] - (\\d{4}-\\d{2}-\\d{2})`, 'm'), `[${selfVersion}] heading`],
+            [`.github/drafts/pr-v${selfVersion}.md`, /^> \*\*Prepared:\*\* (\d{4}-\d{2}-\d{2})/m, 'Prepared line'],
+        ];
+        for (const [relPath, re, what] of checks) {
+            const text = readOr(relPath);
+            if (text === null) continue;
+            const m = re.exec(text);
+            if (!m) {
+                if (relPath !== 'CHANGELOG.md') fail(relPath, 1, 'release-date-parity', `has no dated ${what} (manifest verified on ${manifest.verifiedOn})`);
+            } else if (m[1] !== manifest.verifiedOn) {
+                fail(relPath, lineOf(text, m.index), 'release-date-parity', `${what} says ${m[1]} but the manifest was verified on ${manifest.verifiedOn} — run scripts/release-prepare.ts --date, or restamp by hand`);
+            }
         }
     }
 
