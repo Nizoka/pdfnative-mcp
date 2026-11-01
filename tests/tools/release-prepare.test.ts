@@ -164,6 +164,9 @@ describe('release-prepare: the dated release surfaces', () => {
         expect(r.text).toContain('## [1.8.0] - 2026-11-01');
         expect(r.text).toContain('## [1.7.0] - 2026-09-21');
         expect(restampChangelogHeading(log, '1.9.0', '2026-11-01').matched).toBe(0);
+        // The version is a literal in the pattern (CodeQL js/regex-injection): `+` is not a quantifier, `.` not a wildcard.
+        expect(restampChangelogHeading('## [1.8.0+b] - 2026-10-31\n', '1.8.0+b', '2026-11-01').text).toBe('## [1.8.0+b] - 2026-11-01\n');
+        expect(restampChangelogHeading('## [1x8y0] - 2026-10-31\n', '1.8.0', '2026-11-01').matched).toBe(0);
     });
 
     it('re-stamps the Prepared line of the PR draft', () => {

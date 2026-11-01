@@ -29,9 +29,15 @@ jobs:
         uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: block
+          # api.deps.dev and api.securityscorecards.dev: the action's OpenSSF
+          # Scorecard column (show-openssf-scorecard, on by default) resolves
+          # each changed package to its repository and fetches its score;
+          # without them the step dies with a bare "fetch failed".
           allowed-endpoints: >
             github.com:443
             api.github.com:443
+            api.deps.dev:443
+            api.securityscorecards.dev:443
 
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -98,6 +98,10 @@ export async function fuzzSeeds(): Promise<Readonly<Record<FuzzTarget, readonly 
         text('127.0.0.1:8765\0http://127.0.0.1:9999\0'),
         text('[::1]:8765\0\0Basic abc'),
         text('\0\0'),
+        // The first ClusterFuzzLite finding (pull request #71): a trailing C0 control the SDK's URL
+        // parser drops, and a credential the guard normalises (scheme case, surrounding whitespace).
+        text('127.0.0.1:8\u0001\0\0'),
+        text('127.0.0.1\0\0bearer fuzz-token-0123456789abcdef\t'),
     ];
 
     return { base64, 'http-guards': httpGuards, image, 'output-path': outputPath, 'tool-call': toolCall };

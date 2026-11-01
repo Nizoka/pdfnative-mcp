@@ -435,6 +435,9 @@ describe('setup-verapdf composite action', () => {
     it('hands the install directory back as the `home` output, which verapdf.yml and publish.yml pass as VERAPDF_HOME', () => {
         expect(action).toMatch(/outputs:\s*\n\s*home:/);
         expect(action).toMatch(/echo "home=\$HOME\/verapdf" >> "\$GITHUB_OUTPUT"/);
+        // zizmor `github-env`: a composite action that writes GITHUB_ENV / GITHUB_PATH hands every
+        // later step of a caller on a dangerous trigger a value it did not choose.
+        expect(action, 'the action writes to GITHUB_ENV or GITHUB_PATH').not.toMatch(/>>\s*"?\$GITHUB_(ENV|PATH)"?/);
         for (const f of ['verapdf.yml', 'publish.yml']) {
             expect(readWorkflow(f), f).toContain('uses: ./.github/actions/setup-verapdf');
             expect(readWorkflow(f), f).toMatch(/VERAPDF_HOME:\s*\$\{\{ steps\.verapdf\.outputs\.home \}\}/);
@@ -480,6 +483,9 @@ describe('dependency review, audit and Dependabot', () => {
         expect(review).toMatch(/fail-on-severity:\s*high/);
         expect(review).toMatch(/allow-licenses:\s*MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, 0BSD, CC0-1.0, Unlicense/);
         expect(review).toMatch(/comment-summary-in-pr:\s*on-failure/);
+        // The action's Scorecard column resolves packages through api.deps.dev and reads
+        // api.securityscorecards.dev; in block mode a missing host is a bare "fetch failed".
+        for (const host of ['api.deps.dev:443', 'api.securityscorecards.dev:443']) expect(review, host).toContain(host);
     });
 
     it('audits the lockfile weekly', () => {

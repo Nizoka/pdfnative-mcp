@@ -2,13 +2,13 @@ name: Setup veraPDF
 description: >-
   Installs a pinned veraPDF greenfield release (the PDF/A reference validator)
   on the runner, after checking the installer against the SHA-256 recorded in
-  .github/checksums/. Exports VERAPDF_HOME and puts `verapdf` on the PATH.
-  pdfnative-mcp stays a zero-extra-runtime-dependency package; veraPDF is a
-  CI tool. Shared by verapdf.yml and publish.yml so the URL/SHA-256 bump
-  happens in one place (it used to be duplicated in both workflows). The
-  install directory is also handed back as the `home` output, so a caller can
-  pass it explicitly as VERAPDF_HOME through the step's outputs instead of
-  relying on the job-wide GITHUB_ENV export.
+  .github/checksums/, and hands the install directory back as the `home`
+  output, which the caller passes as VERAPDF_HOME. Nothing is written to
+  GITHUB_ENV or GITHUB_PATH: from a composite action those writes are what
+  zizmor's github-env audit flags (a value the action did not choose would
+  reach every later step of a caller on a dangerous trigger). pdfnative-mcp
+  stays a zero-extra-runtime-dependency package; veraPDF is a CI tool. Shared
+  by verapdf.yml and publish.yml so the URL/SHA-256 bump happens in one place.
 
 inputs:
   version:
@@ -81,9 +81,8 @@ runs:
         </AutomatedInstallation>
         XML
         java -jar "${INSTALLER_JAR}" "$HOME/verapdf/auto-install.xml"
-        echo "VERAPDF_HOME=$HOME/verapdf" >> "$GITHUB_ENV"
+        # The install directory travels as the step output only (see the description).
         echo "home=$HOME/verapdf" >> "$GITHUB_OUTPUT"
-        echo "$HOME/verapdf" >> "$GITHUB_PATH"
 
     - name: Verify veraPDF
       shell: bash

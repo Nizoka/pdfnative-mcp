@@ -19,7 +19,7 @@
  * client: results and errors name slugs, never paths.
  */
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 import { loadFontData, registerFont, type FontData, type FontEntry } from 'pdfnative';
@@ -34,6 +34,23 @@ export const CUSTOM_FONT_PREFIX = 'custom:';
 export const MAX_FONT_FILES = 64;
 export const MAX_FONT_FILE_BYTES = 16 * 1024 * 1024;
 const FONT_EXTENSIONS = new Set(['.ttf', '.otf']);
+
+/**
+ * Reads one font file through a single descriptor: the size that is checked
+ * and the bytes that are read belong to the same open file, so a file swapped
+ * between a `stat` and a `read` (CodeQL `js/file-system-race`) cannot slip
+ * past {@link MAX_FONT_FILE_BYTES}, and an oversized file is never read into memory.
+ */
+function readFontFile(full: string, file: string): Buffer {
+    const fd = openSync(full, 'r');
+    try {
+        const size = fstatSync(fd).size;
+        if (size > MAX_FONT_FILE_BYTES) throw new Error(`${FONT_DIR_ENV}: "${file}" is ${size} bytes, over the ${MAX_FONT_FILE_BYTES}-byte limit.`);
+        return readFileSync(fd);
+    } finally {
+        closeSync(fd);
+    }
+}
 
 /** A slug: the file's base name folded to lower-case `[a-z0-9-]`, 1–64 characters. */
 export const FONT_SLUG_PATTERN = '^[a-z0-9][a-z0-9-]{0,63}$';
@@ -103,10 +120,7 @@ export function loadCustomFonts(env: NodeJS.ProcessEnv = process.env): readonly 
     for (const { name: file, slug } of files) {
         if (!FONT_SLUG_RE.test(slug)) throw new Error(`${FONT_DIR_ENV}: "${file}" folds to an empty or invalid slug — rename it to letters, digits and dashes.`);
         if (taken.has(slug)) throw new Error(`${FONT_DIR_ENV}: "${file}" folds to the slug "${slug}" already taken by another file — rename one of them.`);
-        const full = path.join(dir, file);
-        const size = statSync(full).size;
-        if (size > MAX_FONT_FILE_BYTES) throw new Error(`${FONT_DIR_ENV}: "${file}" is ${size} bytes, over the ${MAX_FONT_FILE_BYTES}-byte limit.`);
-        const bytes = readFileSync(full);
+        const bytes = readFontFile(path.join(dir, file), file);
         digest.update(`${slug}\0${bytes.length}\0${createHash('sha256').update(bytes).digest('hex')}\n`);
         let data: FontData;
         try {

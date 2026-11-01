@@ -56,6 +56,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { escapeRegExp } from './lib/escape-regexp.js';
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -192,7 +193,7 @@ export function restampReleaseNote(text: string, date: string): Rewrite {
 
 /** `## [X.Y.Z] - YYYY-MM-DD` of the CHANGELOG (the entry is written after the bump, so it may not exist yet). */
 export function restampChangelogHeading(text: string, version: string, date: string): Rewrite {
-    return replaceCounting(text, new RegExp(`^(## \\[${version.replace(/\./g, '\\.')}\\] - )\\d{4}-\\d{2}-\\d{2}`, 'm'), (_m, a) => `${a}${date}`);
+    return replaceCounting(text, new RegExp(`^(## \\[${escapeRegExp(version)}\\] - )\\d{4}-\\d{2}-\\d{2}`, 'm'), (_m, a) => `${a}${date}`);
 }
 
 /** `> **Prepared:** YYYY-MM-DD` of the PR draft. */
