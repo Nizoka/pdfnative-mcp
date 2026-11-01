@@ -2,16 +2,19 @@
  * Server-level cache policy: what the opt-in response
  * cache may serve, how a hit is signalled, and what the key is namespaced by.
  */
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { callToolDirect, ensureCompressionReady } from '../src/server.js';
+import { callToolDirect, cacheNamespace, ensureCompressionReady } from '../src/server.js';
+import { FONT_DIR_ENV, __resetCustomFonts, customFontCacheTag, loadCustomFonts } from '../src/font-dir.js';
+import { importFontModule } from '../src/fonts.js';
 import { PDFNATIVE_MCP_VERSION } from '../src/version.js';
 import { generateBasicPdf } from '../src/tools/generate-basic-pdf.js';
 import { buildRsaSelfSignedCert } from './_cert-fixtures.js';
+import { escapeRegExp } from '../scripts/lib/escape-regexp.js';
 
 let cacheDir: string;
 
@@ -48,7 +51,34 @@ describe('response cache policy', () => {
         const [file] = readdirSync(cacheDir).filter((f) => f.endsWith('.json'));
         const entry = JSON.parse(readFileSync(join(cacheDir, file!), 'utf8')) as { apiVersion: string; tool: string };
         expect(entry.tool).toBe('generate_basic_pdf');
-        expect(entry.apiVersion).toMatch(new RegExp(`^\\d+\\.\\d+\\.\\d+/${PDFNATIVE_MCP_VERSION.replace(/\./g, '\\.')}$`));
+        expect(entry.apiVersion).toMatch(new RegExp(`^\\d+\\.\\d+\\.\\d+/${escapeRegExp(PDFNATIVE_MCP_VERSION)}$`));
+    });
+
+    it('namespaces the key by the font sandbox fingerprint, so a face replaced on disk is never served from an earlier render', async () => {
+        // No operator font: the namespace is the bare version pair.
+        expect(cacheNamespace()).toMatch(new RegExp(`^\\d+\\.\\d+\\.\\d+/${escapeRegExp(PDFNATIVE_MCP_VERSION)}$`));
+        const fontDir = mkdtempSync(join(tmpdir(), 'pdfnative-cache-fonts-'));
+        try {
+            const mod = (await importFontModule('noto-polish-data.js')) as { ttfBase64: string };
+            const ttf = Buffer.from(mod.ttfBase64, 'base64');
+            writeFileSync(join(fontDir, 'brand.ttf'), ttf);
+            loadCustomFonts({ [FONT_DIR_ENV]: fontDir });
+            const tagged = cacheNamespace();
+            expect(tagged.endsWith(customFontCacheTag())).toBe(true);
+            expect(tagged).toMatch(/\/fonts:[0-9a-f]{12}$/);
+            // The same call under the two namespaces produces two cache entries, never one hit.
+            const first = await callToolDirect('generate_basic_pdf', { ...DOC, font: 'brand' });
+            expect(first.isError).not.toBe(true);
+            writeFileSync(join(fontDir, 'brand.ttf'), Buffer.concat([ttf, Buffer.from([0])]));
+            loadCustomFonts({ [FONT_DIR_ENV]: fontDir });
+            expect(cacheNamespace()).not.toBe(tagged);
+            const second = await callToolDirect('generate_basic_pdf', { ...DOC, font: 'brand' });
+            expect((second._meta as Record<string, unknown> | undefined)?.['cached']).toBeUndefined();
+            expect(readdirSync(cacheDir).filter((f) => f.endsWith('.json'))).toHaveLength(2);
+        } finally {
+            __resetCustomFonts();
+            rmSync(fontDir, { recursive: true, force: true });
+        }
     });
 
     it('never caches sign_pdf (wall-clock signingTime, key material) even with a pinned signingTime', async () => {
@@ -79,5 +109,27 @@ describe('response cache policy', () => {
             delete process.env['PDFNATIVE_MCP_OUTPUT_DIR'];
             rmSync(outDir, { recursive: true, force: true });
         }
+    });
+});
+
+describe('response cache policy — protected documents (1.8.0)', () => {
+    it('never caches a call carrying `password`: the secret never feeds a key and the protected content never lands on disk', async () => {
+        const pdf = (await generateBasicPdf(DOC)).base64!;
+        const encrypted = await callToolDirect('encrypt_pdf', { pdfBase64: pdf, ownerPassword: 'owner-secret', userPassword: 'open-me' });
+        expect(encrypted.isError).not.toBe(true);
+        const protectedBase64 = (encrypted.content.find((c) => c.type === 'resource') as { resource: { blob: string } }).resource.blob;
+        const before = readdirSync(cacheDir).filter((f) => f.endsWith('.json')).length;
+
+        for (const tool of ['inspect_pdf', 'extract_text', 'read_form_fields']) {
+            const first = await callToolDirect(tool, { pdfBase64: protectedBase64, password: 'open-me' });
+            expect(first.isError, tool).not.toBe(true);
+            const second = await callToolDirect(tool, { pdfBase64: protectedBase64, password: 'open-me' });
+            expect((second._meta as Record<string, unknown> | undefined)?.['cached'], tool).toBeUndefined();
+        }
+        expect(readdirSync(cacheDir).filter((f) => f.endsWith('.json'))).toHaveLength(before);
+        // The same read without a password (an unprotected document) is cached as before.
+        await callToolDirect('inspect_pdf', { pdfBase64: pdf });
+        const hit = await callToolDirect('inspect_pdf', { pdfBase64: pdf });
+        expect((hit._meta as Record<string, unknown>)['cached']).toBe(true);
     });
 });

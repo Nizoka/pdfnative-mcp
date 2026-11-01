@@ -8,10 +8,10 @@
 
 ## Overview
 
-MCP server bridging pdfnative 1.8.0 (pinned `^1.8.0`) to AI clients over stdio or Streamable
+MCP server bridging pdfnative 1.9.0 (pinned `^1.9.0`) to AI clients over stdio or Streamable
 HTTP, on the MCP TypeScript SDK v2 (`@modelcontextprotocol/server`, MCP
-2026-07-28 with automatic 2025-era fallback). 28 tools, 7 prompts, 47 error codes, 27 Unicode scripts.
-Current release 1.7.0 (`TOOL_API_VERSION` 1.7.0). Three runtime dependencies (pdfnative, the MCP SDK, zod) — never add one.
+2026-07-28 with automatic 2025-era fallback). 28 tools, 7 prompts, 48 error codes, 32 Unicode scripts.
+Current release 1.8.0 (`TOOL_API_VERSION` 1.8.0). Three runtime dependencies (pdfnative, the MCP SDK, zod) — never add one.
 Quality bar: production-grade OSS (strict TypeScript, strong validation, secure
 file IO, no egress except operator-configured TSA / OCSP / CRL endpoints,
 reproducible output, deterministic releases). Faithful thin wrapper: every PDF feature lives in
@@ -29,27 +29,30 @@ the engine; never reimplement one, never over-promise (state engine limits in th
   generate_basic_pdf block schema + layout fragment.
 - src/network.ts — the only egress path: operator-configured TSA / OCSP / CRL providers + SSRF guard; URLs never come from tool arguments.
 - src/blocks.ts — the 7 extended document blocks (table, image, link, toc, barcode, svg, formField) → 13 block kinds in total.
-- src/layout.ts — pageSize / margins / headerTemplate / footerTemplate / compress / debug / encrypt / typography fragment shared by the nine document tools.
+- src/layout.ts — pageSize / margins / headerTemplate / footerTemplate / direction / actualText / compress / debug / encrypt / typography fragment shared by the nine document tools (every tool forwards every key).
 - src/typography.ts — the opt-in `typography` fragment (12 keys, all off by default; no hyphenation dictionary is installed).
-- src/color.ts — shared colour fragment: hex / RGB plus CMYK operand strings (0–1) and percent tuples (0–100); `toEngineColor()`.
-- src/print.ts — shared print-production schema (boxes, bleed, marks + colour bars, userUnit, outputIntent RGB / CMYK / Gray, metadata, creationDate).
-- src/pdfx.ts, src/pdfa.ts — conformance targets from the engine's own tuples; static PDF/X conflicts refused as `VALIDATION_ERROR` before the build.
+- src/color.ts — shared colour fragment: hex / RGB plus CMYK operand strings (0–1) and percent tuples (0–100), spot colours `{ spot, tint }` and ink mixes `{ inks }` over `print.spotColours` (46 sites); `toEngineColor()`.
+- src/print.ts — shared print-production schema (boxes, bleed, marks + colour bars, userUnit, spotColours, outputIntent RGB / CMYK / Gray, metadata, creationDate).
+- src/pdfx.ts, src/pdfa.ts — conformance targets from the engine's own tuples; static PDF/X conflicts refused as `VALIDATION_ERROR` before the build (pdfx + pdfa2b / pdfa2u is the dual claim; pdfa1b / pdfa3b never).
 - src/reproducible.ts — operator pin of the creation instant (`PDFNATIVE_MCP_CREATION_DATE`, then `SOURCE_DATE_EPOCH`); read once at boot.
-- src/diagnostics.ts — diagnostics sink (`strict` / `includeDiagnostics` / `embedFonts`), `escalate()` by diagnostic code, `mapBuildError`.
+- src/diagnostics.ts — diagnostics sink (`strict` / `includeDiagnostics` / `embedFonts`), `escalate()` by diagnostic code (13 codes, a compile-time witness), `mapBuildError`.
+- src/font-dir.ts — PDFNATIVE_MCP_FONT_DIR: operator fonts parsed by the engine at boot, named with the `font` input (FONT_NOT_FOUND).
+- src/governance-embed.ts — the contract as resources (generated); src/fuzz-surface.ts — the door the fuzz targets use.
 - src/table.ts, src/barcode.ts, src/form.ts, src/image.ts — bodies shared by a dedicated tool and its inline block
-  (image.ts checks magic bytes + PNG IHDR, 24 MiB per-call budget; embed_image stays unbounded).
+  (image.ts checks magic bytes — JPEG, PNG, JPEG 2000 — + PNG IHDR, 24 MiB per-call budget; embed_image stays unbounded).
 - src/watermark.ts — text and/or image watermark + position; PDF/A-1b transparency guard.
 - src/inflate-cap.ts — PDFNATIVE_MCP_MAX_INFLATE_BYTES → engine decompression cap (read once at boot; invalid value refuses to start).
 - src/encryption.ts — shared password/encrypt schema + decrypt error mapper.
 - src/chart.ts — shared charts v2 schema + mapper (add_chart and the generate_basic_pdf chart block).
 - src/projection.ts — token-frugal responses (`verbosity: 'summary'`, `fields`); src/cache.ts — opt-in response cache.
-- src/resources.ts — native MCP resources over the sandbox output dir (pdfnative://output/…).
-- src/output.ts — output mode (base64 or sandboxed file write); src/text.ts — newline sanitizer; src/errors.ts — ToolError, SecurityError, GovernanceError.
+- src/resources.ts — native MCP resources: the governance contract (pdfnative://governance/policy, /rules — always listed) and the sandbox output dir (pdfnative://output/…).
+- src/output.ts — output mode (base64 or sandboxed file write; `url` when PDFNATIVE_MCP_OUTPUT_BASE_URL maps the sandbox); src/text.ts — newline sanitizer; src/errors.ts — ToolError, SecurityError, GovernanceError.
 - scripts/* — TypeScript run by tsx: gate.ts, generate-samples.ts + verify-samples.ts (byte baseline), generate-pdfa-corpus.ts +
-  validate-pdfa.ts / validate-pdfx.ts (conformance corpus), tool-shape.ts, verify-docs.ts, release-prepare.ts, build-claude-rules.ts. See scripts/README.md.
+  validate-pdfa.ts / validate-pdfx.ts (conformance corpus), tool-shape.ts, verify-docs.ts, release-prepare.ts, build-claude-rules.ts, build-governance-embed.ts. See scripts/README.md.
+- fuzz/*.js + .clusterfuzzlite/ — the five ClusterFuzzLite targets over the boundary and the build image (the Jazzer.js engine is pinned in .clusterfuzzlite/engine/, never a dependency); tests/fuzzing/ seeds and proves them locally.
 - tests/* — vitest, one `*.test.ts` per tool or module; `_`-prefixed shared fixtures; tests/_fixtures/ (tool shape, sample baseline,
-  engine-surface matrix, build-error registry); tests/tools/ (repository tooling). Never regenerate tests/_fixtures/tool-shape.v1.5.0.json.
-- examples/*.json — executable `tools/call` sequences (43), run by `npm run examples:check` and rendered into the sample baseline.
+  engine-surface matrix, build-error registry, pack manifest); tests/tools/ (repository tooling). Never regenerate tests/_fixtures/tool-shape.v1.5.0.json.
+- examples/*.json — executable `tools/call` sequences (51, indexed in examples/README.md), run by `npm run examples:check` and rendered into the sample baseline.
 
 ## Core conventions
 
@@ -68,22 +71,23 @@ the engine; never reimplement one, never over-promise (state engine limits in th
 - Never write outside PDFNATIVE_MCP_OUTPUT_DIR. For outputMode=file: reject absolute
   paths, path traversal, NUL bytes; enforce `.pdf`.
 - Never echo key/cert material, passwords, PDFNATIVE_MCP_TSA_AUTH or
-  PDFNATIVE_MCP_HTTP_TOKEN in errors or logs; never cache secret-, time- or network-dependent results.
+  PDFNATIVE_MCP_HTTP_TOKEN in errors or logs; never cache secret-, time- or network-dependent results (any call carrying `encrypt` or `password` included).
 - Never add a network path outside src/network.ts; never accept a URL or an absolute path from a tool argument.
-- Operator env vars (12, read once at boot, declared in server.json, an invalid value refuses to start):
-  PDFNATIVE_MCP_OUTPUT_DIR, PDFNATIVE_MCP_CACHE_DIR, PDFNATIVE_MCP_PORT,
+- Operator env vars (14, read once at boot, declared in server.json, an invalid value refuses to start):
+  PDFNATIVE_MCP_OUTPUT_DIR, PDFNATIVE_MCP_OUTPUT_BASE_URL, PDFNATIVE_MCP_FONT_DIR, PDFNATIVE_MCP_CACHE_DIR, PDFNATIVE_MCP_PORT,
   PDFNATIVE_MCP_HTTP_TOKEN, PDFNATIVE_MCP_MAX_INFLATE_BYTES, PDFNATIVE_MCP_TSA_URL,
   PDFNATIVE_MCP_TSA_AUTH, PDFNATIVE_MCP_REVOCATION, PDFNATIVE_MCP_NETWORK_ALLOWED_HOSTS,
   PDFNATIVE_MCP_NETWORK_TIMEOUT_MS, PDFNATIVE_MCP_CREATION_DATE, SOURCE_DATE_EPOCH.
 - Honest limits: PDF/X validation is structural, not a certified preflight; no ICC press profile is bundled; `kerning` / `fontFeatures` /
-  the `'fr'` narrow space need `embedFonts: true`; Tai Tham (`nod`) uses `pdfa2b`, not `pdfa2u`.
-- `npm run lint` is `eslint src --max-warnings 0` — warnings fail the gate. CI runs the gate on Linux (Node 22 / 24), Windows and macOS; all five jobs are required checks.
+  the `'fr'` narrow space need `embedFonts: true`; pinned upstream limits: a Thai above vowel + tone mark pair extracts in geometric order (untagged),
+  a non-Latin-1 form value does not round-trip under `nonWinAnsi: needAppearances`.
+- `npm run lint` is `eslint src --max-warnings 0` — warnings fail the gate. CI runs the gate on Linux (Node 22 / 24), Windows and macOS plus the workflow lint; all six are required checks; Node 26 and the fuzzers are advisory.
 
 ## Quality gate (all PRs)
 
 `npm run gate` is THE quality gate (`scripts/gate.ts`; the step list is its `STEPS` table; logs in `test-output/.gate/<step>.log`).
 Profiles: `npm run gate:fast` (typecheck:all, lint, test, server-json, verify:docs) before every commit; `npm run gate` is the CI
-profile (adds build, dist-check, dist-probe, smoke, verify:tool-shape, test:generate, test:coverage, verify:samples, corpus:pdfa,
+profile (adds build, dist-check, dist-probe, smoke, verify:tool-shape, pack-manifest, test:generate, test:coverage, verify:samples, corpus:pdfa,
 validate:pdfx); `npx tsx scripts/gate.ts --publish --require-all` on release branches adds validate:pdfa (veraPDF 1.30.2, blocking in CI;
 `--require-all` fails on a skip). PowerShell swallows a bare `--` after `npm run`: call `npx tsx scripts/gate.ts --fast` there.
 Drive the **built** server (`node dist/cli.js`, stdio) before claiming a change works. Coverage thresholds live once in
@@ -92,7 +96,7 @@ Drive the **built** server (`node dist/cli.js`, stdio) before claiming a change 
 
 ## Generated files — regenerate, never hand-edit
 
-`.claude/rules/*.md` (`npm run agents:rules`, from `.github/instructions/*.instructions.md`), `tests/_fixtures/tool-shape.json`
+`.claude/rules/*.md` (`npm run agents:rules`, from `.github/instructions/*.instructions.md`), `src/governance-embed.ts` (`npm run agents:governance`), `tests/_fixtures/tool-shape.json`
 (`npx tsx scripts/tool-shape.ts --write`), `tests/_fixtures/samples.sha256.json` (`npx tsx scripts/verify-samples.ts --update`, only with a
 rebaseline declared in the release note), `dist/`, `coverage/`, `test-output/`, `package-lock.json`.
 
@@ -102,7 +106,7 @@ rebaseline declared in the release note), `dist/`, `coverage/`, `test-output/`, 
 - release-notes/vX.Y.Z.md is mandatory; CHANGELOG.md mirrors it; the Upgrade section declares every output change and rebaseline.
 - The PR body is drafted at `.github/drafts/pr-vX.Y.Z.md` from `release-notes/PR_TEMPLATE.md`.
 - GitHub Release title: `vX.Y.Z - short description`.
-- npm publish via GitHub Actions Trusted Publishing (OIDC), no NPM_TOKEN.
+- npm publish via GitHub Actions Trusted Publishing (OIDC), no NPM_TOKEN; the same workflow attests the registry bytes and publishes server.json to the MCP registry (guard → build → publish → attest → registry).
 - Human-in-the-loop: agents draft and verify; the maintainer pushes, opens PRs / issues, tags and publishes
   (`.github/AGENT_RULES.md`). No `Co-Authored-By` trailer.
 
@@ -116,4 +120,4 @@ quality:
 - Keep replies concise: no preambles, no change-summary essays, no new markdown
   docs unless asked. Let the diff speak.
 - Reuse the scoped `.github/instructions/*.md` rather than re-deriving conventions.
-- Never read `dist/`, `coverage/`, `test-output/`, `node_modules/`, `package-lock.json`; `tools/list` is about 300 kB — project it, never print it.
+- Never read `dist/`, `coverage/`, `test-output/`, `node_modules/`, `package-lock.json`, `.clusterfuzzlite/engine/package-lock.json`; `tools/list` is about 350 kB — project it, never print it.

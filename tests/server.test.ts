@@ -25,7 +25,7 @@ describe('server', () => {
 
     it('exposes stable metadata', () => {
         expect(__serverMetadata.name).toBe('pdfnative-mcp');
-        expect(__serverMetadata.version).toBe('1.7.0');
+        expect(__serverMetadata.version).toBe('1.8.0');
     });
 
     it('advertises a human-readable title and description in serverInfo (MCP Implementation)', () => {
@@ -37,10 +37,22 @@ describe('server', () => {
         expect(__serverMetadata.description).toMatch(/28 tools/);
     });
 
-    it('SERVER_INSTRUCTIONS advertises decision tree and pitfalls for AI clients', () => {
-        expect(__serverInstructions).toMatch(/pdfnative.*v1\.8/);
-        expect(__serverInstructions).toContain('Tool API 1.7.0');
+    it('SERVER_INSTRUCTIONS advertises decision tree and pitfalls for AI clients', async () => {
+        // The engine line and the tool API version are derived, never typed: 1.8.0 was
+        // prepared with "pdfnative v1.8 … Tool API 1.7.0" still in the text and a test
+        // pinning those very literals.
+        const pkg = JSON.parse(await fs.readFile(path.resolve(__dirname, '..', 'package.json'), 'utf8')) as { dependencies: { pdfnative: string } };
+        const engineLine = pkg.dependencies.pdfnative.replace(/^[\^~]/, '').split('.').slice(0, 2).join('.');
+        const { tools } = await rpc<{ tools: Array<{ _meta?: { apiVersion?: string } }> }>('tools/list');
+        const apiVersion = tools[0]?._meta?.apiVersion;
+        expect(apiVersion).toMatch(/^\d+\.\d+\.\d+$/);
+        expect(__serverInstructions).toContain(`pdfnative v${engineLine} PDF engine`);
+        expect(__serverInstructions).toContain(`Tool API ${apiVersion}`);
         expect(__serverInstructions).toContain('MCP 2026-07-28');
+        // Every 1.8.0 behaviour an agent cannot guess from a schema alone is named.
+        for (const needle of ['print.spotColours', "direction:'auto'", 'PDFNATIVE_MCP_FONT_DIR', 'FONT_NOT_FOUND', "pdfA:'pdfa2b' | 'pdfa2u'", 'image/jp2', 'link with url', "onStreamError:'skip' | 'throw'", 'pdfnative://governance/policy', 'PDFNATIVE_MCP_OUTPUT_BASE_URL']) {
+            expect(__serverInstructions).toContain(needle);
+        }
         expect(__serverInstructions).toContain('NETWORK POLICY');
         expect(__serverInstructions).toContain('DECISION TREE');
         expect(__serverInstructions).toContain('COMMON PITFALLS');
@@ -131,7 +143,7 @@ describe('server', () => {
 
         // Every tool advertises _meta.apiVersion and at least one example.
         for (const t of response.tools) {
-            expect(t._meta?.apiVersion).toBe('1.7.0');
+            expect(t._meta?.apiVersion).toBe('1.8.0');
             expect(Array.isArray(t._meta?.examples)).toBe(true);
             expect((t._meta?.examples ?? []).length).toBeGreaterThan(0);
         }
@@ -282,10 +294,10 @@ describe('server', () => {
     });
 
     it('advertises the MCP resources capability with list, read and templates handlers', async () => {
-        // With no sandbox configured, listing is empty (stateless, safe default).
+        // With no sandbox configured, only the two static governance resources are listed (no output entry).
         delete process.env[OUTPUT_ENV];
-        const res = await rpc<{ resources: unknown[] }>('resources/list');
-        expect(res.resources).toEqual([]);
+        const res = await rpc<{ resources: Array<{ uri: string }> }>('resources/list');
+        expect(res.resources.map((r) => r.uri)).toEqual(['pdfnative://governance/policy', 'pdfnative://governance/rules']);
         const templates = await rpc<{ resourceTemplates: unknown[] }>('resources/templates/list');
         expect(Array.isArray(templates.resourceTemplates)).toBe(true);
         // Spec 2026-07-28: resource-not-found is -32602 (Invalid params) on every revision.

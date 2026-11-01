@@ -1,10 +1,12 @@
 /**
- * Shared conformance-diagnostics plumbing (pdfnative ≥ 1.7; nine codes since 1.8).
+ * Shared conformance-diagnostics plumbing (pdfnative ≥ 1.7; nine codes since 1.8, thirteen since 1.9).
  *
  * pdfnative surfaces configurations that would break a declared PDF/A or
  * PDF/X claim (no embedded fonts, unembedded AcroForm fonts, DeviceCMYK
- * content, an ICC profile too new for the level, annotations on a print page)
- * — and typography requests that cannot take effect — as *diagnostics*: by
+ * content, an ICC profile too new for the level, annotations on a print page,
+ * a JPEG 2000 image under PDF/A-1 or with an opacity channel, a glyph a
+ * level-U ToUnicode CMap cannot name) — typography requests that cannot take
+ * effect, and characters no registered font covers — as *diagnostics*: by
  * default it `console.warn`s once per code, `strict: true` throws before any
  * bytes are produced, and an `onDiagnostic` sink receives every one of them.
  *
@@ -25,6 +27,7 @@ import { z } from 'zod';
 
 import { ToolError } from './errors.js';
 import { importFontModule } from './fonts.js';
+import { throwIfInflateCapError } from './inflate-cap.js';
 
 /** Diagnostic as echoed to MCP clients (mirrors pdfnative's `PdfDiagnostic`). */
 export interface ToolDiagnostic {
@@ -49,6 +52,11 @@ const DIAGNOSTIC_CODE_TABLE: Record<PdfDiagnosticCode, true> = {
     PDFX_DEVICE_CMYK: true,
     PDFX_ANNOTATIONS: true,
     TYPOGRAPHY_FEATURE_INEFFECTIVE: true,
+    // pdfnative 1.9.0
+    PDFA1_JPX_IMAGE: true,
+    PDFA_JPX_IMAGE: true,
+    PDFA_GLYPH_WITHOUT_UNICODE: true,
+    TEXT_GLYPH_NOT_COVERED: true,
 };
 export const DIAGNOSTIC_CODES = Object.keys(DIAGNOSTIC_CODE_TABLE) as readonly PdfDiagnosticCode[];
 
@@ -58,13 +66,13 @@ export const DIAGNOSTIC_INPUT_PROPERTIES = {
         type: 'boolean',
         default: false,
         description:
-            "Fail instead of producing a file the engine warns about: a PDFA_* diagnostic → PDF_A_COMPLIANCE_VIOLATION (e.g. PDFA_NO_FONT_ENTRIES without embedFonts), a PDFX_* one → PDF_X_COMPLIANCE_VIOLATION, any other → DIAGNOSTIC_ESCALATED. Pair with embedFonts=true.",
+            "Fail instead of producing a file the engine warns about: a PDFA_* diagnostic → PDF_A_COMPLIANCE_VIOLATION (e.g. PDFA_NO_FONT_ENTRIES without embedFonts), a PDFX_* one → PDF_X_COMPLIANCE_VIOLATION, any other (TYPOGRAPHY_FEATURE_INEFFECTIVE, TEXT_GLYPH_NOT_COVERED — a character no font covers, drawn as a box or '?') → DIAGNOSTIC_ESCALATED. Pair with embedFonts=true.",
     },
     includeDiagnostics: {
         type: 'boolean',
         default: false,
         description:
-            'Return the diagnostics raised while building (PDFA_*, PDFX_*, TYPOGRAPHY_*) as `diagnostics[]` (possibly empty).',
+            'Return the diagnostics raised while building (PDFA_*, PDFX_*, TYPOGRAPHY_*, TEXT_GLYPH_NOT_COVERED) as `diagnostics[]` (possibly empty).',
     },
     embedFonts: {
         type: 'boolean',
@@ -114,7 +122,8 @@ export interface DiagnosticCollector {
  * also says "conformance").
  */
 export function escalate(d: PdfDiagnostic): ToolError {
-    if (d.code.startsWith('PDFA_')) return new ToolError('PDF_A_COMPLIANCE_VIOLATION', d.message);
+    // `PDFA_*` and the level-specific `PDFA1_*` (1.9.0) are both PDF/A claims.
+    if (/^PDFA\d*_/.test(d.code)) return new ToolError('PDF_A_COMPLIANCE_VIOLATION', d.message);
     if (d.code.startsWith('PDFX_')) return new ToolError('PDF_X_COMPLIANCE_VIOLATION', d.message);
     return new ToolError('DIAGNOSTIC_ESCALATED', `[${d.code}] ${d.message}`);
 }
@@ -183,6 +192,18 @@ export function mapBuildError(err: unknown, toolName: string): ToolError {
     }
     if (bare.startsWith('typography.')) {
         return new ToolError('VALIDATION_ERROR', bare);
+    }
+    // Spot colours (1.9.0): an ink painted without a declaration in print.spotColours,
+    // or a mix over inks whose alternates disagree — argument errors naming the ink.
+    if (bare.startsWith('Spot colour ') || bare.startsWith('Ink mix ') || bare.startsWith('Unknown annotation type')) {
+        return new ToolError('VALIDATION_ERROR', bare);
+    }
+    // A decode filter over its cap (PdfStreamLimitError, 1.9.0) — the same coded
+    // failure the reading tools raise, with the operator remedy.
+    try {
+        throwIfInflateCapError(err);
+    } catch (capped) {
+        return capped as ToolError;
     }
     // Defence in depth: `strict` is classified by escalate() and no longer reaches
     // the engine, and the PDF/A conflicts are refused before the build

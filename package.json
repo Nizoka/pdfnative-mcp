@@ -1,7 +1,7 @@
 {
     "name": "pdfnative-mcp",
-    "version": "1.7.0",
-    "description": "Model Context Protocol (MCP) server for PDF: generate PDF/A and PDF/X-4 documents with tables, images, charts, barcodes, SVG and forms, fine typography, CMYK colours and 27 Unicode scripts; sign and verify PAdES signatures (B-B to B-LTA, RFC 3161, OCSP/CRL); fill AcroForms; merge, split, encrypt; extract text; preview layout; byte-reproducible output. 28 tools on the pdfnative engine, no network by default, for Claude, Cursor, ChatGPT and any MCP client.",
+    "version": "1.8.0",
+    "description": "Model Context Protocol (MCP) server for PDF: generate PDF/A and PDF/X-4 documents (dual claim) with tables, images (JPEG, PNG, JPEG 2000), charts, barcodes, SVG and forms, fine typography, right-to-left text, 32 Unicode scripts, CMYK and spot colours, custom fonts; sign and verify PAdES signatures (B-B to B-LTA, RFC 3161, OCSP/CRL); fill AcroForms; merge, split, encrypt; annotate with links; extract text; preview layout; byte-reproducible output. 28 tools on the pdfnative engine, no network by default, fuzzed and attested, for Claude, Cursor, ChatGPT, VS Code, llama.cpp and any MCP client.",
     "mcpName": "io.github.Nizoka/pdfnative-mcp",
     "keywords": [
         "mcp",
@@ -80,7 +80,39 @@
         "chatgpt",
         "llm",
         "agent-tools",
-        "typescript"
+        "typescript",
+        "jpeg-2000",
+        "jpx",
+        "spot-colors",
+        "spot-colours",
+        "separation",
+        "devicen",
+        "rtl",
+        "bidi",
+        "arabic",
+        "hebrew",
+        "indic",
+        "gujarati",
+        "gurmukhi",
+        "kannada",
+        "malayalam",
+        "odia",
+        "link-annotation",
+        "custom-fonts",
+        "pdf-ua-1",
+        "openssf-scorecard",
+        "slsa",
+        "sbom",
+        "provenance",
+        "fuzzing",
+        "llama-cpp",
+        "ollama",
+        "vscode",
+        "copilot",
+        "windsurf",
+        "cline",
+        "gemini-cli",
+        "zero-dependency"
     ],
     "homepage": "https://github.com/Nizoka/pdfnative-mcp#readme",
     "bugs": {
@@ -99,7 +131,8 @@
         ".": {
             "types": "./dist/index.d.ts",
             "import": "./dist/index.js"
-        }
+        },
+        "./package.json": "./package.json"
     },
     "bin": {
         "pdfnative-mcp": "./dist/cli.js"
@@ -143,22 +176,23 @@
         "release:prepare": "npx tsx scripts/release-prepare.ts",
         "hooks:install": "node scripts/install-git-hooks.mjs",
         "hooks:uninstall": "node scripts/install-git-hooks.mjs --uninstall",
-        "prepublishOnly": "npm run build"
+        "prepublishOnly": "npm run build",
+        "agents:governance": "npx tsx scripts/build-governance-embed.ts"
     },
     "dependencies": {
-        "@modelcontextprotocol/server": "^2.0.0",
-        "pdfnative": "^1.8.0",
-        "zod": "^4.2.0"
+        "@modelcontextprotocol/server": "^2.4.0",
+        "pdfnative": "^1.9.0",
+        "zod": "^4.6.0"
     },
     "devDependencies": {
         "@eslint/js": "^9.18.0",
-        "@types/node": "^22.10.5",
-        "@vitest/coverage-v8": "^4.1.11",
+        "@types/node": "^22.20.4",
+        "@vitest/coverage-v8": "^4.1.12",
         "eslint": "^9.18.0",
         "tsx": "^4.22.4",
         "typescript": "^5.7.3",
         "typescript-eslint": "^8.20.0",
-        "vitest": "^4.1.11"
+        "vitest": "^4.1.12"
     },
     "packageManager": "npm@10.9.2",
     "overrides": {

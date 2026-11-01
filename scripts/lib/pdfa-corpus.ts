@@ -33,10 +33,11 @@ import { join } from 'node:path';
 import { TEST_OUTPUT_DIR } from '../helpers/io.js';
 import { buildRsaSelfSignedCert } from './corpus-cert.js';
 import { buildMinimalRgbIccProfile, buildSyntheticCmykProfile, buildSyntheticGrayProfile, iccBase64 } from './synthetic-icc.js';
+import { jp2Base64 } from './jpx.js';
 
 export const OUT_DIR = join(TEST_OUTPUT_DIR, 'pdfa');
 
-export type Claim = 'pdfa' | 'pdfx' | 'none';
+export type Claim = 'pdfa' | 'pdfx' | 'both' | 'none';
 
 export interface CorpusContext {
     /** Base64 bytes of an earlier entry, by file name. Throws when it has not been produced yet. */
@@ -635,14 +636,73 @@ export const CORPUS: readonly CorpusEntry[] = [
     {
         file: 'international-pdfa2u-taitham.pdf',
         tool: 'add_international_text',
-        // KNOWN UPSTREAM LIMIT (pdfnative 1.8.0): a Tai Tham glyph produced by the Universal
-        // Shaping Engine has no ToUnicode entry, so level U fails ISO 19005-2 6.2.11.7.2 ("the
-        // glyph can not be mapped to Unicode") — and the engine raises no diagnostic. Kept as a
-        // tracked expectation rather than dropped: the run turns XPASS (fatal) the day the engine
-        // maps the glyph, forcing this flag to be flipped deliberately. Use pdfa2b for Tai Tham.
-        expectCompliant: false,
+        // Was a negative canary at 1.8.0 (a Tai Tham glyph of the Universal Shaping Engine had
+        // no ToUnicode entry, so level U failed ISO 19005-2 6.2.11.7.2). pdfnative 1.9.0 names
+        // every shaper's glyphs (#87): the run turned XPASS on the first 1.9.0 validation and the
+        // flag was flipped deliberately — Tai Tham conforms at level U now.
         produce: (ctx) =>
-            ctx.produce('add_international_text', { title: 'Corpus — PDF/A-2u Tai Tham (upstream limit)', pdfA: 'pdfa2u', lang: ['nod', 'latin'], paragraphs: ['Tai Tham — ᨣᩤᩴᨾᩮᩬᩥᨦ'] }),
+            ctx.produce('add_international_text', { title: 'Corpus — PDF/A-2u Tai Tham', pdfA: 'pdfa2u', lang: ['nod', 'latin'], paragraphs: ['Tai Tham — ᨣᩤᩴᨾᩮᩬᩥᨦ'] }),
+    },
+    // ── pdfnative 1.9.0: five Indic scripts, JPEG 2000, spot colours, the dual claim ──
+    {
+        file: 'international-pdfa2u-indic-1-9.pdf',
+        tool: 'add_international_text',
+        // Gujarati, Gurmukhi, Kannada, Malayalam and Odia on the Indic engine, level U: every
+        // shaped glyph — split vowel signs, chillus, a sentence-final danda — carries its code point.
+        produce: (ctx) =>
+            ctx.produce('add_international_text', {
+                title: 'Corpus — PDF/A-2u Gujarati, Gurmukhi, Kannada, Malayalam, Odia',
+                pdfA: 'pdfa2u',
+                lang: ['gu', 'pa', 'kn', 'ml', 'or', 'latin'],
+                paragraphs: ['Gujarati — નમસ્તે દુનિયા', 'Gurmukhi — ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ਦੁਨੀਆ।', 'Kannada — ನಮಸ್ಕಾರ ಜಗತ್ತು', 'Malayalam — നമസ്കാരം ലോകം, അവന്‍ അവൻ', 'Odia — ନମସ୍କାର ବିଶ୍ୱ, ବୈଠକ।'],
+            }),
+    },
+    {
+        file: 'jpx-pdfa2b.pdf',
+        tool: 'embed_image',
+        // JPEG 2000 passed through as /JPXDecode: PDF/A-2 accepts it (ISO 19005-2 6.2.8.3 — 3
+        // colour channels, no opacity channel); the image is never decoded by the engine.
+        produce: (ctx) =>
+            ctx.produce('embed_image', { title: 'Corpus — PDF/A-2b JPEG 2000', imageBase64: jp2Base64(3), mimeType: 'image/jp2', width: 60, caption: 'An RGB JPEG 2000 image.', alt: 'A flat grey square', pdfA: 'pdfa2b', ...EMBED }),
+    },
+    // No `jpx-pdfa1b.pdf` negative canary: ISO 19005-1 6.1.10 leaves JPXDecode out of PDF 1.4,
+    // and the engine raises PDFA1_JPX_IMAGE (tests/_diagnostic-triggers.ts), but veraPDF 1.30.2's
+    // PDF/A-1b profile tests only LZWDecode under that clause and accepts the file — an XPASS
+    // would make the whole run untrusted. Tracked in the 1.8.0 release note.
+    {
+        file: 'spot-colours-pdfa2b-cmyk-intent.pdf',
+        tool: 'generate_basic_pdf',
+        // A /Separation ink and a /DeviceN mix over declared inks, under a CMYK printing
+        // condition: the alternates are CMYK, which the OutputIntent characterises.
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
+                title: 'Corpus — PDF/A-2b spot colours under a CMYK OutputIntent',
+                pdfA: 'pdfa2b',
+                outputIntent: CMYK_INTENT,
+                print: { spotColours: [{ name: 'Brand Blue', alternate: [100, 60, 0, 10] }, { name: 'Varnish', alternate: [0, 0, 0, 15] }] },
+                headerTemplate: { left: 'Spot colours', color: { spot: 'Brand Blue' } },
+                blocks: [
+                    { type: 'heading', text: 'Two plates', level: 1 },
+                    { type: 'table', headers: ['Plate', 'Space'], rows: [['Brand Blue 40 %', '/Separation']], cellBorders: { all: true, color: { spot: 'Brand Blue', tint: 0.4 } } },
+                    { type: 'table', headers: ['Mix', 'Space'], rows: [['Brand Blue + Varnish', '/DeviceN']], cellBorders: { all: true, color: { inks: { 'Brand Blue': 1, Varnish: 0.3 } } } },
+                ],
+                ...EMBED,
+            }),
+    },
+    {
+        file: 'pdfx4-pdfa2b-dual.pdf',
+        tool: 'generate_basic_pdf',
+        claims: 'both',
+        // The dual claim: PDF/X-4 (validate:pdfx, by the GTS_PDFXVersion it carries) and PDF/A-2b
+        // (veraPDF, by its pdfaid) in one file.
+        produce: (ctx) =>
+            ctx.produce('generate_basic_pdf', {
+                title: 'Corpus — PDF/X-4 + PDF/A-2b dual claim',
+                pdfA: 'pdfa2b',
+                ...PDFX,
+                print: { bleed: 8.5 },
+                blocks: [{ type: 'heading', text: 'One file, two claims', level: 1 }, { type: 'paragraph', text: PARAGRAPHS[0] }],
+            }),
     },
     {
         file: 'cmyk-content-srgb-pdfa2b.pdf',

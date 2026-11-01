@@ -12,9 +12,10 @@
  *     exist on this server. Soft hyphens (U+00AD) in the text ARE honoured.
  *
  * Engine facts worth stating in the schema, because an agent cannot guess them:
- *   - `kerning`, `fontFeatures` and the `'fr'` narrow no-break space need an
- *     embedded font (`embedFonts: true`, or add_international_text); base-14
- *     Helvetica has no GPOS / GSUB and no U+202F, and degrades to `'fr-CA'`.
+ *   - `kerning` and `fontFeatures` need an embedded font (`embedFonts: true`,
+ *     or add_international_text); base-14 Helvetica has no GPOS / GSUB. The
+ *     `'fr'` narrow no-break space is written on base-14 too since pdfnative
+ *     1.9 (a `TJ` adjustment of 167/1000 em, engine ledger C10).
  *   - `metrics: 'exact'` acts on base-14 text only.
  *   - `tnum` / `lnum` change nothing on the bundled Noto Sans (its default
  *     figures already are tabular and lining) → TYPOGRAPHY_FEATURE_INEFFECTIVE.
@@ -41,7 +42,7 @@ const PUNCTUATION_RULE_SCHEMA = {
     properties: {
         char: { type: 'string', minLength: 1, maxLength: 2 },
         side: { type: 'string', enum: ['before', 'after'] },
-        space: { type: 'string', enum: ['nbsp', 'narrow'], description: "U+00A0 / U+202F (narrow needs embedFonts)." },
+        space: { type: 'string', enum: ['nbsp', 'narrow'], description: "U+00A0 / U+202F (narrow: a TJ adjustment on base-14, the glyph on an embedded font)." },
     },
 } as const;
 
@@ -54,7 +55,7 @@ export const TYPOGRAPHY_INPUT_SCHEMA = {
     type: 'object',
     additionalProperties: false,
     description:
-        "Fine typography, all opt-in (omitted = unchanged bytes). kerning, fontFeatures and the 'fr' narrow space need embedFonts:true. No hyphenation dictionary is installed: use soft hyphens (U+00AD). See the typography prompt.",
+        "Fine typography, all opt-in (omitted = unchanged bytes). kerning and fontFeatures need embedFonts:true ('fr' works on base-14 too). No hyphenation dictionary is installed: use soft hyphens (U+00AD). See the typography prompt.",
     properties: {
         splitParagraphs: { type: 'boolean', description: 'Paragraphs may break across pages at a line boundary (default: atomic).' },
         orphans: { ...LINE_QUOTA, description: 'Min lines left at a page foot (default 2; needs splitParagraphs).' },

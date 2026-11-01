@@ -59,13 +59,17 @@ export function serializeShape(tools: readonly ListedTool[]): string {
 /**
  * Every shared fragment is inlined in every tool that carries it (no `$ref`,
  * for host compatibility), so the catalogue grows with each fragment:
- * ≈ 108 kB in 1.5.0, ≈ 246 kB in 1.6.0, ≈ 306 kB in 1.7.0. A host forwards
+ * ≈ 108 kB in 1.5.0, ≈ 246 kB in 1.6.0, ≈ 306 kB in 1.7.0, ≈ 353 kB in 1.8.0
+ * (two spot-colour members at each of the 46 colour sites, five new layout /
+ * print options on the nine document tools — budget raised from 320 to 384 KiB
+ * deliberately, docs/API_STABILITY.md §5). A host forwards
  * it to the model on every session, so the growth is budgeted here and the
  * measured figure is held to the manifest (`declared.toolsListBytes`) so the
  * documents quote a number `--check` has seen.
  */
-export const TOOLS_LIST_BUDGET_BYTES = 320 * 1024;
-export const INSTRUCTIONS_BUDGET_BYTES = 8 * 1024;
+export const TOOLS_LIST_BUDGET_BYTES = 384 * 1024;
+/** 8 KiB until 1.8.0; raised when the decision tree gained the 1.9.0 behaviours (≈ 8.4 kB live). */
+export const INSTRUCTIONS_BUDGET_BYTES = 10 * 1024;
 /** `declared.toolsListBytes` may drift this far from the measurement before the manifest must move. */
 export const TOOLS_LIST_TOLERANCE = 0.02;
 

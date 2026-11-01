@@ -1,0 +1,31 @@
+{
+  "description": "Spot colours (pdfnative 1.9.0 through pdfnative-mcp 1.8.0): print.spotColours declares two inks with a process alternate — a brand blue with a CMYK alternate for a press job and a varnish plate — and the document paints them anywhere a colour is accepted: the header rule at { spot } (/Separation, solid), a table border at { spot, tint } and a second table border with an ink mix { inks } (/DeviceN). Each ink becomes a colorant a RIP shows as its own plate; an ink painted without a declaration is refused by name (VALIDATION_ERROR). creationDate pins the bytes.",
+  "tool": "generate_basic_pdf",
+  "arguments": {
+    "title": "Spot colour brochure",
+    "creationDate": "2026-01-15T09:00:00Z",
+    "print": {
+      "spotColours": [
+        { "name": "Brand Blue", "alternate": [100, 60, 0, 10] },
+        { "name": "Varnish", "alternate": [0, 0, 0, 15] }
+      ]
+    },
+    "headerTemplate": { "left": "{title}", "right": "{page}/{pages}", "color": { "spot": "Brand Blue" } },
+    "blocks": [
+      { "type": "heading", "text": "Two plates, one file", "level": 1 },
+      { "type": "paragraph", "text": "The table borders below are painted with a declared spot ink at a 40 % tint, then with a mix of the two inks. The /DeviceN tint transform carries the CMYK alternates, so a proof without the plates still shows the colours." },
+      {
+        "type": "table",
+        "headers": ["Plate", "Colour space"],
+        "rows": [["Brand Blue 40 %", "/Separation, tint 0.4"]],
+        "cellBorders": { "all": true, "width": 1, "color": { "spot": "Brand Blue", "tint": 0.4 } }
+      },
+      {
+        "type": "table",
+        "headers": ["Mix", "Inks"],
+        "rows": [["Brand Blue + Varnish", "1.0 + 0.3"]],
+        "cellBorders": { "all": true, "width": 1, "color": { "inks": { "Brand Blue": 1, "Varnish": 0.3 } } }
+      }
+    ]
+  }
+}

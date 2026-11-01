@@ -6,7 +6,7 @@ actually correct** (not just non-empty bytes). It complements the
 [Contributing guide](../../CONTRIBUTING.md) and the
 [testing instructions](../../.github/instructions/testing.instructions.md).
 
-Applies to pdfnative-mcp v1.7.0 · pdfnative 1.8.0.
+Applies to pdfnative-mcp v1.8.0 · pdfnative 1.9.0.
 
 ## 1. Prerequisites
 
@@ -38,7 +38,7 @@ npm run gate          # the CI profile — run it before opening a PR
 | Profile | Command | Steps |
 | --- | --- | --- |
 | Fast | `npm run gate:fast` | `typecheck:all`, `lint`, `test`, `server-json`, `verify:docs` |
-| CI (default) | `npm run gate` | `typecheck:all`, `lint`, `build`, `dist-check`, `dist-probe`, `smoke`, `verify:tool-shape`, `server-json`, `test:generate`, `test:coverage`, `verify:docs`, `verify:samples`, `corpus:pdfa`, `validate:pdfx` |
+| CI (default) | `npm run gate` | `typecheck:all`, `lint`, `build`, `dist-check`, `dist-probe`, `smoke`, `verify:tool-shape`, `server-json`, `pack-manifest`, `test:generate`, `test:coverage`, `verify:docs`, `verify:samples`, `corpus:pdfa`, `validate:pdfx` |
 | Publish (release branches) | `npx tsx scripts/gate.ts --publish --require-all` | everything above + `validate:pdfa` (veraPDF); `--require-all` turns a skipped step into a failure |
 
 What the main steps check:
@@ -47,11 +47,12 @@ What the main steps check:
 | --- | --- |
 | `typecheck:all` | Strict TypeScript over `src/`, `tests/` and `scripts/` — no `any`, schemas compile. |
 | `lint` | `eslint src --max-warnings 0` — a warning fails. |
-| `test` / `test:coverage` | The full vitest suite (unit + integration + examples-as-tests); with v8 coverage it must stay above the thresholds in [vitest.config.ts](../../vitest.config.ts). |
+| `test` / `test:coverage` | The full vitest suite (unit + integration + examples-as-tests + the fuzz targets on their seed corpus, section 3.5); with v8 coverage it must stay above the thresholds in [vitest.config.ts](../../vitest.config.ts). |
 | `build`, `dist-check`, `dist-probe` | `dist/` is emitted by `tsc -p tsconfig.build.json`, is complete, holds only `src/` output and no `console.log`. |
 | `smoke` | The **built** server over stdio: handshake, tool count, version — and stdout carrying JSON-RPC frames only. |
 | `verify:tool-shape` | The built `tools/list` against the committed structural fixture (section 3.2b). |
 | `server-json` | `server.json` against the vendored MCP registry schema, offline. |
+| `pack-manifest` | The files `npm pack` ships, held to [tests/_fixtures/pack-manifest.json](../../tests/_fixtures/pack-manifest.json); the tarball is packed twice and must be byte-identical. |
 | `test:generate`, `verify:samples` | The sample set, regenerated and held to the byte baseline (section 3.4). |
 | `verify:docs` | Every count, version, tool, error code, operator variable, link and anchor the docs quote, against `docs/assets/ecosystem.json` and the source tree. |
 | `corpus:pdfa`, `validate:pdfx`, `validate:pdfa` | The conformance corpus and its validators (section 5). |
@@ -112,6 +113,7 @@ Every file under [examples/](../../examples) is exercised by
   are chained in order with each step's output substituted into the next, so they
   run for real too — with an explicit guard that no example is left unexecuted.
 
+The examples are catalogued by workflow in [examples/README.md](../../examples/README.md).
 This guarantees the published examples never drift from the real schemas. A stale
 field name or a renamed tool fails CI immediately. Run just this suite with:
 
@@ -173,15 +175,15 @@ change by accident. The whole loop is:
 npm run build && npm run test:generate && npm run verify:samples
 ```
 
-- `npm run test:generate` drives the **built** server (never `src/`) and writes 96
+- `npm run test:generate` drives the **built** server (never `src/`) and writes 112
   samples into the git-ignored `test-output/samples/`: every hermetic `examples/*.json`
   sequence (those needing no PKI, TSA or revocation fixture) plus the conformance
   corpus. It runs under `TZ=UTC`, with every operator variable scrubbed and every
   instant pinned, so the set is reproducible on any machine.
 - `npm run verify:samples` fingerprints the set and compares it with the committed
-  `tests/_fixtures/samples.sha256.json`: 94 samples byte for byte, and 2 that cannot
-  repeat their bytes (one encrypted, one signed with a per-run key) through a semantic
-  projection — each listed explicitly, with its reason, in
+  `tests/_fixtures/samples.sha256.json`: 109 samples byte for byte, and 3 that cannot
+  repeat their bytes (encrypted, signed with a per-run key, or host-dependent) through a
+  semantic projection — each listed explicitly, with its reason, in
   `scripts/lib/sample-fingerprint.ts`. Exit 0 match, 1 a changed or removed sample,
   2 usage or missing samples. `npx tsx scripts/verify-samples.ts --strict` also fails on a
   new, unbaselined sample.
@@ -194,6 +196,25 @@ npm run build && npm run test:generate && npm run verify:samples
 
 Why the bytes can repeat at all — UTC dates, the pinned instant, what is deliberately
 not covered — is the subject of [REPRODUCIBLE.md](REPRODUCIBLE.md).
+
+### 3.5 Fuzz targets
+
+The five ClusterFuzzLite targets under [fuzz/](../../fuzz) (tool-call arguments, base64,
+image headers, the output-path sandbox, the HTTP guards) drive
+[src/fuzz-surface.ts](../../src/fuzz-surface.ts). A target rethrows a programming error,
+an uncoded tool failure or a sandbox escape and swallows nothing else. They run in two
+places:
+
+- at every gate, on the seeded corpus of
+  [tests/fuzzing/_fuzz-seeds.ts](../../tests/fuzzing/_fuzz-seeds.ts) through
+  [tests/fuzzing/targets.test.ts](../../tests/fuzzing/targets.test.ts) — fast, deterministic,
+  against `src/`;
+- coverage-guided in CI (`fuzz.yml`: on every code-changing pull request, and a weekly
+  batch), with the Jazzer.js engine installed from `.clusterfuzzlite/` — never from
+  `package.json`.
+
+A crash found by the fuzzer is reproduced by adding its input to the seed corpus, which
+then fails the gate until the boundary handles it.
 
 ## 4. Opening a PDF in a real viewer
 
@@ -292,7 +313,7 @@ validators compare the verdict against it:
 | `metadata-updated-pdfa2u.pdf` | `update_metadata` on a claiming file | 2u | compliant |
 | `placeholder-pdfa2b-unsigned.pdf` | `prepare_signature_placeholder`, unsigned | 2b | **must fail** (6.4.3 — empty `/Contents`) |
 | `basic-pdfa2b-no-embedfonts.pdf` | `generate_basic_pdf` without `embedFonts` | 2b | **must fail** (6.2.11.4.1) |
-| `form-pdfa2b.pdf` | `add_form` + `embedFonts` | 2b | compliant (a known failure until pdfnative 1.8.0 embedded the AcroForm `/DR` font) |
+| `form-pdfa2b.pdf` | `add_form` + `embedFonts` | 2b | compliant (a known failure until pdfnative 1.8.0 embedded the AcroForm `/DR` font) <!-- verify-docs:allow version-token --> |
 | `form-pdfa2b-no-embedfonts.pdf` | `add_form` without `embedFonts` | 2b | **must fail** (6.2.11.4.1) |
 | `cmyk-intent-pdfa2b.pdf` / `gray-intent-pdfa2b.pdf` | CMYK / Gray ICC `outputIntent`, matching content | 2b | compliant |
 | `typography-pdfa2u.pdf` | `typography`: split paragraphs, justification, optical margins, kerning, features, no-break spaces | 2u | compliant |
@@ -314,7 +335,7 @@ deliberate misuse: `placeholder-pdfa2b-unsigned.pdf` (an unsigned placeholder's 
 `international-pdfa2u-taitham.pdf` (a Tai Tham glyph without a `ToUnicode` entry, an
 upstream engine limit). The day the engine closes a gap the run goes `XPASS` and the
 expectation in `scripts/lib/pdfa-corpus.ts` has to be flipped on purpose — which is
-what happened to `form-pdfa2b.pdf` when pdfnative 1.8.0 fixed the AcroForm font.
+what happened to `form-pdfa2b.pdf` when pdfnative 1.8.0 fixed the AcroForm font. <!-- verify-docs:allow version-token -->
 
 With veraPDF 1.30.2 the expected result is **27 PASS, 6 XFAIL**, 0 unexpected.
 Per file the validators print `PASS`, `FAIL` (with failing rule ids), `XFAIL`

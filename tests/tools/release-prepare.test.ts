@@ -15,6 +15,10 @@ import {
     bumpServerJson,
     bumpManifest,
     restampVerifiedOn,
+    restampReleaseNote,
+    restampChangelogHeading,
+    restampPrDraft,
+    STAMPED_FILES,
     bumpCitation,
     bumpSecurityTable,
     bumpReadmeEngineBadge,
@@ -130,6 +134,45 @@ describe('release-prepare: ecosystem manifest and stamps', () => {
         const json = restampVerifiedOn('{\n  "verifiedOn": "2026-08-23",\n  "x": 1\n}', '2026-09-21');
         expect(json.text).toContain('"verifiedOn": "2026-09-21"');
         expect(restampVerifiedOn('no stamp here', '2026-09-21').matched).toBe(0);
+    });
+
+    it('re-stamps every stamp of a file, not the first one only', () => {
+        const two = restampVerifiedOn('Verified on 2026-08-23.\n\n…\n\n> Verified on 2026-08-23 again.', '2026-09-21');
+        expect(two.matched).toBe(2);
+        expect(two.text.match(/2026-09-21/g)).toHaveLength(2);
+    });
+
+    it('re-stamps the same files verify-docs holds to the manifest', async () => {
+        const verifyDocs = await import('../../scripts/verify-docs.js');
+        expect([...STAMPED_FILES]).toEqual([...verifyDocs.STAMPED_FILES]);
+    });
+});
+
+describe('release-prepare: the dated release surfaces', () => {
+    it('re-stamps the _Released_ line of the release note and nothing else', () => {
+        const r = restampReleaseNote('# pdfnative-mcp v1.8.0\n\n_Released 2026-10-31_\n\nReleased 2026-10-31 is prose.\n', '2026-11-01');
+        expect(r.matched).toBe(1);
+        expect(r.text).toContain('_Released 2026-11-01_');
+        expect(r.text).toContain('Released 2026-10-31 is prose.');
+        expect(restampReleaseNote('no line', '2026-11-01').matched).toBe(0);
+    });
+
+    it('re-stamps the heading of the given version only', () => {
+        const log = '## [Unreleased]\n\n## [1.8.0] - 2026-10-31\n\n## [1.7.0] - 2026-09-21\n';
+        const r = restampChangelogHeading(log, '1.8.0', '2026-11-01');
+        expect(r.matched).toBe(1);
+        expect(r.text).toContain('## [1.8.0] - 2026-11-01');
+        expect(r.text).toContain('## [1.7.0] - 2026-09-21');
+        expect(restampChangelogHeading(log, '1.9.0', '2026-11-01').matched).toBe(0);
+        // The version is a literal in the pattern (CodeQL js/regex-injection): `+` is not a quantifier, `.` not a wildcard.
+        expect(restampChangelogHeading('## [1.8.0+b] - 2026-10-31\n', '1.8.0+b', '2026-11-01').text).toBe('## [1.8.0+b] - 2026-11-01\n');
+        expect(restampChangelogHeading('## [1x8y0] - 2026-10-31\n', '1.8.0', '2026-11-01').matched).toBe(0);
+    });
+
+    it('re-stamps the Prepared line of the PR draft', () => {
+        const r = restampPrDraft('> **Branch:** x\n> **Prepared:** 2026-10-31 — release note: `release-notes/v1.8.0.md`\n', '2026-11-01');
+        expect(r.matched).toBe(1);
+        expect(r.text).toContain('> **Prepared:** 2026-11-01 — release note');
     });
 });
 
@@ -316,6 +359,9 @@ describe('release-prepare: main() over a sandbox tree', () => {
         put('llms.txt', '# pdfnative-mcp\n\nCurrent release: 1.6.0. Verified on 2026-08-23.\n');
         put('docs/KNOWLEDGE_BASE.md', '# KB\n\n> pdfnative-mcp **v1.6.0** reference. Verified on 2026-08-23.\n');
         put('docs/AGENT_CONTRACT.md', '# Contract\n\nVerified on 2026-08-23.\n');
+        put('docs/guides/REPRODUCIBLE.md', '# Reproducible\n\nApplies to pdfnative-mcp v1.6.0. Verified on 2026-08-23 against x.\n');
+        put('docs/guides/TYPOGRAPHY.md', '# Typography\n\nApplies to pdfnative-mcp v1.6.0. Verified on 2026-08-23 against x.\n');
+        put('CHANGELOG.md', '# Changelog\n\n## [Unreleased]\n\n## [1.7.0] - 2026-08-23\n\n## [1.6.0] - 2026-08-23\n');
         put('CITATION.cff', 'cff-version: 1.2.0\nversion: 1.6.0\ndate-released: "2026-08-23"\n');
         put('SECURITY.md', '| `1.6.x`  | :white_check_mark: |\n| `< 1.6`  | :x:                |\n');
         put('README.md', '[![pdfnative](https://img.shields.io/badge/pdfnative-1.7-0a7e8c.svg)](x)\n');
@@ -334,7 +380,10 @@ describe('release-prepare: main() over a sandbox tree', () => {
         expect(read('src/version.ts')).toContain("'1.7.0'");
         expect(read('server.json').match(/"version": "1\.7\.0"/g)).toHaveLength(2);
         expect(read('docs/assets/ecosystem.json')).toContain('"verifiedOn": "2026-09-21"');
-        for (const stamped of ['llms.txt', 'docs/KNOWLEDGE_BASE.md', 'docs/AGENT_CONTRACT.md']) expect(read(stamped)).toContain('Verified on 2026-09-21');
+        for (const stamped of STAMPED_FILES) expect(read(stamped), stamped).toContain('Verified on 2026-09-21');
+        // The dated release surfaces: the heading of the version being prepared moves, the earlier one stays.
+        expect(read('CHANGELOG.md')).toContain('## [1.7.0] - 2026-09-21');
+        expect(read('CHANGELOG.md')).toContain('## [1.6.0] - 2026-08-23');
         expect(read('llms.txt')).toContain('Current release: 1.7.0');
         expect(read('docs/KNOWLEDGE_BASE.md')).toContain('**v1.7.0**');
         expect(read('CITATION.cff')).toContain('version: 1.7.0\ndate-released: "2026-09-21"');

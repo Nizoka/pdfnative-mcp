@@ -19,6 +19,7 @@ import { callToolDirect, ensureCompressionReady } from '../src/server.js';
 import { ALLOWED_HOSTS_ENV, REVOCATION_ENV, TSA_AUTH_ENV, TSA_URL_ENV, __setFetchForTests } from '../src/network.js';
 import { buildEcdsaSelfSignedCert } from './_cert-fixtures.js';
 import { CMYK_ICC_BASE64, GRAY_ICC_BASE64 } from './_icc-fixtures.js';
+import { jp2Base64 } from './_jpx.js';
 import { createMockPki, createMockRevocationProvider, MOCK_CRL_URL, MOCK_OCSP_URL, type MockPki } from './_ltv-fixtures.js';
 import { connectLegacy, type McpTestClient } from './_mcp-harness.js';
 import { assertValidPdf } from './_pdf-assert.js';
@@ -209,6 +210,9 @@ async function resolvePlaceholder(token: string, ctx: ChainContext, outputs: Rea
         case 'synthetic CMYK prtr ICC, base64':
             // No press profile is bundled: a synthetic output profile stands in for the printer's.
             return CMYK_ICC_BASE64;
+        case 'synthetic RGB JP2, base64':
+            // The same minimal JPEG 2000 file the sample generator substitutes (scripts/lib/jpx.ts).
+            return jp2Base64(3, { size: 8 });
         case 'CRL DER, base64':
             return ctx.crlDerBase64;
         case 'OCSPResponse DER, base64':

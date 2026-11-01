@@ -42,10 +42,11 @@ describe('diagnostics helpers (unit)', () => {
         expect(thrown('TYPOGRAPHY_FEATURE_INEFFECTIVE')).toMatchObject({ code: 'DIAGNOSTIC_ESCALATED', message: '[TYPOGRAPHY_FEATURE_INEFFECTIVE] m' });
     });
 
-    it('escalate() classifies every engine diagnostic code, and the table holds all nine', () => {
-        expect(DIAGNOSTIC_CODES).toHaveLength(9);
+    it('escalate() classifies every engine diagnostic code, and the table holds all thirteen', () => {
+        expect(DIAGNOSTIC_CODES).toHaveLength(13);
         for (const code of DIAGNOSTIC_CODES) {
-            const expected = code.startsWith('PDFA_') ? 'PDF_A_COMPLIANCE_VIOLATION' : code.startsWith('PDFX_') ? 'PDF_X_COMPLIANCE_VIOLATION' : 'DIAGNOSTIC_ESCALATED';
+            // PDFA1_* (1.9.0) is a PDF/A claim like PDFA_*; TEXT_* joins TYPOGRAPHY_* under DIAGNOSTIC_ESCALATED.
+            const expected = /^PDFA\d*_/.test(code) ? 'PDF_A_COMPLIANCE_VIOLATION' : code.startsWith('PDFX_') ? 'PDF_X_COMPLIANCE_VIOLATION' : 'DIAGNOSTIC_ESCALATED';
             expect(escalate({ code, message: 'm', severity: 'warning' }).code, code).toBe(expected);
         }
     });

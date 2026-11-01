@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 import { defineConfig } from 'vitest/config';
 
 /**
@@ -12,6 +14,12 @@ if (process.env.GITHUB_ACTIONS) reporters.push('github-actions');
 if (process.env.GATE === '1') reporters.push(['json', { outputFile: 'test-output/.gate/vitest.json' }]);
 
 export default defineConfig({
+    resolve: {
+        // The fuzz targets (fuzz/*.js) import the BUILT boundary module by a
+        // relative path, which is what the ClusterFuzzLite container fuzzes;
+        // tests/fuzzing/targets.test.ts runs the same files against src/.
+        alias: [{ find: /^\.\.\/dist\/fuzz-surface\.js$/, replacement: fileURLToPath(new URL('./src/fuzz-surface.ts', import.meta.url)) }],
+    },
     test: {
         include: ['tests/**/*.test.ts'],
         environment: 'node',
@@ -42,24 +50,26 @@ export default defineConfig({
             //               handling); the gate's `smoke` step and
             //               tests/cli-stdio.test.ts drive the built binary
             //   - index.ts  re-exports only, no logic of its own
+            //   - fuzz-surface.ts  re-exports only, the door the fuzz targets use
             exclude: [
                 'src/cli.ts',
                 'src/index.ts',
+                'src/fuzz-surface.ts',
             ],
             // `text-summary` is four lines instead of one per source file;
             // `json-summary` is what scripts/gate.ts reads the percentage
             // from; `html` stays for local drill-down.
             reporter: ['text-summary', 'json-summary', 'html'],
             thresholds: {
-                // v1.7.0 measured on the final branch: 93.53 / 86.08 / 98.88 / 95.45 (statements /
-                // branches / functions / lines); v1.6.0 was 93.06 / 84.68 / 98.59 / 95.09.
+                // v1.8.0 measured on the final branch (release day): 94.02 / 87.08 / 99.13 / 95.77 (statements /
+                // branches / functions / lines); v1.7.0 was 93.53 / 86.08 / 98.88 / 95.45.
                 // Thresholds sit about 4 points below the measured values so a regression fails
-                // CI while ordinary churn does not. Branches and functions were raised in 1.7.0.
+                // CI while ordinary churn does not. All four were raised in 1.8.0.
                 // Never lower these; raise them when a release lifts coverage.
-                statements: 89,
-                branches: 82,
-                functions: 94,
-                lines: 91,
+                statements: 90,
+                branches: 83,
+                functions: 95,
+                lines: 92,
             },
         },
     },

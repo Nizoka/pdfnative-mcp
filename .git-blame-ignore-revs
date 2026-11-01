@@ -1,0 +1,6 @@
+# Commits `git blame` should look through. Enable once per clone:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub's blame view reads this file by itself.)
+
+# chore(repo): renormalise the 88 CRLF blobs to LF; eol-lf is an error from now on (1.7.0)
+bba50e66e1b0869d506841002d9e3e28bb6ad58e

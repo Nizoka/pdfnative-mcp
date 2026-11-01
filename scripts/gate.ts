@@ -59,7 +59,9 @@
 import './helpers/hermetic.js';
 
 import { spawnSync, type SpawnSyncOptions } from 'node:child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -265,6 +267,61 @@ function serverJson(): readonly string[] {
     return validate(doc, schema);
 }
 
+/** `npm pack`, through the npm that runs this script (see runNpmScript). */
+function npmPack(args: readonly string[]): { readonly status: number; readonly stdout: string; readonly stderr: string } {
+    const env: NodeJS.ProcessEnv = { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' };
+    const npmCli = process.env.npm_execpath;
+    const common: SpawnSyncOptions = { cwd: REPO_ROOT, env, encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024 };
+    const result = npmCli && existsSync(npmCli)
+        ? spawnSync(process.execPath, [npmCli, 'pack', ...args], common)
+        : spawnSync('npm', ['pack', ...args], { ...common, shell: true });
+    if (result.error) throw result.error;
+    return { status: result.status ?? 1, stdout: String(result.stdout ?? ''), stderr: String(result.stderr ?? '') };
+}
+
+/**
+ * What the tarball ships, and whether it ships the same bytes twice.
+ *
+ * `npm pack --dry-run --json` lists the files the `files` whitelist of
+ * package.json resolves to; the list is held to tests/_fixtures/pack-manifest.json,
+ * so a file added to or dropped from what consumers install is a reviewed
+ * change rather than something discovered on npm. Then the package is packed
+ * twice into two temporary directories and the two tarballs must be
+ * byte-identical: a reproducible tarball is what the publish pipeline's
+ * digest hand-off (build → publish → attest) rests on.
+ */
+export function judgePackManifest(expected: readonly string[], actual: readonly string[], digests: readonly [string, string]): string[] {
+    const failures: string[] = [];
+    const want = new Set(expected);
+    const got = new Set(actual);
+    for (const f of expected) if (!got.has(f)) failures.push(`missing from the tarball: ${f} (listed in tests/_fixtures/pack-manifest.json)`);
+    for (const f of actual) if (!want.has(f)) failures.push(`new in the tarball: ${f} — add it to tests/_fixtures/pack-manifest.json if it is meant to ship`);
+    if (digests[0] !== digests[1]) failures.push(`two consecutive npm pack runs differ (${digests[0].slice(0, 12)}… vs ${digests[1].slice(0, 12)}…): the tarball is not reproducible`);
+    return failures;
+}
+
+function packManifest(): readonly string[] {
+    const fixture = JSON.parse(readFileSync(join(FIXTURES, 'pack-manifest.json'), 'utf8')) as { readonly files: readonly string[] };
+    const dry = npmPack(['--dry-run', '--json']);
+    if (dry.status !== 0) return [`npm pack --dry-run --json failed: ${dry.stderr.trim().split('\n').slice(-3).join(' | ')}`];
+    const [report] = JSON.parse(dry.stdout) as Array<{ readonly files: ReadonlyArray<{ readonly path: string }> }>;
+    const actual = (report?.files ?? []).map((f) => f.path).sort();
+    const digests: string[] = [];
+    for (let i = 0; i < 2; i++) {
+        const dir = mkdtempSync(join(tmpdir(), 'pdfnative-mcp-pack-'));
+        try {
+            const packed = npmPack(['--pack-destination', dir, '--silent']);
+            if (packed.status !== 0) return [`npm pack (run ${i + 1}) failed: ${packed.stderr.trim().split('\n').slice(-3).join(' | ')}`];
+            const tarball = readdirSync(dir).find((f) => f.endsWith('.tgz'));
+            if (tarball === undefined) return [`npm pack (run ${i + 1}) produced no tarball`];
+            digests.push(createHash('sha256').update(readFileSync(join(dir, tarball))).digest('hex'));
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    }
+    return judgePackManifest(fixture.files, actual, [digests[0] ?? '', digests[1] ?? '']);
+}
+
 // ── The gate ────────────────────────────────────────────────────────
 
 // Order matters in the ci / publish profiles: `build` and `test:generate`
@@ -287,6 +344,7 @@ export const STEPS: readonly Step[] = [
     { id: 'smoke', profiles: ['ci', 'publish'], inline: smoke, note: () => `${listToolsPayload().tools.length} tools` },
     { id: 'verify:tool-shape', npmScript: 'verify:tool-shape', profiles: ['ci', 'publish'] },
     { id: 'server-json', profiles: ['fast', 'ci', 'publish'], inline: serverJson },
+    { id: 'pack-manifest', profiles: ['ci', 'publish'], inline: packManifest },
     { id: 'test:generate', npmScript: 'test:generate', profiles: ['ci', 'publish'], note: sampleCount },
     {
         id: 'test:coverage', npmScript: 'test:coverage', profiles: ['ci', 'publish'],

@@ -264,7 +264,7 @@ export function computeDerived(root: string): DerivedCounts {
         testFiles: walk(join(root, 'tests'), (p) => p.endsWith('.test.ts')).length,
         samples: baselineEntryCount(root),
         corpusFiles: CORPUS.length,
-        pdfaSamples: CORPUS.filter((e) => claimOf(e) === 'pdfa').length,
-        pdfxSamples: CORPUS.filter((e) => claimOf(e) === 'pdfx').length,
+        pdfaSamples: CORPUS.filter((e) => claimOf(e) === 'pdfa' || claimOf(e) === 'both').length,
+        pdfxSamples: CORPUS.filter((e) => claimOf(e) === 'pdfx' || claimOf(e) === 'both').length,
     };
 }

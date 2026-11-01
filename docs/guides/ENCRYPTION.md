@@ -1,6 +1,6 @@
 # Encryption guide (for AI agents)
 
-Applies to pdfnative-mcp v1.7.0 · pdfnative 1.8.0.
+Applies to pdfnative-mcp v1.8.0 · pdfnative 1.9.0.
 
 Since pdfnative-mcp v1.5.0 (pdfnative's Standard Security Handler) the server can **read** <!-- verify-docs:allow version-token -->
 encrypted PDFs, **decrypt** them, and **re-encrypt** with AES. RC4 is decrypted on
@@ -104,8 +104,10 @@ likely cause, rather than as a mysterious parse failure.
 
 ## Caching
 
-`encrypt_pdf`, `decrypt_pdf` and any document call carrying `encrypt` always bypass the
-opt-in response cache (`PDFNATIVE_MCP_CACHE_DIR`): the cache stores tool output in
+`encrypt_pdf`, `decrypt_pdf`, any document call carrying `encrypt` and — since v1.8.0 —
+any call carrying `password` (the read-only tools, `fill_form`, `verify_pdf`, the
+page-tree tools) always bypass the opt-in response cache (`PDFNATIVE_MCP_CACHE_DIR`): a
+secret never feeds a cache key, the cache stores tool output in
 plaintext at rest, and neither the unencrypted bytes of a deliberately-protected document
 nor the freshly protected bytes (minted with a random IV / salt, so never reproducible
 anyway) should linger on disk. The same applies to the page-tree tools in file mode (no

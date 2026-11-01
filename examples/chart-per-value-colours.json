@@ -1,0 +1,21 @@
+{
+  "description": "Charts (pdfnative 1.9.0 through pdfnative-mcp 1.8.0): ChartSeries.colors gives one colour per value on the four bar types — a bar chart whose bars are coloured by category (under / on / over target) — while the legend swatch keeps the series colour; a second series without a label is listed as 'Series 2' in the legend (label is optional since 1.9.0). Vector output, deterministic under creationDate.",
+  "tool": "add_chart",
+  "arguments": {
+    "title": "Regional targets",
+    "chartType": "bar",
+    "categories": ["North", "South", "East", "West", "Central"],
+    "series": [
+      {
+        "label": "Attainment (%)",
+        "values": [82, 104, 97, 115, 68],
+        "color": "#2563eb",
+        "colors": ["#dc2626", "#16a34a", "#f59e0b", "#16a34a", "#dc2626"]
+      },
+      { "values": [100, 100, 100, 100, 100], "color": "#94a3b8" }
+    ],
+    "axis": { "yMin": 0, "yMax": 125, "grid": true },
+    "dataLabels": { "suffix": " %" },
+    "creationDate": "2026-01-15T09:00:00Z"
+  }
+}

@@ -27,6 +27,7 @@ import { ToolError } from './errors.js';
 import { getCached, setCached } from './cache.js';
 import { PDFNATIVE_MCP_VERSION } from './version.js';
 import { creationDateCacheTag } from './reproducible.js';
+import { customFontCacheTag } from './font-dir.js';
 import { throwIfInflateCapError } from './inflate-cap.js';
 import { listResources, listResourceTemplates, readResource, resourceLinkForPath } from './resources.js';
 import {
@@ -213,7 +214,7 @@ const SERVER_DESCRIPTION =
     'AcroForm fill & flatten, page-tree ops (merge / split / extract), markup annotations, Factur-X invoices, ' +
     'Unicode text extraction with positioned runs, PDF introspection, MCP resources for generated PDFs, ' +
     'and human-in-the-loop AI-governance issue drafting. ' +
-    '28 tools, 27 scripts, three runtime dependencies (pdfnative, the MCP SDK, zod).';
+    '28 tools, 32 scripts, three runtime dependencies (pdfnative, the MCP SDK, zod).';
 
 /**
  * Per-tool API version used by the opt-in cache key and by `_meta.apiVersion`.
@@ -221,7 +222,7 @@ const SERVER_DESCRIPTION =
  * make a cached response unsafe to serve. Independent from SERVER_VERSION
  * (which tracks the npm package).
  */
-const TOOL_API_VERSION = '1.7.0';
+const TOOL_API_VERSION = '1.8.0';
 
 /**
  * MCP 2026-07-28 cache hints (`ttlMs` / `cacheScope`) emitted on the cacheable
@@ -268,20 +269,29 @@ const CACHE_API_VERSION = `${TOOL_API_VERSION}/${PDFNATIVE_MCP_VERSION}`;
 
 /**
  * The cache namespace for a call made now: the API / server version, plus the
- * operator's pinned creation instant when one is in force. The pin is read from
- * the engine at call time, so bytes rendered under one instant are never served
- * under another — nor under the wall clock.
+ * operator's pinned creation instant when one is in force, plus the fingerprint
+ * of the font sandbox when one is registered. The pin is read from the engine at
+ * call time, so bytes rendered under one instant are never served under another
+ * — nor under the wall clock; the font fingerprint (slug, size and SHA-256 of
+ * every file) means a face replaced on disk is never served from an earlier
+ * render, although a `font` call names it by its slug only.
  */
 export function cacheNamespace(): string {
-    return `${CACHE_API_VERSION}${creationDateCacheTag()}`;
+    return `${CACHE_API_VERSION}${creationDateCacheTag()}${customFontCacheTag()}`;
 }
 
 /** True when this call's output must bypass the response cache. */
 function isCacheable(name: string, input: unknown): boolean {
+    if (input === null || typeof input !== 'object') return !NON_CACHEABLE_TOOLS.has(name);
+    const args = input as { encrypt?: unknown; password?: unknown };
     // Build-time encryption (`encrypt` on the document tools) randomises the bytes and
     // takes passwords — same policy as encrypt_pdf: never persisted to the cache.
-    const encrypts = input !== null && typeof input === 'object' && (input as { encrypt?: unknown }).encrypt !== undefined;
-    return !isFileOutput(input) && !NON_CACHEABLE_TOOLS.has(name) && !encrypts;
+    const encrypts = args.encrypt !== undefined;
+    // A call that opens a protected document with `password` (the read and page-tree
+    // tools) is never cached either: the secret would feed the cache key, and the
+    // result — the content the owner chose to protect — would sit on disk in plaintext.
+    const opensProtected = args.password !== undefined;
+    return !isFileOutput(input) && !NON_CACHEABLE_TOOLS.has(name) && !encrypts && !opensProtected;
 }
 
 /** True when the call's input requests a file-mode output (filesystem side-effect). */
@@ -407,11 +417,12 @@ const PDF_OUTPUT_SCHEMA = {
     additionalProperties: false,
     required: ['mode', 'sizeBytes'],
     description:
-        "Result of a PDF-producing tool. base64 mode: the PDF arrives as an embedded `resource` content block (not duplicated here); file mode: `filePath`.",
+        "Result of a PDF-producing tool. base64 mode: the PDF arrives as an embedded `resource` content block (not duplicated here); file mode: `filePath` (and `url` when the operator maps the sandbox to a public base URL).",
     properties: {
         mode: { type: 'string', enum: ['base64', 'file'] },
         sizeBytes: { type: 'integer', minimum: 0 },
         filePath: { type: 'string', description: "Sandboxed absolute path (file mode)." },
+        url: { type: 'string', description: 'Public URL of the file (file mode, only when PDFNATIVE_MCP_OUTPUT_BASE_URL is set): base URL + sandbox-relative path, percent-encoded.' },
         ...DIAGNOSTICS_OUTPUT_PROPERTY,
         summary: {
             type: 'object',
@@ -442,6 +453,7 @@ const MULTI_PDF_OUTPUT_SCHEMA = {
                     index: { type: 'integer', minimum: 0 },
                     sizeBytes: { type: 'integer', minimum: 0 },
                     filePath: { type: 'string', description: "Sandboxed absolute path (file mode)." },
+                    url: { type: 'string', description: 'Public URL of the part (file mode, only when PDFNATIVE_MCP_OUTPUT_BASE_URL is set).' },
                 },
             },
         },
@@ -470,7 +482,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: GENERATE_BASIC_PDF_NAME,
         title: 'Generate basic PDF',
         description:
-            "Multi-page PDF composed from ordered blocks: heading, paragraph, list, table, image (JPEG/PNG), link, toc (printed table of contents), barcode, svg, formField, chart, pageBreak, spacer — every block kind the engine offers, each sharing its body with the dedicated tool (add_table, embed_image, add_barcode, add_form, add_chart). DEFAULT for any document; use the dedicated tools only for a standalone artefact, add_attachment for embedded files and add_international_text for non-Latin scripts. `pdfA` + `embedFonts:true` for a valid PDF/A-1b/2b/2u/3b claim; `outline` / `pageLabels` / `viewerPreferences` / `watermark` for navigation and presentation; `print`, `metadata`, `outputIntent`, `creationDate` as on every document tool. The 'chart' block takes the same body as add_chart.",
+            "Multi-page PDF composed from ordered blocks: heading, paragraph, list, table, image (JPEG/PNG/JPEG 2000), link, toc (printed table of contents), barcode, svg, formField, chart, pageBreak, spacer — every block kind the engine offers, each sharing its body with the dedicated tool (add_table, embed_image, add_barcode, add_form, add_chart). DEFAULT for any document; use the dedicated tools only for a standalone artefact, add_attachment for embedded files and add_international_text for non-Latin scripts. `pdfA` + `embedFonts:true` for a valid PDF/A-1b/2b/2u/3b claim; `outline` / `pageLabels` / `viewerPreferences` / `watermark` for navigation and presentation; `print`, `metadata`, `outputIntent`, `creationDate` as on every document tool. The 'chart' block takes the same body as add_chart.",
         inputSchema: GENERATE_BASIC_PDF_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -513,7 +525,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ADD_INTERNATIONAL_TEXT_NAME,
         title: 'Add international text',
         description:
-            "PDF rendering text in 27 scripts (Arabic, Hebrew, Thai, Lao, CJK, Devanagari, Bengali, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Tai Tham, New Tai Lue, Tai Le, Cham, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Vietnamese, …; ha / yo / ig / sw are aliases of latin with anchored combining marks), COLRv1 colour emoji and mathematical symbols ('math': ∀ ∃ √ ∑ ∫ ∞). BiDi (UAX #9), Arabic joining and complex-script shaping are automatic; input is NFC-normalised; newlines split paragraphs. `lang` is a code or an array for mixed runs (['ar','emoji'], ['latin','math']). Fonts are always embedded, so `embedFonts` does not exist here. PDF/A, print, metadata and creationDate options as on every document tool.",
+            "PDF rendering text in 32 scripts (Arabic, Hebrew, Thai, Lao, CJK, Devanagari, Bengali, Gujarati, Gurmukhi, Kannada, Malayalam, Odia, Tamil, Telugu, Sinhala, Tibetan, Khmer, Myanmar, Tai Tham, New Tai Lue, Tai Le, Cham, Ethiopic, Cyrillic, Greek, Georgian, Armenian, Vietnamese, …; ha / yo / ig / sw are aliases of latin with anchored combining marks), COLRv1 colour emoji and mathematical symbols ('math': ∀ ∃ √ ∑ ∫ ∞). BiDi (UAX #9), Arabic joining and complex-script shaping are automatic; input is NFC-normalised; newlines split paragraphs. `lang` is a code or an array for mixed runs (['ar','emoji'], ['latin','math']). Fonts are always embedded, so `embedFonts` does not exist here. PDF/A, print, metadata and creationDate options as on every document tool.",
         inputSchema: ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -554,7 +566,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: EMBED_IMAGE_NAME,
         title: 'Embed image in PDF',
         description:
-            "PDF with one embedded JPEG or PNG (base64; PNG without alpha channel) plus optional caption and render width/height. Inside a longer document use an 'image' block of generate_basic_pdf instead. PDF/A, print, metadata and creationDate options as on every document tool.",
+            "PDF with one embedded JPEG, PNG or JPEG 2000 image (base64; PNG without alpha channel; JPEG 2000 passed through as /JPXDecode) plus optional caption and render width/height. Inside a longer document use an 'image' block of generate_basic_pdf instead. PDF/A, print, metadata and creationDate options as on every document tool.",
         inputSchema: EMBED_IMAGE_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -632,7 +644,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: EXTRACT_TEXT_NAME,
         title: 'Extract plain text from PDF',
         description:
-            "Plain-text extraction: decodes Tj/TJ operands through each font's /ToUnicode CMap, /Encoding /Differences or base encoding and returns pages[] + fullText (positioned runs with includeRuns:true; `pages` selects 0-based pages). `extractable` is false only when a page decoded ENTIRELY to U+FFFD (a font with no usable mapping — expected for some subset fonts, not an error; extractableReason explains). Tagged content carrying /ActualText (every pdfA document this server writes) returns that SOURCE text, in logical order; untagged right-to-left and Indic runs come back in the order their glyphs were drawn — generate with pdfA when faithful extraction of complex scripts matters. Encrypted sources: pass `password` (PASSWORD_REQUIRED / PASSWORD_INVALID otherwise). Token-frugal: verbosity:'summary', fields:[…].",
+            "Plain-text extraction: decodes Tj/TJ operands through each font's /ToUnicode CMap, /Encoding /Differences or base encoding and returns pages[] + fullText (positioned runs with includeRuns:true; `pages` selects 0-based pages). `extractable` is false only when a page decoded ENTIRELY to U+FFFD (a font with no usable mapping — expected for some subset fonts, not an error; extractableReason explains). Tagged content carrying /ActualText (every pdfA document this server writes) returns that SOURCE text, in logical order; untagged right-to-left and reordered shaped runs (Arabic, Hebrew, Indic, Khmer, Myanmar, …) carry /ActualText since pdfnative 1.9 and come back in logical order too — only a Thai above-vowel + tone-mark pair still reads in drawn order untagged. onStreamError: 'limit' (default) fails only on a stream over the decompression cap (PDF_PARSE_FAILED), 'throw' fails on any undecodable stream, 'skip' returns the page without that stream's text. Encrypted sources: pass `password` (PASSWORD_REQUIRED / PASSWORD_INVALID otherwise). Token-frugal: verbosity:'summary', fields:[…].",
         inputSchema: EXTRACT_TEXT_INPUT_SCHEMA,
         outputSchema: projectableOutputSchema(
             EXTRACT_TEXT_OUTPUT_SCHEMA,
@@ -727,7 +739,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ANNOTATE_PDF_NAME,
         title: 'Annotate PDF (markup / drawing)',
         description:
-            'Append markup annotations (ISO 32000-1 §12.5) to an existing PDF as a non-destructive incremental update (original bytes preserved). Types: text (sticky note), highlight | underline | strikeout | squiggly, square | circle, line (needs start/end), freetext. Each needs a 0-based `page` and `rect` [x1,y1,x2,y2]; optional contents, color, opacity, title and type-specific fields. VISUAL OVERLAY ONLY — nothing is removed or redacted (covered text stays extractable). Encrypted sources → ENCRYPTED_SOURCE (decrypt_pdf first).',
+            'Append markup annotations (ISO 32000-1 §12.5) to an existing PDF as a non-destructive incremental update (original bytes preserved). Types: text (sticky note), highlight | underline | strikeout | squiggly, square | circle, line (needs start/end), freetext, link (needs url — http:, https: or mailto:; the rect is the clickable area). Each needs a 0-based `page` and `rect` [x1,y1,x2,y2]; optional contents, color, opacity, title and type-specific fields. VISUAL OVERLAY ONLY — nothing is removed or redacted (covered text stays extractable). Encrypted sources → ENCRYPTED_SOURCE (decrypt_pdf first).',
         inputSchema: ANNOTATE_PDF_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -785,7 +797,7 @@ const TOOLS: readonly ToolDefinition[] = [
         name: ADD_CHART_NAME,
         title: 'Add native vector chart',
         description:
-            "Single-page PDF with a native vector chart (pure path operators, no raster): bar, barH, stackedBar, stackedBarH, line (markers), area, scatter, pie, donut. Multi-series, legends, 'nice' ticks, gridlines, negatives; per-series xValues with xAxis.type 'linear' | 'time' (ISO-8601), secondary right axis (axis2 + yAxis:'right'), axis.scale 'log', dataLabels, labelStride / labelRotation. Pie/donut take exactly one series. Colours are hex ('#3366cc'). Tagged /Figure + /Alt (auto when altText is omitted). Engine cross-field rules surface as CHART_ERROR with the remedy. Inside a longer document use a 'chart' block in generate_basic_pdf. PDF/A (pdfA + embedFonts:true), print, metadata and creationDate as on every document tool.",
+            "Single-page PDF with a native vector chart (pure path operators, no raster): bar, barH, stackedBar, stackedBarH, line (markers), area, scatter, pie, donut. Multi-series, legends, 'nice' ticks, gridlines, negatives; per-series xValues with xAxis.type 'linear' | 'time' (ISO-8601), secondary right axis (axis2 + yAxis:'right'), axis.scale 'log', dataLabels, labelStride / labelRotation. Pie/donut take exactly one series. Colours: hex ('#3366cc'), 'C M Y K' / [c, m, y, k] under a print intent, { spot, tint } / { inks } declared in print.spotColours; series[].colors gives one colour per value on the bar family (its length must equal values.length on every chart type — CHART_ERROR otherwise). Tagged /Figure + /Alt (auto when altText is omitted). Engine cross-field rules surface as CHART_ERROR with the remedy. Inside a longer document use a 'chart' block in generate_basic_pdf. PDF/A (pdfA + embedFonts:true), print, metadata and creationDate as on every document tool.",
         inputSchema: ADD_CHART_INPUT_SCHEMA,
         outputSchema: PDF_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -885,24 +897,26 @@ const TOOLS: readonly ToolDefinition[] = [
 
 const TOOL_INDEX: ReadonlyMap<string, ToolDefinition> = new Map(TOOLS.map((t) => [t.name, t]));
 
-const SERVER_INSTRUCTIONS = `pdfnative-mcp: 28 tools over the pdfnative v1.8 PDF engine. Tool API 1.7.0. MCP 2026-07-28 (stateless) with automatic fallback to the 2025-era handshake. Every tool has typed input/output schemas and executable _meta.examples; read-only tools never modify input; document tools are byte-identical by default and every new option is opt-in.
+const SERVER_INSTRUCTIONS = `pdfnative-mcp: 28 tools over the pdfnative v1.9 PDF engine. Tool API ${TOOL_API_VERSION}. MCP 2026-07-28 (stateless) with automatic fallback to the 2025-era handshake. Every tool has typed input/output schemas and executable _meta.examples; read-only tools never modify input; document tools are byte-identical by default and every new option is opt-in.
 
 DECISION TREE:
   • Any document (headings, paragraphs, lists, tables, images, links, toc, barcodes, svg, form fields, charts) → generate_basic_pdf
-  • Standalone chart / table / barcode / image → add_chart / add_table / add_barcode / embed_image
+  • Standalone chart / table / barcode / image (JPEG, PNG, JPEG 2000 as image/jp2) → add_chart / add_table / add_barcode / embed_image
   • Non-Latin script, emoji or math symbols → add_international_text (lang:['latin','math'] for formulas)
+  • Right-to-left or bidirectional text → direction:'auto' | 'rtl' on every document tool (per paragraph too); untagged output carries /ActualText so extract_text reads logical order (actualText:false restores bare runs)
+  • Operator fonts (PDFNATIVE_MCP_FONT_DIR) → font:'<slug>' on generate_basic_pdf / add_international_text / inspect_layout; FONT_NOT_FOUND lists the registered slugs
   • Files inside the PDF (Factur-X / ZUGFeRD invoice, side-cars) → add_attachment (PDF/A-3), read back with extract_attachments
   • NEW interactive form → add_form; EXISTING form → read_form_fields (names) then fill_form (fill / flatten)
-  • Markup on an existing PDF (highlight, note, shapes) → annotate_pdf (overlay only, never redaction)
+  • Markup on an existing PDF (highlight, note, shapes, link with url) → annotate_pdf (overlay only, never redaction)
   • Change /Info of an existing PDF → update_metadata
   • Sign → sign_pdf (auto-injects the placeholder; prepare_signature_placeholder only to customise it)
   • PAdES ladder: sign_pdf profile:'pades' (B-B) → timestamp:true (B-T) → add_ltv (B-LT) → timestamp_pdf (B-LTA); check with verify_pdf ltv:true
   • Encrypt / decrypt → encrypt_pdf / decrypt_pdf (both rebuild the page tree: signatures + AcroForm are dropped)
   • Combine / carve → merge_pdfs (many → one), split_pdf (one → many), extract_pages (subset → one)
   • Will it fit / where do page breaks fall? → inspect_layout (dry run of the same blocks, no PDF produced)
-  • Print exchange → pdfx:'pdfx4' + outputIntent (the printer's ICC profile) + embedFonts:true on the document tools; CMYK colours ('C M Y K' or [c, m, y, k] %) on every colour input; check with validate_pdf standard:'pdf-x-4' (structural prerequisites, not a certified preflight)
+  • Print exchange → pdfx:'pdfx4' + outputIntent (the printer's ICC profile) + embedFonts:true on the document tools; CMYK colours ('C M Y K' or [c, m, y, k] %) on every colour input; spot inks: print.spotColours:[{ name, alternate }] then { spot, tint } or { inks } at any colour input (undeclared ink → VALIDATION_ERROR); pdfA:'pdfa2b' | 'pdfa2u' may be claimed in the same file (pdfa1b / pdfa3b refused); check with validate_pdf standard:'pdf-x-4' (structural prerequisites, not a certified preflight)
   • Book-quality text → the typography object (paragraph breaking, widows / orphans, keep headings with text, justify, French spacing, kerning, OpenType features) — see the typography prompt
-  • Facts / CI assertions → inspect_pdf (check:[…], annotations:true to list existing annotations); signatures → verify_pdf; PDF/UA or PDF/X-4 structure → validate_pdf; text → extract_text
+  • Facts / CI assertions → inspect_pdf (check:[…], annotations:true to list existing annotations); signatures → verify_pdf; PDF/UA or PDF/X-4 structure → validate_pdf; text → extract_text (onStreamError:'skip' | 'throw' for damaged streams)
   • Propose an upstream change → draft_governance_issue (local draft, never submitted)
 
 NETWORK POLICY & HUMAN-IN-THE-LOOP:
@@ -919,16 +933,16 @@ COMMON PITFALLS:
   • Signer metadata (name, reason, location, contactInfo, signingTime) is frozen at placeholder time: set it on sign_pdf (auto-inject) or on prepare_signature_placeholder, not afterwards. Several unsigned placeholders → fieldName; extra signature → allowMultiple:true + new fieldName.
   • outputMode:'file' needs PDFNATIVE_MCP_OUTPUT_DIR on the host (SECURITY_VIOLATION otherwise); paths are relative, .pdf, no '..'. With the opt-in response cache a hit carries _meta.cached:true (earlier bytes, same inputs — including an earlier {date} placeholder).
   • Barcode data is the raw payload (never URL-encode); ecLevel applies to qr only; ean13 needs 12–13 digits.
-  • Layout options on every document tool: pageSize (A4 default, Letter, Legal, A3, Tabloid), margins (all four), headerTemplate / footerTemplate with {page} {pages} {title} {date} (footerTemplate replaces the default footer, so footerText is then ignored), compress:true (FlateDecode streams, smaller file, different bytes), debug:true (guide rectangles).
+  • Layout options on every document tool: pageSize (A4 default), margins, headerTemplate / footerTemplate with {page} {pages} {title} {date} (footerTemplate replaces the default footer and footerText), compress:true (smaller file, different bytes), debug:true (guide rectangles).
   • generate_basic_pdf 'svg' blocks support paths, basic shapes and <text> only — no transform, <g>, gradients or CSS (silently ignored); 'image' blocks are capped at 24 MiB decoded per call; 'formField' blocks under pdfA need embedFonts:true (PDFA_UNEMBEDDED_FORM_FONT otherwise).
-  • Watermarks take text and/or an image (JPEG/PNG, default opacity 0.10) and a position (background | foreground); opacity < 1 is rejected under pdfa1b.
+  • Watermarks take text and/or an image (JPEG/PNG/JPEG 2000, default opacity 0.10) and a position (background | foreground); opacity < 1 is rejected under pdfa1b.
 
 REPRODUCIBILITY: outputs differ on every call because /CreationDate (and /ID) follow the wall clock. For byte-identical output pass creationDate (document tools), signingTime (sign_pdf / prepare_signature_placeholder) and modDate (update_metadata) as fixed ISO-8601 instants — every date is written in UTC, so the bytes are identical on every host whatever its time zone. The {date} placeholder of header/footer templates follows creationDate. The operator can pin the instant for the whole server (PDFNATIVE_MCP_CREATION_DATE, else SOURCE_DATE_EPOCH); a call's own creationDate still wins. Timestamps (TSA tokens), encryption (fresh keys / IVs) and ECDSA signatures are never reproducible.
 
-TOKEN-FRUGAL READS & RESOURCES: read tools accept verbosity:'summary' and fields:[…]. Generated PDFs arrive as an embedded resource block (not duplicated in structuredContent); in file mode the result carries a resource_link and the file is listed under resources/list as pdfnative://output/<path>. Prompts: governance_contract, draft_issue_workflow, pades_ladder, print_ready, reproducible_output, typography, pdfa_valid. Docs: docs/AI_GUIDE.md, docs/guides/*.md.`;
+TOKEN-FRUGAL READS & RESOURCES: read tools accept verbosity:'summary' and fields:[…]. Generated PDFs arrive as an embedded resource block (not duplicated in structuredContent); in file mode the result carries a resource_link and the file is listed under resources/list as pdfnative://output/<path> (with PDFNATIVE_MCP_OUTPUT_BASE_URL the result also carries url). pdfnative://governance/policy and /rules (the human-in-the-loop contract) are always listed. Prompts: governance_contract, draft_issue_workflow, pades_ladder, print_ready, reproducible_output, typography, pdfa_valid. Docs: docs/AI_GUIDE.md, docs/guides/*.md.`;
 
 function buildDraftGovernanceIssueResult(output: DraftGovernanceIssueResult, toolName: string): CallToolResult {
-    const where = output.outputMode === 'file' ? ` and written to ${output.filePath}` : '';
+    const where = output.outputMode === 'file' ? ` and written to ${output.url ?? output.filePath}` : '';
     return {
         content: [
             {
@@ -946,6 +960,7 @@ function buildDraftGovernanceIssueResult(output: DraftGovernanceIssueResult, too
             targetRepo: output.targetRepo,
             outputMode: output.outputMode,
             ...(output.filePath !== undefined ? { filePath: output.filePath } : {}),
+            ...(output.url !== undefined ? { url: output.url } : {}),
             sizeBytes: output.sizeBytes,
             draftMarkdown: output.draftMarkdown,
             warnings: output.warnings,
@@ -1102,7 +1117,10 @@ function buildSuccessResult(output: OutputResult, toolName: string): CallToolRes
             content: [
                 {
                     type: 'text',
-                    text: `${toolName}: wrote ${output.sizeBytes} bytes to ${output.filePath}`,
+                    // With a public base URL the text names the URL — what a remote user can open —
+                    // and keeps the host's filesystem layout out of the model's view; filePath stays
+                    // in structuredContent for compatibility.
+                    text: `${toolName}: wrote ${output.sizeBytes} bytes to ${output.url ?? output.filePath}`,
                 },
                 ...(link !== null
                     ? [{ type: 'resource_link' as const, ...link, mimeType: 'application/pdf' }]
@@ -1112,6 +1130,7 @@ function buildSuccessResult(output: OutputResult, toolName: string): CallToolRes
                 mode: output.mode,
                 sizeBytes: output.sizeBytes,
                 filePath: output.filePath,
+                ...(output.url !== undefined ? { url: output.url } : {}),
                 ...(output.diagnostics !== undefined ? { diagnostics: output.diagnostics } : {}),
                 ...(output.summary !== undefined ? { summary: output.summary } : {}),
             },
@@ -1152,7 +1171,7 @@ function buildMultiSuccessResult(output: MultiOutputResult, toolName: string): C
                 {
                     type: 'text',
                     text: `${toolName}: wrote ${output.count} PDF(s) (${output.totalBytes} bytes total) to ${output.parts
-                        .map((p) => p.filePath)
+                        .map((p) => p.url ?? p.filePath)
                         .join(', ')}`,
                 },
                 ...links,
@@ -1161,7 +1180,7 @@ function buildMultiSuccessResult(output: MultiOutputResult, toolName: string): C
                 mode: output.mode,
                 count: output.count,
                 totalBytes: output.totalBytes,
-                parts: output.parts.map((p) => ({ index: p.index, sizeBytes: p.sizeBytes, filePath: p.filePath })),
+                parts: output.parts.map((p) => ({ index: p.index, sizeBytes: p.sizeBytes, filePath: p.filePath, ...(p.url !== undefined ? { url: p.url } : {}) })),
             },
         };
     }
@@ -1250,7 +1269,9 @@ const PRINT_READY_RECIPE = `Print-ready output with any document tool (generate_
 • metadata: { author, subject, keywords, trapped:'True' | 'False' | 'Unknown' } → /Info (+ XMP under PDF/A).
 • outputIntent: { iccProfileBase64, outputConditionIdentifier, registryName?, outputCondition?, info? } replaces the built-in sRGB intent under pdfA or pdfx. RGB, CMYK and Gray ICC profiles are accepted; a file that is not an ICC profile (no 'acsp' signature, inconsistent size) is PRINT_ERROR. No press profile is bundled: ask the printer for theirs (ISO Coated v2, GRACoL, …).
 • CMYK colours: every colour input takes 'C M Y K' (0.0–1.0) or [c, m, y, k] (percent) beside its usual form — watermark, templates, chart series, table borders, links, svg, annotations. Under a CMYK intent RGB content is mapped through a calibrated default space; CMYK content under an RGB or Gray intent is reported (PDFA_DEVICE_CMYK_CONTENT / PDFX_DEVICE_CMYK).
-• PDF/X-4 (ISO 15930-7): pdfx:'pdfx4' on generate_basic_pdf, add_table, add_chart, add_barcode, embed_image and add_international_text. Prerequisites: outputIntent with a printer-class ('prtr') profile, embedFonts:true, metadata.trapped 'True' or 'False' (omitted = 'False'), a TrimBox (print.bleed / trimBox; the MediaBox otherwise) or an ArtBox — not both. Exclusive with pdfA and encrypt (VALIDATION_ERROR). Link and formField blocks are annotations on the printed area (PDFX_ANNOTATIONS). strict:true fails on any PDFX_* diagnostic (PDF_X_COMPLIANCE_VIOLATION).
+• Spot inks: print.spotColours:[{ name:'Brand Blue', alternate:[c, m, y, k] | [r, g, b] }] (at most 32) declares the /Separation plates; then { spot:'Brand Blue', tint:0.4 } or { inks:{ 'Brand Blue':1, Varnish:0.3 } } (/DeviceN) at any colour input. An undeclared ink is VALIDATION_ERROR naming it; a blank or duplicate declaration is PRINT_ERROR. Spot content under a CMYK OutputIntent validates under both PDF/X-4 and PDF/A-2b (conformance corpus).
+• JPEG 2000: mimeType:'image/jp2' (a JP2 file or a raw codestream) on embed_image, the image block and watermark.image passes through as /JPXDecode, never decoded. PDF 1.5: refused under pdfa1b (PDFA1_JPX_IMAGE); an opacity channel raises PDFA_JPX_IMAGE under any PDF/A level.
+• PDF/X-4 (ISO 15930-7): pdfx:'pdfx4' on generate_basic_pdf, add_table, add_chart, add_barcode, embed_image and add_international_text. Prerequisites: outputIntent with a printer-class ('prtr') profile, embedFonts:true, metadata.trapped 'True' or 'False' (omitted = 'False'), a TrimBox (print.bleed / trimBox; the MediaBox otherwise) or an ArtBox — not both. Combines with pdfA:'pdfa2b' | 'pdfa2u' (one file, both claims); pdfa1b and pdfa3b are refused before the build with the engine's message, and encrypt is exclusive (VALIDATION_ERROR). Link and formField blocks are annotations on the printed area (PDFX_ANNOTATIONS). strict:true fails on any PDFX_* diagnostic (PDF_X_COMPLIANCE_VIOLATION).
 • Verify with validate_pdf { standard:'pdf-x-4' }: a valid result means the structural prerequisites hold — it is NOT a certified preflight. Confirm a press job with callas pdfToolbox or Acrobat Preflight; veraPDF does not cover PDF/X. inspect_pdf check:['pdfx'] asserts the claim only.
 • viewerPreferences: { duplex:'duplexFlipLongEdge', pickTrayByPDFSize:true, printPageRange:[[1, 4]], numCopies:2 } for print-dialog defaults (printPageRange is 1-based).
 • Check the result with inspect_pdf { pages:true } (trimBox / bleedBox / artBox / cropBox / userUnit per page) and check:['trapped'].
@@ -1265,7 +1286,7 @@ const REPRODUCIBLE_OUTPUT_RECIPE = `Byte-identical output across calls:
 • Proof: call twice and compare structuredContent.sizeBytes and the resource blob, or hash the bytes on the host. With PDFNATIVE_MCP_CACHE_DIR set, a repeated call may be served from cache (_meta.cached:true) — the bytes are the earlier render.`;
 
 const TYPOGRAPHY_RECIPE = `Fine typography with the \`typography\` object (every document tool + inspect_layout; all opt-in — omitted, the bytes are unchanged):
-1. Embed a font first: embedFonts:true (or add_international_text, which always embeds). kerning, fontFeatures and the 'fr' narrow no-break space need it; base-14 Helvetica has no GPOS / GSUB and no U+202F.
+1. Embed a font first: embedFonts:true (or add_international_text, which always embeds). kerning and fontFeatures need it (base-14 Helvetica has no GPOS / GSUB); the 'fr' narrow no-break space is written on base-14 too since pdfnative 1.9 (a 167/1000 em TJ adjustment).
 2. Page breaks: splitParagraphs:true lets a paragraph break at a line boundary (it is atomic by default, and one taller than a page overflows); orphans / widows (default 2) keep at least that many lines on each side. keepHeadingsWithNext:true (or { minLines: 3 }) never strands a heading at the foot of a page. Per block on generate_basic_pdf: heading keepWithNext, paragraph keepWithNext (a lead-in line before a table) and splittable override the document setting.
 3. Justification: paragraph align:'justify' (also 'left' | 'right' | 'center'); opticalMargins:true hangs punctuation and hyphens slightly into the margin. A line that would need an implausible stretch is left ragged.
 4. Hyphenation: NO dictionary is installed on this server (the engine seam is a function, which JSON cannot carry), so hyphenationLanguage has no effect here. Put soft hyphens (U+00AD) in long words: they are honoured as break opportunities and never drawn mid-word.

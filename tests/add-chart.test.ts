@@ -179,6 +179,8 @@ describe('add_chart — charts v2 (pdfnative 1.7)', () => {
             series: [{ label: 'v', values: Array.from({ length: 40 }, (_, i) => 10 ** (1 + (i % 4))) }],
             axis: { scale: 'log' as const },
             labelRotation: 45,
+            // Pinned: two builds that straddle a second boundary would differ by their creation date alone.
+            creationDate: '2026-01-01T00:00:00Z',
         };
         const a = await addChart(args);
         const b = await addChart(args);

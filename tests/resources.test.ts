@@ -31,9 +31,9 @@ describe('MCP resources', () => {
         delete process.env[ENV_KEY];
     });
 
-    it('returns no resources when file output is disabled', async () => {
+    it('returns only the two governance resources when file output is disabled', async () => {
         delete process.env[ENV_KEY];
-        expect(await listResources()).toEqual([]);
+        expect((await listResources()).map((r) => r.uri)).toEqual(['pdfnative://governance/policy', 'pdfnative://governance/rules']);
         expect(resourceUriForPath('/anywhere/x.pdf')).toBeNull();
     });
 
@@ -42,7 +42,7 @@ describe('MCP resources', () => {
         process.env[ENV_KEY] = dir;
         await writeSamplePdf('report.pdf');
         await writeSamplePdf('nested/deep.pdf');
-        const resources = await listResources();
+        const resources = (await listResources()).filter((r) => r.uri.startsWith(RESOURCE_URI_PREFIX));
         const uris = resources.map((r) => r.uri).sort();
         expect(uris).toContain(`${RESOURCE_URI_PREFIX}report.pdf`);
         expect(uris).toContain(`${RESOURCE_URI_PREFIX}nested/deep.pdf`);
@@ -58,7 +58,8 @@ describe('MCP resources', () => {
         await writeSamplePdf('report.pdf');
         const contents = await readResource(`${RESOURCE_URI_PREFIX}report.pdf`);
         expect(contents.mimeType).toBe('application/pdf');
-        assertValidPdf(contents.blob, 1);
+        expect('blob' in contents).toBe(true);
+        assertValidPdf('blob' in contents ? contents.blob : '', 1);
     });
 
     it('maps an absolute sandbox path to a resource URI', async () => {

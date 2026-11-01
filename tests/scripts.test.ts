@@ -1,16 +1,19 @@
 /**
- * add_international_text across the 27 scripts of pdfnative 1.8.0 (22 + Lao,
- * Tai Tham, New Tai Lue, Tai Le, Cham) and the four Latin aliases (Hausa,
+ * add_international_text across the 32 scripts of pdfnative 1.9.0 (22 + Lao,
+ * Tai Tham, New Tai Lue, Tai Le, Cham since 1.8.0; Gujarati, Gurmukhi,
+ * Kannada, Malayalam, Odia since 1.9.0) and the four Latin aliases (Hausa,
  * Yoruba, Igbo, Swahili). Real fonts, no mock: each script is rendered with
  * its embedded Noto font, and the text is read back out of the file.
  *
- * Reading back is where the engine has documented limits. `extractText()`
- * walks the content stream, so a script whose glyphs are not drawn in logical
- * order comes back in VISUAL order (right-to-left runs, pre-base vowel signs),
- * and a few stacked clusters map to U+FFFD. Those scripts are pinned with
- * `it.fails` — the pdfnative-cli convention: the day the engine returns them
- * in logical order the marker turns the suite red, and it is deleted. Rendering
- * is unaffected; this is about extraction only (ROADMAP, "Blocked upstream").
+ * Reading back is where the engine has documented limits. Since pdfnative
+ * 1.9.0 every reordered shaped run and every right-to-left run of UNTAGGED
+ * output carries an `/ActualText` span, so `extractText()` returns the
+ * logical string for right-to-left scripts, pre-base vowel signs and stacked
+ * clusters alike (the eleven limits pinned at 1.8.0 are lifted). The one that
+ * remains — a Thai above vowel + tone mark pair in geometric order — is
+ * pinned with `it.fails`, the pdfnative-cli convention: the day the engine
+ * returns it in logical order the marker turns the suite red, and it is
+ * deleted. Rendering is unaffected; this is about extraction only.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 
@@ -30,24 +33,22 @@ const squash = (s: string): string => s.normalize('NFC').replace(/[\s\u200b\u200
 const letters = (s: string): string => s.normalize('NFKD').replace(/[\p{M}\s\u200b\u200c\u200d]/gu, '');
 
 const NEW_IN_1_8 = ['lo', 'nod', 'khb', 'tdd', 'cjm'];
+const NEW_IN_1_9 = ['gu', 'pa', 'kn', 'ml', 'or'];
 
 /**
  * Scripts whose extracted text is not the logical string (engine limit, see
  * the header). The value is the reason, shown in the test title.
  */
 const EXTRACTION_LIMITS: Readonly<Record<string, string>> = {
-    ar: 'right-to-left run extracted in visual order, as presentation forms',
-    he: 'right-to-left run extracted in visual order',
-    th: 'sara am / tone-mark glyph order',
-    hi: 'pre-base vowel sign extracted in visual order',
-    bn: 'pre-base vowel sign in visual order; a conjunct maps to U+FFFD',
-    si: 'split vowel signs in visual order; U+FFFD for composed signs',
-    km: 'stacked subscripts map to U+FFFD',
-    my: 'kinzi / stacked consonants map to U+FFFD',
-    nod: 'pre-base vowel in visual order; one cluster maps to U+FFFD',
-    yo: 'a combining mark attached by GPOS is emitted after the next glyph',
-    ig: 'a combining mark attached by GPOS is emitted after the next glyph',
+    th: 'an above vowel + tone mark pair extracts in geometric order (ตั้ง → ตัง้); the C20 span covers reordered clusters only',
 };
+
+/**
+ * The scripts whose UNTAGGED extraction was pinned as visual-order at 1.8.0
+ * and is logical since 1.9.0 (C20 / C27 `/ActualText` spans) — kept as a
+ * named list so the tagged round trip below still proves the other path.
+ */
+const LIFTED_IN_1_9 = ['ar', 'he', 'hi', 'bn', 'si', 'km', 'my', 'nod', 'yo', 'ig'];
 
 beforeAll(async () => {
     await ensureCompressionReady();
@@ -57,28 +58,30 @@ async function render(code: string, text: string, extra: Record<string, unknown>
     return addInternationalText({ title: 'T', lang: code, paragraphs: [text], creationDate: PINNED, ...extra });
 }
 
-describe('lang — 27 scripts and four aliases', () => {
-    it('SCRIPT_CODES is the 27-script list, and every code has a native sample', () => {
-        expect(SCRIPT_CODES).toHaveLength(27);
+describe('lang — 32 scripts and four aliases', () => {
+    it('SCRIPT_CODES is the 32-script list, and every code has a native sample', () => {
+        expect(SCRIPT_CODES).toHaveLength(32);
         expect([...SCRIPT_CODES].sort()).toEqual(Object.keys(SCRIPT_SAMPLES).sort());
-        for (const code of NEW_IN_1_8) expect(SCRIPT_CODES).toContain(code);
+        for (const code of [...NEW_IN_1_8, ...NEW_IN_1_9]) expect(SCRIPT_CODES).toContain(code);
         expect(LANG_ALIASES).toEqual({ ha: 'latin', yo: 'latin', ig: 'latin', sw: 'latin' });
         expect(Object.keys(ALIAS_SAMPLES).sort()).toEqual(Object.keys(LANG_ALIASES).sort());
     });
 
-    it('the catalogue enum lists the 30 font-backed codes and the 4 aliases, for the scalar and the array form', () => {
+    it('the catalogue enum lists the 35 font-backed codes and the 4 aliases, for the scalar and the array form', () => {
         const tool = listToolsPayload().tools.find((t) => t.name === 'add_international_text')!;
         const lang = (tool.inputSchema as unknown as { properties: { lang: { anyOf: Array<{ enum?: string[]; maxItems?: number; items?: { enum?: string[] } }> } } }).properties.lang;
         const scalar = lang.anyOf[0]!.enum!;
-        expect(scalar).toHaveLength(34);
+        expect(scalar).toHaveLength(39);
         expect(scalar).toEqual(expect.arrayContaining([...SCRIPT_CODES, 'latin', 'emoji', 'math', 'ha', 'yo', 'ig', 'sw']));
         expect(lang.anyOf[1]!.items!.enum).toEqual(scalar);
-        expect(lang.anyOf[1]!.maxItems).toBe(34);
+        expect(lang.anyOf[1]!.maxItems).toBe(39);
     });
 
-    it('every pinned extraction limit names a real code', () => {
+    it('every pinned or lifted extraction limit names a real code, and the two lists do not overlap', () => {
         const known = new Set([...SCRIPT_CODES, ...Object.keys(LANG_ALIASES)]);
         expect(Object.keys(EXTRACTION_LIMITS).filter((c) => !known.has(c))).toEqual([]);
+        expect(LIFTED_IN_1_9.filter((c) => !known.has(c))).toEqual([]);
+        expect(LIFTED_IN_1_9.filter((c) => c in EXTRACTION_LIMITS)).toEqual([]);
     });
 });
 
@@ -112,9 +115,9 @@ describe('text survives a round trip in logical order', () => {
 
 describe('tagged output extracts the SOURCE text: extract_text honours /ActualText (pdfnative 1.8.0)', () => {
     // Under a PDF/A claim the engine tags the content and attaches the original string to each
-    // marked span; extractText() 1.8.0 reads it back. So the scripts whose untagged extraction is
-    // in visual order (above) round-trip exactly once the document is tagged.
-    it.each(Object.keys(EXTRACTION_LIMITS))('%s', async (code) => {
+    // marked span; extractText() 1.8.0 reads it back. The scripts whose untagged extraction was in
+    // visual order at 1.8.0 (and the Thai pair that still is) round-trip exactly once tagged.
+    it.each([...Object.keys(EXTRACTION_LIMITS), ...LIFTED_IN_1_9])('%s', async (code) => {
         const sample = (SCRIPT_SAMPLES[code] ?? ALIAS_SAMPLES[code])!;
         const out = await render(code, sample.text, { pdfA: 'pdfa2u' });
         expect(latin1(out)).toContain('/ActualText');
@@ -140,6 +143,25 @@ describe('the five scripts added by pdfnative 1.8.0', () => {
         const { fullText } = await extractText({ pdfBase64: out.base64! });
         for (const code of NEW_IN_1_8.filter((c) => EXTRACTION_LIMITS[c] === undefined)) expect(squash(fullText), code).toContain(squash(SCRIPT_SAMPLES[code]!.text));
         expect(fullText).toContain('Tai Tham');
+    }, 60_000);
+});
+
+describe('the five scripts added by pdfnative 1.9.0 (Indic engine: Gujarati, Gurmukhi, Kannada, Malayalam, Odia)', () => {
+    // Every bundled shaper reports its glyphs to the ToUnicode CMap since 1.9.0 (#87), so the five
+    // claim level U under strict without a diagnostic — and the untagged text extracts logically.
+    it.each(NEW_IN_1_9)('%s builds under strict at pdfa2u with no diagnostic, and the untagged text round-trips', async (code) => {
+        const sample = SCRIPT_SAMPLES[code]!;
+        const out = await render(code, sample.text, { pdfA: 'pdfa2u', strict: true, includeDiagnostics: true });
+        expect(out.diagnostics).toEqual([]);
+        const untagged = await render(code, sample.text);
+        const { fullText } = await extractText({ pdfBase64: untagged.base64! });
+        expect(squash(fullText)).toContain(squash(sample.text));
+    }, 60_000);
+
+    it('a Gurmukhi line ending in a danda keeps the danda (C26)', async () => {
+        const out = await render('pa', 'ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ।');
+        const { fullText } = await extractText({ pdfBase64: out.base64! });
+        expect(fullText).toContain('।');
     }, 60_000);
 });
 

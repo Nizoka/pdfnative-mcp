@@ -1,0 +1,15 @@
+{
+  "description": "JPEG 2000 images (pdfnative 1.9.0 through pdfnative-mcp 1.8.0): mimeType 'image/jp2' accepts a JP2 file or a raw .j2k codestream and embeds it as /JPXDecode — passed through, never decoded, so a 24-bit photograph keeps its wavelet compression. JPEG 2000 is PDF 1.5: under pdfa1b the engine raises PDFA1_JPX_IMAGE (an error with strict:true); PDF/A-2 accepts it, as here, provided the image has 1, 3 or 4 colour channels and no opacity channel (PDFA_JPX_IMAGE otherwise). Replace <synthetic RGB JP2, base64> with your own JP2 bytes.",
+  "tool": "embed_image",
+  "arguments": {
+    "title": "JPEG 2000 figure",
+    "imageBase64": "<synthetic RGB JP2, base64>",
+    "mimeType": "image/jp2",
+    "width": 120,
+    "caption": "An RGB JPEG 2000 image, embedded without re-encoding.",
+    "alt": "A flat mid-grey square (the synthetic test image)",
+    "pdfA": "pdfa2b",
+    "embedFonts": true,
+    "creationDate": "2026-01-15T09:00:00Z"
+  }
+}

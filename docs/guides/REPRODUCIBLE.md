@@ -1,6 +1,6 @@
 # Reproducible output guide (for AI agents and operators)
 
-Applies to pdfnative-mcp v1.7.0 · pdfnative 1.8.0. Verified on 2026-09-21 against pdfnative-mcp 1.7.0 and pdfnative 1.8.0.
+Applies to pdfnative-mcp v1.8.0 · pdfnative 1.9.0. Verified on 2026-11-01 against pdfnative-mcp 1.8.0 and pdfnative 1.9.0.
 
 **The promise:** the same inputs and the same pinned instant give the **same bytes** —
 across calls, on every host and in every time zone. It is what a golden-file test

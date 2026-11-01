@@ -9,7 +9,7 @@
  * convention of this server).
  */
 import { z } from 'zod';
-import { freeStringColorSchema, freeStringColorZod, toEngineColor } from './color.js';
+import { freeStringColorSchema, freeStringColorZod, toEngineColor, type ColorInput } from './color.js';
 import type { ListItem, OutlineItem, PageLabelRange, ViewerPreferences } from 'pdfnative';
 
 /* -------------------------------------------------------------------------- */
@@ -131,7 +131,7 @@ interface OutlineNodeInput {
     y?: number;
     bold?: boolean;
     italic?: boolean;
-    color?: string | readonly number[];
+    color?: ColorInput;
     open?: boolean;
     children?: OutlineNodeInput[];
 }

@@ -1,5 +1,5 @@
 /**
- * One minimal tool call per engine diagnostic code (pdfnative 1.8.0: nine).
+ * One minimal tool call per engine diagnostic code (pdfnative 1.9.0: thirteen).
  *
  * "Named means exercised": a code the documentation names is a code a test
  * TRIGGERS. tests/diagnostics-triggers.test.ts executes this table,
@@ -9,6 +9,7 @@
 import type { PdfDiagnosticCode } from 'pdfnative';
 
 import { CMYK_INTENT, GRAY_INTENT, GRAY_V4_ICC_BASE64 } from './_icc-fixtures.js';
+import { jp2Base64 } from './_jpx.js';
 
 export interface DiagnosticTrigger {
     readonly tool: string;
@@ -84,6 +85,34 @@ export const DIAGNOSTIC_TRIGGERS: Readonly<Record<PdfDiagnosticCode, DiagnosticT
     TYPOGRAPHY_FEATURE_INEFFECTIVE: {
         tool: 'generate_basic_pdf',
         args: { title: 'T', blocks: TEXT, embedFonts: true, typography: { fontFeatures: ['tnum'] }, ...PINNED },
+        strictCode: 'DIAGNOSTIC_ESCALATED',
+    },
+    // pdfnative 1.9.0 — JPEG 2000 is PDF 1.5: PDF/A-1 (PDF 1.4) has no JPXDecode filter.
+    PDFA1_JPX_IMAGE: {
+        tool: 'embed_image',
+        args: { title: 'T', imageBase64: jp2Base64(1), mimeType: 'image/jp2', pdfA: 'pdfa1b', embedFonts: true, ...PINNED },
+        strictCode: 'PDF_A_COMPLIANCE_VIOLATION',
+    },
+    // A JP2 whose cdef box declares an opacity channel (ISO 19005-2 §6.2.8.3 forbids /SMaskInData).
+    PDFA_JPX_IMAGE: {
+        tool: 'embed_image',
+        args: { title: 'T', imageBase64: jp2Base64(4, { alpha: true }), mimeType: 'image/jp2', pdfA: 'pdfa2b', embedFonts: true, ...PINNED },
+        strictCode: 'PDF_A_COMPLIANCE_VIOLATION',
+    },
+    // Level U: a character the embedded Latin font does not cover is drawn as glyph 0, which no
+    // ToUnicode entry names. Every bundled shaper reports its glyphs since 1.9.0, so this is the
+    // only trigger left — and the engine reports the ROOT CAUSE first (TEXT_GLYPH_NOT_COVERED names
+    // the character), then the level-U consequence: `strict` stops at the first, so it escalates to
+    // DIAGNOSTIC_ESCALATED; `includeDiagnostics` lists both, in that order.
+    PDFA_GLYPH_WITHOUT_UNICODE: {
+        tool: 'generate_basic_pdf',
+        args: { title: 'T', blocks: [{ type: 'paragraph', text: 'Level U with a CJK character: 漢' }], pdfA: 'pdfa2u', embedFonts: true, ...PINNED },
+        strictCode: 'DIAGNOSTIC_ESCALATED',
+    },
+    // Base-14 Helvetica cannot write a character outside WinAnsiEncoding: the engine writes '?' and says so.
+    TEXT_GLYPH_NOT_COVERED: {
+        tool: 'generate_basic_pdf',
+        args: { title: 'T', blocks: [{ type: 'paragraph', text: 'An arrow → outside WinAnsi' }], ...PINNED },
         strictCode: 'DIAGNOSTIC_ESCALATED',
     },
 };

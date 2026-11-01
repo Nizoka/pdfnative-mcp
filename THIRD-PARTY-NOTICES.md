@@ -11,7 +11,7 @@ update.
 
 ## MCP TypeScript SDK — MIT
 
-`@modelcontextprotocol/server` (`^2.0.0`) and its sole dependency
+`@modelcontextprotocol/server` (`^2.4.0`) and its sole dependency
 `@modelcontextprotocol/core`, from
 [modelcontextprotocol/typescript-sdk](https://github.com/modelcontextprotocol/typescript-sdk)
 (copyright Anthropic, PBC; MIT). It provides the Model Context Protocol transport and
@@ -22,14 +22,14 @@ guard and bearer-token check around the HTTP transport (`src/http.ts`, `src/auth
 
 ## zod — MIT
 
-`zod` (`^4.2.0`), from [colinhacks/zod](https://github.com/colinhacks/zod) (copyright
+`zod` (`^4.6.0`), from [colinhacks/zod](https://github.com/colinhacks/zod) (copyright
 Colin McDonnell; MIT). Every `tools/call` argument is validated at the boundary with a
 `.strict()` zod schema kept in lock-step with the JSON Schema advertised in `tools/list`.
 zod is also a dependency of the MCP SDK; npm deduplicates it to one copy.
 
 ## pdfnative — MIT
 
-`pdfnative` (`^1.8.0`), from [Nizoka/pdfnative](https://github.com/Nizoka/pdfnative)
+`pdfnative` (`^1.9.0`), from [Nizoka/pdfnative](https://github.com/Nizoka/pdfnative)
 (copyright Nizoka; MIT) — the zero-dependency PDF engine every tool delegates to. Its
 own [THIRD-PARTY-NOTICES.md](https://github.com/Nizoka/pdfnative/blob/main/THIRD-PARTY-NOTICES.md)
 covers the material that travels inside the engine: the Noto font subsets (SIL Open Font

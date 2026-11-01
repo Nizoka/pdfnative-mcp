@@ -56,6 +56,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { escapeRegExp } from './lib/escape-regexp.js';
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -175,7 +176,29 @@ export function bumpManifest(text: string, version: string, date: string): Rewri
  * without the other fails the build.
  */
 export function restampVerifiedOn(text: string, date: string): Rewrite {
-    return replaceCounting(text, /(Verified on |"verifiedOn":[ \t]*")\d{4}-\d{2}-\d{2}/, (_m, a) => `${a}${date}`);
+    // Every stamp of the file (docs/KNOWLEDGE_BASE.md carries two): 1.8.0 was
+    // prepared with its second stamp a day behind the first.
+    return replaceCounting(text, /(Verified on |"verifiedOn":[ \t]*")\d{4}-\d{2}-\d{2}/g, (_m, a) => `${a}${date}`);
+}
+
+/** The files whose "Verified on" stamps are restamped — the set verify-docs holds to the manifest. */
+export const STAMPED_FILES: readonly string[] = ['llms.txt', 'docs/KNOWLEDGE_BASE.md', 'docs/AGENT_CONTRACT.md', 'docs/guides/REPRODUCIBLE.md', 'docs/guides/TYPOGRAPHY.md'];
+
+// ── 3b. The dated release surfaces (verify-docs rule release-date-parity) ──
+
+/** `_Released YYYY-MM-DD_` of the release note. */
+export function restampReleaseNote(text: string, date: string): Rewrite {
+    return replaceCounting(text, /^(_Released )\d{4}-\d{2}-\d{2}(_)/m, (_m, a, b) => `${a}${date}${b}`);
+}
+
+/** `## [X.Y.Z] - YYYY-MM-DD` of the CHANGELOG (the entry is written after the bump, so it may not exist yet). */
+export function restampChangelogHeading(text: string, version: string, date: string): Rewrite {
+    return replaceCounting(text, new RegExp(`^(## \\[${escapeRegExp(version)}\\] - )\\d{4}-\\d{2}-\\d{2}`, 'm'), (_m, a) => `${a}${date}`);
+}
+
+/** `> **Prepared:** YYYY-MM-DD` of the PR draft. */
+export function restampPrDraft(text: string, date: string): Rewrite {
+    return replaceCounting(text, /^(> \*\*Prepared:\*\* )\d{4}-\d{2}-\d{2}/m, (_m, a) => `${a}${date}`);
 }
 
 // ── 4. CITATION.cff ─────────────────────────────────────────────────
@@ -314,18 +337,18 @@ export function main(argv: readonly string[], root = resolve(import.meta.dirname
     );
 
     /** Read, rewrite, report, and write unless --dry-run. */
-    const edit = (relPath: string, what: string, fn: (text: string) => Rewrite): void => {
+    const edit = (relPath: string, what: string, fn: (text: string) => Rewrite, optional = false): void => {
         const abs = join(root, relPath);
         if (!existsSync(abs)) {
-            console.log(`  !  ${relPath} — missing`);
-            problems++;
+            console.log(`  ${optional ? '=' : '!'}  ${relPath} — ${optional ? 'not there yet (written later)' : 'missing'}`);
+            if (!optional) problems++;
             return;
         }
         const before = readFileSync(abs, 'utf8');
         const r = fn(before);
         if (r.matched === 0) {
-            console.log(`  !  ${relPath} — ${what}: pattern not found, edit by hand`);
-            problems++;
+            console.log(`  ${optional ? '=' : '!'}  ${relPath} — ${what}: ${optional ? 'not there yet (written later)' : 'pattern not found, edit by hand'}`);
+            if (!optional) problems++;
         } else if (r.text === before) {
             console.log(`  =  ${relPath} — ${what}: already current`);
         } else {
@@ -359,7 +382,7 @@ export function main(argv: readonly string[], root = resolve(import.meta.dirname
 
     console.log('\n3. Ecosystem manifest and the Verified-on stamps it governs');
     edit('docs/assets/ecosystem.json', `packages.pdfnative-mcp.version + verifiedOn ${date}`, (t) => bumpManifest(t, version, date));
-    for (const stamped of ['llms.txt', 'docs/KNOWLEDGE_BASE.md', 'docs/AGENT_CONTRACT.md']) {
+    for (const stamped of STAMPED_FILES) {
         edit(stamped, `Verified on ${date}`, (t) => restampVerifiedOn(t, date));
     }
 
@@ -377,6 +400,11 @@ export function main(argv: readonly string[], root = resolve(import.meta.dirname
     console.log('\n7. Release note and PR draft');
     scaffold(`release-notes/v${version}.md`, 'release-notes/TEMPLATE.md');
     scaffold(`.github/drafts/pr-v${version}.md`, 'release-notes/PR_TEMPLATE.md');
+
+    console.log('\n8. Dated release surfaces (verify-docs rule release-date-parity)');
+    edit(`release-notes/v${version}.md`, `_Released ${date}_`, (t) => restampReleaseNote(t, date), true);
+    edit('CHANGELOG.md', `## [${version}] - ${date}`, (t) => restampChangelogHeading(t, version, date), true);
+    edit(`.github/drafts/pr-v${version}.md`, `Prepared: ${date}`, (t) => restampPrDraft(t, date), true);
 
     console.log(`
 Next steps

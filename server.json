@@ -2,19 +2,19 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Nizoka/pdfnative-mcp",
   "title": "pdfnative MCP — PDF generation, PAdES signing & introspection",
-  "description": "PDF MCP server: generate PDF/A, sign & verify PAdES (LTV), forms, merge, split, encrypt. 28 tools",
+  "description": "PDF MCP server: PDF/A, PDF/X-4, PAdES (LTV), forms, 32 scripts, JPEG 2000, spot colours. 28 tools",
   "repository": {
     "url": "https://github.com/Nizoka/pdfnative-mcp",
     "source": "github"
   },
-  "version": "1.7.0",
+  "version": "1.8.0",
   "websiteUrl": "https://github.com/Nizoka/pdfnative-mcp#readme",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "pdfnative-mcp",
-      "version": "1.7.0",
+      "version": "1.8.0",
       "runtimeHint": "npx",
       "runtimeArguments": [
         {
@@ -40,8 +40,21 @@
           "format": "filepath"
         },
         {
+          "name": "PDFNATIVE_MCP_OUTPUT_BASE_URL",
+          "description": "Optional public base URL of PDFNATIVE_MCP_OUTPUT_DIR when the operator serves it over HTTP (e.g. https://files.example.com/pdf/). File-mode results then carry url (base + sandbox-relative path, percent-encoded) and name it instead of the host path. Absolute http(s) URL, no credentials, query or fragment; requires PDFNATIVE_MCP_OUTPUT_DIR; invalid value refuses to start. Never requested by the server.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
           "name": "PDFNATIVE_MCP_CACHE_DIR",
           "description": "Opt-in content-addressed response cache directory (SHA-256 keyed, 1h TTL, 256 MiB LRU, plaintext at rest). Never caches encrypt/decrypt, sign, timestamp, add_ltv, update_metadata, encrypted builds or file output.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "filepath"
+        },
+        {
+          "name": "PDFNATIVE_MCP_FONT_DIR",
+          "description": "Optional operator font sandbox: absolute path of a directory of .ttf / .otf files (at most 64, 16 MiB each), each parsed by the engine and registered at boot under the slug of its file name; tools name one with the font input (FONT_NOT_FOUND otherwise). An invalid directory or file refuses to start. Never a path from a tool argument.",
           "isRequired": false,
           "isSecret": false,
           "format": "filepath"

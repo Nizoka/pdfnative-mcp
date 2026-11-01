@@ -1,6 +1,8 @@
 # Long-term validation guide — the PAdES ladder (for AI agents and operators)
 
-This guide explains, in two pages, how pdfnative-mcp v1.7.0 (on pdfnative 1.8.0)
+Applies to pdfnative-mcp v1.8.0 · pdfnative 1.9.0.
+
+This guide explains, in two pages, how pdfnative-mcp v1.8.0 (on pdfnative 1.9.0)
 exposes the **PAdES baseline levels** of ETSI EN 319 142-1 — B-B, B-T, B-LT and
 B-LTA — through four tools, what the **operator** must configure before any
 network step works, and what `verify_pdf ltv: true` does and does not prove.
@@ -133,7 +135,11 @@ network access and no environment variables:
   embedded** (`LTV_MATERIAL_INVALID` names the field and index that failed). Export
   DER, not PEM.
 - The `/VRI` entry of every signed signature references all supplied items (the
-  Adobe-tolerant superset).
+  Adobe-tolerant superset) — `match: 'all'`, the default.
+- `match: 'chain'` (v1.8.0, pdfnative 1.9.0's `composeLtvData`) references, per
+  signature, only the certificates, OCSP responses and CRLs that validate it; a
+  certificate foreign to every chain is embedded in the `/DSS` but referenced by no
+  `/VRI` entry. `structuredContent.summary.match` reports `'chain'` when chosen.
 - `structuredContent.summary` reports `{ mode, signatures, certificates, ocspResponses, crls }`;
   in online mode `{ mode, signatures }`.
 - Worked example: [`examples/ltv-offline.json`](../../examples/ltv-offline.json).
@@ -283,7 +289,7 @@ material fetched at call time.
 
 A B-B signature with a pinned `signingTime` (on `sign_pdf`, or frozen earlier via
 `prepare_signature_placeholder signingTime`) is byte-identical across runs **on every
-host and in every time zone** — since pdfnative 1.8.0 the engine serialises every date
+host and in every time zone** — since pdfnative 1.8.0 the engine serialises every date <!-- verify-docs:allow version-token -->
 in UTC (`D:20260115090000+00'00'`). `signingTime` is never covered by the creation-date
 pin (`creationDate`, `PDFNATIVE_MCP_CREATION_DATE`, `SOURCE_DATE_EPOCH`): the moment of
 signature has a meaning of its own, so pin it explicitly — see
@@ -294,13 +300,11 @@ reproducible: TSA tokens (`sign_pdf timestamp: true`, `timestamp_pdf`) and onlin
 
 ## Design note / follow-up
 
-- **Offline `/VRI` composition lives in the wrapper.** In `mode: 'offline'` the server
-  builds the per-signature `/VRI` map itself — every supplied certificate / OCSP
-  response / CRL is referenced from every signed signature (the Adobe-tolerant
-  superset) before `embedValidationInfo` writes the `/DSS`. pdfnative has no helper
-  that derives the `/VRI` mapping from loose material yet; one will be requested
-  upstream (through `draft_governance_issue`, human-submitted), and the wrapper will
-  delegate to it once available with no change to inputs, outputs or error codes.
+- **Offline `/VRI` composition is the engine's (v1.8.0).** `mode: 'offline'` hands the
+  supplied material to pdfnative 1.9.0's `composeLtvData` with the chosen `match`
+  policy, then `embedValidationInfo` writes the `/DSS`. The wrapper no longer derives the
+  mapping itself: the 1.6.0–1.7.0 superset is exactly `match: 'all'`, still the default,
+  so inputs, outputs and error codes are unchanged.
 - **`ltvLevel` is structural, not a full ETSI validation.** `verify_pdf ltv: true`
   classifies a signature from what the file carries: a verified signature timestamp
   (B-T), revocation material in `/DSS` relevant to the signer (B-LT), a verified

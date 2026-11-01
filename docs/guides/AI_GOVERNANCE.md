@@ -1,5 +1,7 @@
 # AI Governance & Human-In-The-Loop (HITL)
 
+Applies to pdfnative-mcp v1.8.0 · pdfnative 1.9.0.
+
 > How an AI agent may propose bugs and improvements for the pdfnative project
 > **without ever writing to GitHub**. The agent is a **draftsman**; a human is the
 > only gate that submits.
@@ -94,7 +96,7 @@ The `draft_issue_workflow` MCP prompt returns exactly these steps.
 Minimal call — here drafting an engine limit this release documents (the
 `international-pdfa2u-taitham.pdf` negative canary in the veraPDF corpus). The previous
 edition of this guide used the PDF/A form-font gap as its example; that gap was
-reported upstream (pdfnative issue #74), fixed in pdfnative 1.8.0, and its canary is now
+reported upstream (pdfnative issue #74), fixed in pdfnative 1.8.0, and its canary is now <!-- verify-docs:allow version-token -->
 an expected pass.
 
 ```json

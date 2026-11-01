@@ -113,6 +113,12 @@ describe('verify-docs — a corrupted sandbox', () => {
         edit('.claude/settings.json', (text) => text.replace('"matcher": "PowerShell"', '"matcher": "Pwsh"'));
         // A rule edited by hand.
         edit('.claude/rules/testing.md', (text) => `${text}\n- Edited by hand.\n`);
+        // The notices quote a stale range for one dependency and drop another.
+        edit('THIRD-PARTY-NOTICES.md', (text) => text.replace(/`zod` \(`[^`]*`\)/, '`zod` (`^0.1.0`)').replace(/`pdfnative` \(`[^`]*`\)/, '`pdfnative` (see above)'));
+        // The release note of the (corrupted) current version is dated a day the manifest was not verified on;
+        // the second "Verified on" stamp of the knowledge base lags behind the first.
+        writeFileSync(join(sandbox, 'release-notes', 'v9.9.9.md'), '# pdfnative-mcp v9.9.9\n\n_Released 2000-01-01_\n\nA sandbox note.\n');
+        edit('docs/KNOWLEDGE_BASE.md', (text) => text.replace(/(Verified on \d{4}-\d{2}-\d{2}[^\n]*\n[\s\S]*?Verified on )\d{4}-\d{2}-\d{2}/, '$12000-01-01'));
         problems = (await verifyDocs(sandbox)).problems;
     }, 120_000);
 
@@ -168,6 +174,22 @@ describe('verify-docs — a corrupted sandbox', () => {
 
     it('fails changelog-ladder on the missing rung', () => {
         expect(messages('changelog-ladder')).toEqual(expect.arrayContaining([expect.stringContaining('heading [1.6.0] has no link definition')]));
+    });
+
+    it('fails third-party-ranges on a stale range and on a dropped dependency', () => {
+        expect(messages('third-party-ranges')).toEqual(expect.arrayContaining([
+            expect.stringMatching(/THIRD-PARTY-NOTICES\.md:\d+ quotes zod as `\^0\.1\.0` but package\.json says/),
+            expect.stringContaining('does not quote `pdfnative`'),
+        ]));
+    });
+
+    it('fails release-date-parity on a release note dated off the manifest, and verified-on-parity on a lagging second stamp', () => {
+        expect(messages('release-date-parity')).toEqual(expect.arrayContaining([
+            expect.stringMatching(/release-notes\/v9\.9\.9\.md:\d+ _Released_ line says 2000-01-01/),
+        ]));
+        expect(messages('verified-on-parity')).toEqual(expect.arrayContaining([
+            expect.stringMatching(/docs\/KNOWLEDGE_BASE\.md:\d+ stamped 2000-01-01/),
+        ]));
     });
 
     it('fails internal-links and anchor-parity, and honours the allow marker', () => {

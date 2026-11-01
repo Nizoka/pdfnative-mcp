@@ -16,7 +16,7 @@ import { timestampPdf } from '../src/tools/timestamp-pdf.js';
 import { ToolError } from '../src/errors.js';
 import { ALLOWED_HOSTS_ENV, REVOCATION_ENV, TSA_URL_ENV, __setFetchForTests } from '../src/network.js';
 import { assertValidPdf } from './_pdf-assert.js';
-import { createMockPki, createMockRevocationProvider, MOCK_CRL_URL, MOCK_OCSP_URL, type MockPki } from './_ltv-fixtures.js';
+import { buildMockCertificate, createMockPki, createMockRevocationProvider, MOCK_CRL_URL, MOCK_OCSP_URL, type MockPki } from './_ltv-fixtures.js';
 import { startMockTsaServer, type MockTsaServer } from './_tsa-server.js';
 
 const ENV = [TSA_URL_ENV, REVOCATION_ENV, ALLOWED_HOSTS_ENV, 'PDFNATIVE_MCP_TSA_AUTH'];
@@ -275,5 +275,43 @@ describe('add_ltv — review regressions (online material validation, VRI covera
         const { inspectPdf } = await import('../src/tools/inspect-pdf.js');
         const info = (await inspectPdf({ pdfBase64: out.base64! })) as { dss?: { vriKeys: string[] } };
         expect(info.dss?.vriKeys).toHaveLength(2);
+    });
+});
+
+describe('add_ltv offline — composeLtvData and match (pdfnative 1.9.0)', () => {
+    let pki: MockPki;
+    let unsignedPdf: string;
+
+    beforeAll(async () => {
+        await ensureCompressionReady();
+        pki = createMockPki();
+        unsignedPdf = (await generateBasicPdf({ title: 'LTV3', blocks: [{ type: 'paragraph', text: 'chain' }] })).base64!;
+    });
+
+    async function signed(): Promise<string> {
+        const r = await signPdf({ pdfBase64: unsignedPdf, algorithm: 'rsa-sha256', profile: 'pades', certDerBase64: pki.signer.certDerBase64, certChainDerBase64: [...pki.chainDerBase64], rsaKeyPkcs1DerBase64: pki.signer.rsaKeyPkcs1DerBase64 });
+        return r.base64!;
+    }
+
+    it("match:'all' (the default) references every item from the /VRI entry; match:'chain' only what validates the signature, the rest still in /DSS", async () => {
+        const pdf = await signed();
+        const provider = createMockRevocationProvider(pki);
+        const crl = Buffer.from(await provider.fetchCrl!(MOCK_CRL_URL)).toString('base64');
+        // A certificate of a stranger: shipped in /DSS /Certs, but no /VRI entry should name it under 'chain'.
+        const stranger = Buffer.from(buildMockCertificate({ subjectCn: 'Stranger CA', isCa: true }).raw).toString('base64');
+        const all = await addLtv({ pdfBase64: pdf, mode: 'offline', certificatesDerBase64: [pki.root.certDerBase64, stranger], crlsDerBase64: [crl] });
+        const chain = await addLtv({ pdfBase64: pdf, mode: 'offline', match: 'chain', certificatesDerBase64: [pki.root.certDerBase64, stranger], crlsDerBase64: [crl] });
+        expect(all.summary).toMatchObject({ mode: 'offline', signatures: 1, certificates: 2, crls: 1 });
+        expect(chain.summary).toMatchObject({ mode: 'offline', signatures: 1, certificates: 2, crls: 1, match: 'chain' });
+        expect(all.base64).not.toBe(chain.base64);
+        for (const out of [all, chain]) {
+            const t = Buffer.from(out.base64!, 'base64').toString('latin1');
+            expect(t).toContain('/DSS');
+            expect(t).toContain('/VRI');
+            expect(t).toContain('/Certs');
+            expect(listSignatures(new Uint8Array(Buffer.from(out.base64!, 'base64'))).filter((s) => !s.isPlaceholder)).toHaveLength(1);
+        }
+        const verified = await verifyPdf({ pdfBase64: chain.base64!, trustedRootsDerBase64: [pki.root.certDerBase64] });
+        expect(verified.allValid).toBe(true);
     });
 });

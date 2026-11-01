@@ -20,6 +20,12 @@
  *
  * The default response shape (`pages[]`, `fullText`, `extractable`) is
  * unchanged; `runs` is additive and present only when `includeRuns` is true.
+ *
+ * pdfnative 1.9.0: a content stream over the decompression cap no longer reads
+ * as an empty page — `extractText()` throws `PdfStreamLimitError`, mapped here
+ * to `PDF_PARSE_FAILED` with the remedy (`onStreamError: 'skip'` restores the
+ * 1.7.0 behaviour). Untagged right-to-left and reordered shaped runs now carry
+ * `/ActualText`, so the text of those scripts comes back in logical order.
  */
 import { extractText as pdfnativeExtractText, openPdf, type ExtractTextOptions, type PdfReader } from 'pdfnative';
 import { z } from 'zod';
@@ -27,6 +33,7 @@ import { z } from 'zod';
 import { ToolError } from '../errors.js';
 import { decodePdfBase64 } from '../base64.js';
 import { mapDecryptError, PASSWORD_INPUT_SCHEMA, PasswordSchema } from '../encryption.js';
+import { throwIfInflateCapError } from '../inflate-cap.js';
 
 export const EXTRACT_TEXT_NAME = 'extract_text';
 
@@ -56,6 +63,13 @@ export const EXTRACT_TEXT_INPUT_SCHEMA = {
                 'When true, each page also carries `runs[]` — positioned text-showing operations `{ text, x, y, fontSize, fontName }` in device space (content-stream order). Useful for layout-aware extraction; larger responses.',
         },
         password: PASSWORD_INPUT_SCHEMA,
+        onStreamError: {
+            type: 'string',
+            enum: ['limit', 'skip', 'throw'],
+            default: 'limit',
+            description:
+                "'limit' (default): a stream over the decompression cap (PDFNATIVE_MCP_MAX_INFLATE_BYTES) fails with PDF_PARSE_FAILED; other damaged streams are skipped. 'throw': any undecodable stream fails the call (PDF_PARSE_FAILED). 'skip': skip the over-cap stream too and read the rest (1.7.0 behaviour — that page reads as empty).",
+        },
         maxTextLength: {
             type: 'integer',
             minimum: 1,
@@ -128,6 +142,7 @@ const InputSchema = z.strictObject({
     pages: z.array(z.number().int().min(0)).max(1000).optional(),
     includeRuns: z.boolean().default(false),
     password: PasswordSchema.optional(),
+    onStreamError: z.enum(['limit', 'skip', 'throw']).default('limit'),
     maxTextLength: z.number().int().positive().optional(),
     verbosity: z.enum(['summary', 'full']).optional(),
     fields: z.array(z.string().min(1)).max(16).optional(),
@@ -194,6 +209,7 @@ export async function extractText(rawInput: unknown): Promise<ExtractTextResult>
 
     const options: ExtractTextOptions = {
         includeRuns: input.includeRuns,
+        onStreamError: input.onStreamError,
         maxTextLength: input.maxTextLength ?? DEFAULT_MAX_TEXT_LENGTH,
         ...(input.pages !== undefined ? { pages: input.pages } : {}),
         ...(input.password !== undefined ? { password: input.password } : {}),
@@ -203,6 +219,9 @@ export async function extractText(rawInput: unknown): Promise<ExtractTextResult>
     try {
         extracted = pdfnativeExtractText(pdfBytes, options);
     } catch (err) {
+        // A stream over the decompression cap (PdfStreamLimitError, pdfnative 1.9.0):
+        // the same coded failure extract_attachments and inspect_pdf raise.
+        throwIfInflateCapError(err);
         const message = err instanceof Error ? err.message : String(err);
         if (/maxtextlength|exceed|too (large|many)/i.test(message)) {
             throw new ToolError('OUTPUT_TOO_LARGE', `Extracted text exceeds the configured maxTextLength cap. (${message})`);

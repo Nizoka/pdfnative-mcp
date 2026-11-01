@@ -39,9 +39,9 @@ const HexOrCmyk = colorZod(z.string().regex(HEX_COLOR_RE));
 const CHART_SERIES_SCHEMA = {
     type: 'object',
     additionalProperties: false,
-    required: ['label', 'values'],
+    required: ['values'],
     properties: {
-        label: { type: 'string', minLength: 1, maxLength: 200, description: 'Series label (shown in the legend).' },
+        label: { type: 'string', minLength: 1, maxLength: 200, description: "Series label (shown in the legend). Optional since 1.8.0: an unlabelled series is listed as 'Series N'." },
         values: {
             type: 'array',
             minItems: 1,
@@ -50,6 +50,13 @@ const CHART_SERIES_SCHEMA = {
             description: 'Numeric values, one per category. Negative values are supported for bar/line.',
         },
         color: HEX_COLOR,
+        colors: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 1000,
+            items: HEX_COLOR,
+            description: "One colour per value, painted on bar, barH, stackedBar and stackedBarH; the length must equal values.length on every chart type (CHART_ERROR otherwise). The legend swatch keeps 'color'; line, area, scatter, pie and donut paint 'color' only.",
+        },
         xValues: {
             type: 'array',
             minItems: 1,
@@ -158,9 +165,10 @@ export const ChartBodySchema = z.strictObject({
     series: z
         .array(
             z.strictObject({
-                label: z.string().min(1).max(200),
+                label: z.string().min(1).max(200).optional(),
                 values: z.array(z.number()).min(1).max(1000),
                 color: HexOrCmyk.optional(),
+                colors: z.array(HexOrCmyk).min(1).max(1000).optional(),
                 xValues: z.array(z.union([z.number(), z.string().max(64)])).min(1).max(1000).optional(),
                 yAxis: z.enum(['left', 'right']).optional(),
             }),
@@ -216,7 +224,7 @@ export const ChartBodySchema = z.strictObject({
     height: z.number().min(50).max(2000).optional(),
 });
 
-/** Normalise a hex colour to pdfnative's expected `#rrggbb` form; CMYK strings and tuples pass through. */
+/** Normalise a hex colour to pdfnative's expected `#rrggbb` form; CMYK strings, tuples and spot colours pass through. */
 function normHex(color: ColorInput): PdfColor {
     if (typeof color !== 'string') return toEngineColor(color);
     return color.startsWith('#') || color.includes(' ') ? color : `#${color}`;
@@ -228,9 +236,10 @@ export function toChartBlock(input: z.infer<typeof ChartBodySchema>): ChartBlock
         type: 'chart',
         chartType: input.chartType,
         series: input.series.map((s) => ({
-            label: s.label,
+            ...(s.label !== undefined ? { label: s.label } : {}),
             values: s.values,
             ...(s.color !== undefined ? { color: normHex(s.color) } : {}),
+            ...(s.colors !== undefined ? { colors: s.colors.map(normHex) } : {}),
             ...(s.xValues !== undefined ? { xValues: s.xValues } : {}),
             ...(s.yAxis !== undefined ? { yAxis: s.yAxis } : {}),
         })),

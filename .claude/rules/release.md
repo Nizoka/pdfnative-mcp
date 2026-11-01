@@ -31,7 +31,7 @@ paths:
 
 ## Human-in-the-loop (never done by an agent — the guard hook refuses them)
 - `git push`, `gh pr create`, tags, the GitHub Release, `npm publish`.
-- `npx -y @modelcontextprotocol/publisher@latest validate server.json` and the MCP registry publication (network; the gate validates `server.json` offline against the vendored schema).
+- Approving the `npm-publish` environment: the publish workflow then publishes to npm AND, in its `registry` job, to the MCP registry with its own OIDC identity (`mcp-publisher login github-oidc`); the gate validates `server.json` offline against the vendored schema beforehand.
 - Importing `.github/rulesets/*.json`, creating the protected `npm-publish` environment and binding the npm Trusted Publisher to it.
 - The LF renormalisation commit (`git add --renormalize .`).
 - Updating the `pdfnative-mcp` entry of `docs/assets/ecosystem.json` in pdfnative and pdfnative-cli.

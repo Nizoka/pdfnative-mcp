@@ -1,7 +1,7 @@
 /**
  * Tool: embed_image
  *
- * Generates a PDF document with an embedded image (JPEG or PNG) using
+ * Generates a PDF document with an embedded image (JPEG, PNG or JPEG 2000) using
  * pdfnative's document builder. The image is accepted as a base64-encoded
  * string and can optionally be wrapped in a titled document with a caption.
  */
@@ -104,7 +104,7 @@ export async function embedImage(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, imageBase64, mimeType, caption, width, height, align, alt, pdfA, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt, pdfx, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
+    const { title, imageBase64, mimeType, caption, width, height, align, alt, pdfA, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, direction, actualText, compress, debug, encrypt, pdfx, strict, includeDiagnostics, embedFonts, outputMode, outputPath } = parsed.data;
     assertPrintPdfACompatible(print, pdfA);
     assertLayoutPdfACompatible({ encrypt }, pdfA);
     assertPdfXCompatible({ pdfx, pdfA, encrypt, outputIntent, metadata, print });
@@ -139,16 +139,17 @@ export async function embedImage(rawInput: unknown): Promise<OutputResult> {
             {
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
-                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, direction, actualText, compress, debug, encrypt }),
                 ...toPdfXLayout(pdfx),
                 ...collector.layout,
             },
         );
     } catch (err) {
-        // PDF/A conformance and print-production failures keep their stable codes;
-        // any other engine throw is an image decoding problem, as before.
+        // Every classified failure keeps its stable code (a strict diagnostic — PDF/A, PDF/X or
+        // escalated —, a print / PDF/X argument error, a spot-colour declaration); any other
+        // engine throw is an image decoding problem, as before.
         const mapped = mapBuildError(err, EMBED_IMAGE_NAME);
-        if (mapped.code === 'PDF_A_COMPLIANCE_VIOLATION' || mapped.code === 'PRINT_ERROR') throw mapped;
+        if (mapped.code !== 'GENERATION_FAILED') throw mapped;
         /* v8 ignore start - buildDocumentPDFBytes only throws on internal pdfnative errors; defensive guard. */
         const msg = err instanceof Error ? err.message : String(err);
         throw new ToolError('VALIDATION_ERROR', `Failed to embed image: ${msg}`);

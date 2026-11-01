@@ -4,7 +4,9 @@
   "enforcement": "active",
   "conditions": {
     "ref_name": {
-      "include": ["~DEFAULT_BRANCH"],
+      "include": [
+        "~DEFAULT_BRANCH"
+      ],
       "exclude": []
     }
   },
@@ -23,7 +25,10 @@
         "require_code_owner_review": false,
         "require_last_push_approval": false,
         "required_review_thread_resolution": true,
-        "allowed_merge_methods": ["merge", "squash"]
+        "allowed_merge_methods": [
+          "merge",
+          "squash"
+        ]
       }
     },
     {
@@ -32,11 +37,30 @@
         "strict_required_status_checks_policy": true,
         "do_not_enforce_on_create": false,
         "required_status_checks": [
-          { "context": "ci (22)", "integration_id": 15368 },
-          { "context": "ci (24)", "integration_id": 15368 },
-          { "context": "os (windows-latest)", "integration_id": 15368 },
-          { "context": "os (macos-latest)", "integration_id": 15368 },
-          { "context": "sample-regression", "integration_id": 15368 }
+          {
+            "context": "ci (22)",
+            "integration_id": 15368
+          },
+          {
+            "context": "ci (24)",
+            "integration_id": 15368
+          },
+          {
+            "context": "os (windows-latest)",
+            "integration_id": 15368
+          },
+          {
+            "context": "os (macos-latest)",
+            "integration_id": 15368
+          },
+          {
+            "context": "sample-regression",
+            "integration_id": 15368
+          },
+          {
+            "context": "workflow-lint",
+            "integration_id": 15368
+          }
         ]
       }
     }

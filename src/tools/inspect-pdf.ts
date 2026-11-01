@@ -18,6 +18,7 @@
  *     when the document carries the feature.
  */
 import {
+    decodePdfTextString,
     isArray,
     isDict,
     isName,
@@ -365,6 +366,13 @@ function pdfStringToJs(val: PdfValue): string | null {
     return null;
 }
 
+/**
+ * The /Info dictionary as plain strings. A string value is an ISO 32000-1 text
+ * string — PDFDocEncoding, or UTF-16BE / UTF-8 behind a byte-order mark — and
+ * is decoded by the engine (`decodePdfTextString`, 1.9.0), so a title written
+ * by `update_metadata` in any script reads back as the text, not as `þÿ…`.
+ * A name value keeps its `/Name` form.
+ */
 function readInfoDict(reader: PdfReader): Record<string, string> {
     const info = reader.getInfo();
     if (info === null) return {};
@@ -372,7 +380,7 @@ function readInfoDict(reader: PdfReader): Record<string, string> {
     for (const [key, value] of info.entries()) {
         const resolved = reader.resolveValue(value);
         const s = pdfStringToJs(resolved);
-        if (s !== null) out[key] = s;
+        if (s !== null) out[key] = typeof resolved === 'string' ? decodePdfTextString(s) : s;
     }
     return out;
 }

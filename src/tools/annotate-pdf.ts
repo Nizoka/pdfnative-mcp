@@ -13,6 +13,8 @@
  *   - square | circle                        — shapes
  *   - line                                   — straight line
  *   - freetext                               — free-standing text (`/FreeText`)
+ *   - link                                   — URI link (`/Link` + `/URI`, pdfnative 1.9.0):
+ *                                              the incremental-update twin of the `link` block
  *
  * Faithful-wrapper notes:
  *   - Encrypted sources are rejected (`ENCRYPTED_SOURCE`) — decrypt first; the
@@ -47,7 +49,13 @@ const ANNOTATION_TYPES = [
     'circle',
     'line',
     'freetext',
+    'link',
 ] as const;
+
+// `http://` / `https://` with a host, or `mailto:` with an address — a bare `https:` is not a link.
+const LINK_SCHEMES = /^(?:https?:\/\/[^\s/?#]+|mailto:[^\s@]+@[^\s@]+)/i;
+// eslint-disable-next-line no-control-regex -- C0 / DEL are exactly what the engine rejects
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/;
 
 const RECT_SCHEMA = {
     type: 'array',
@@ -109,6 +117,8 @@ export const ANNOTATE_PDF_INPUT_SCHEMA = {
                     end: { type: 'array', minItems: 2, maxItems: 2, items: { type: 'number' }, description: "type='line': end point [x, y]." },
                     // freetext
                     fontSize: { type: 'number', minimum: 1, description: "type='freetext': default-appearance font size." },
+                    // link
+                    url: { type: 'string', minLength: 1, maxLength: 2048, description: "type='link' (required): target of the /URI action — http:, https: or mailto: only, no control characters. The `rect` is the clickable area; no visible appearance is drawn." },
                 },
             },
         },
@@ -138,10 +148,18 @@ const AnnotationSchema = z
         start: pointSchema.optional(),
         end: pointSchema.optional(),
         fontSize: z.number().min(1).optional(),
+        url: z.string().min(1).max(2048).optional(),
     })
     .superRefine((a, ctx) => {
         if (a.type === 'line' && (a.start === undefined || a.end === undefined)) {
             ctx.addIssue({ code: z.ZodIssueCode.custom, message: "type='line' requires both 'start' and 'end'." });
+        }
+        if (a.type === 'link') {
+            if (a.url === undefined) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, message: "type='link' requires 'url'." });
+            } else if (!LINK_SCHEMES.test(a.url) || CONTROL_CHARS.test(a.url)) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'url must start with http://, https:// or mailto: and contain no control characters.' });
+            }
         }
     });
 
@@ -217,6 +235,13 @@ function toMarkupAnnotation(a: AnnotationInput): MarkupAnnotation {
                 type: 'freetext',
                 ...base,
                 ...(a.fontSize !== undefined ? { fontSize: a.fontSize } : {}),
+            };
+        case 'link':
+            return {
+                type: 'link',
+                ...base,
+                // Presence guaranteed by the superRefine above.
+                url: a.url as string,
             };
     }
 }

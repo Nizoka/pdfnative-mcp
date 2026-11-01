@@ -55,8 +55,14 @@ export function applyInflateCap(env: NodeJS.ProcessEnv = process.env): number {
  */
 const INFLATE_CAP_RE = /zip bomb|exceeds maximum of \d+ bytes|ERR_BUFFER_TOO_LARGE|Cannot create a Buffer larger than|maxOutputLength/i;
 
-/** True when `err` is an inflate-cap failure from the engine. */
+/**
+ * True when `err` is an inflate-cap failure from the engine. Since pdfnative
+ * 1.9.0 the decode filters and `extractText()` throw `PdfStreamLimitError`
+ * (`code === 'PDF_STREAM_LIMIT'`) — classified by the code, never by the
+ * message, which differs between FlateDecode and the fixed-cap filters.
+ */
 export function isInflateCapError(err: unknown): boolean {
+    if (err instanceof Error && (err as { code?: unknown }).code === 'PDF_STREAM_LIMIT') return true;
     const message = err instanceof Error ? `${err.message} ${(err as { code?: unknown }).code ?? ''}` : String(err);
     return INFLATE_CAP_RE.test(message);
 }
@@ -69,8 +75,12 @@ export function isInflateCapError(err: unknown): boolean {
 export function throwIfInflateCapError(err: unknown): void {
     if (!isInflateCapError(err)) return;
     const message = err instanceof Error ? err.message : String(err);
+    // The engine's message names the remedy that applies to the filter (the
+    // FlateDecode cap moves with the operator variable; ASCIIHex, ASCII85, LZW
+    // and RunLength carry a fixed 256 MiB cap of their own — pdfnative 1.9.0),
+    // so it is kept verbatim and only the server-side translation is added.
     throw new ToolError(
         'PDF_PARSE_FAILED',
-        `A compressed stream in the PDF expands beyond the configured decompression cap (${message}). Raise ${MAX_INFLATE_ENV} on the server if the document is trusted.`,
+        `A compressed stream in the PDF expands beyond its decompression cap (${message}). extract_text reads the rest of the document with onStreamError:'skip'; the FlateDecode cap is ${MAX_INFLATE_ENV} on the server — raise it only for a trusted document.`,
     );
 }

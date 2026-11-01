@@ -1,6 +1,6 @@
 # Typography guide (for AI agents)
 
-Applies to pdfnative-mcp v1.7.0 · pdfnative 1.8.0. Verified on 2026-09-21 against pdfnative-mcp 1.7.0 and pdfnative 1.8.0.
+Applies to pdfnative-mcp v1.8.0 · pdfnative 1.9.0. Verified on 2026-11-01 against pdfnative-mcp 1.8.0 and pdfnative 1.9.0.
 
 `typography` is one opt-in object that turns on the engine's fine typography:
 paragraphs that split across pages under orphan / widow rules, headings kept with
@@ -46,9 +46,9 @@ The block-level controls (`align`, `keepWithNext`, `splittable`) exist on the
 }}
 ```
 
-`embedFonts: true` comes first on purpose: `kerning`, `fontFeatures` and the narrow
-no-break space of the `'fr'` preset read tables and glyphs that only an embedded font
-has (see [Limits](#limits)). Worked, placeholder-free example:
+`embedFonts: true` comes first on purpose: `kerning` and `fontFeatures` read tables that
+only an embedded font has (see [Limits](#limits)); the narrow no-break space of the `'fr'`
+preset is written on base-14 Helvetica too since pdfnative 1.9 (a `TJ` adjustment). Worked, placeholder-free example:
 [`examples/typography-report.json`](../../examples/typography-report.json).
 
 ## The 12 keys
@@ -84,10 +84,37 @@ the author wrote no space, so text is written the way its author types it.
 | `paragraph` | `keepWithNext` | Keep this paragraph on the same page as the block that follows — a lead-in line before a table or a figure. Default `false`. |
 | `paragraph` | `splittable` | Allow or forbid this one paragraph breaking across pages, overriding `typography.splitParagraphs` either way. |
 | `heading` | `keepWithNext` | Keep this heading with the block that follows, overriding `typography.keepHeadingsWithNext` for this block, either way. |
+| `paragraph` | `direction` | `'auto'` \| `'ltr'` \| `'rtl'` (v1.8.0) — the base direction of this paragraph, overriding the document-level `direction`. `'auto'` reads the first strong character; an RTL paragraph is laid out and aligned from the right. |
 
 A paragraph whose text contains newlines is split into several paragraphs by the
 server; `align` and `splittable` then describe each of them, and `keepWithNext` applies
 to the last one — the one that touches the next block.
+
+## Direction and ActualText (v1.8.0)
+
+Two layout keys, on the nine document tools and `inspect_layout`, govern bidirectional
+text (UAX #9) — the Arabic, Hebrew and mixed-direction documents that
+`add_international_text` shapes, and any paragraph whose text starts with a strong RTL
+character:
+
+| Key | Values | Meaning |
+| --- | --- | --- |
+| `direction` | `'auto'` \| `'ltr'` \| `'rtl'` | The document's base direction. `'auto'` reads each paragraph's first strong character and right-aligns the RTL ones; `'ltr'` / `'rtl'` force it. A paragraph's own `direction` overrides it. Omitted = LTR, the 1.7.0 bytes. |
+| `actualText` | `true` (default) \| `false` | On **untagged** output, wrap every reordered shaped run and every RTL run in `/ActualText`, so `extract_text` returns the logical string in reading order. `false` restores the bare 1.7.0 glyph runs. No effect on tagged (`pdfA`) output, which already carries `/ActualText`. |
+
+```json
+{ "tool": "add_international_text", "arguments": {
+  "title": "Bidirectional notice",
+  "lang": ["ar", "latin"],
+  "direction": "auto",
+  "paragraphs": ["<an Arabic paragraph>", "An English paragraph in the same document."]
+}}
+```
+
+Worked example, read back with `extract_text`:
+[`examples/rtl-direction.json`](../../examples/rtl-direction.json). Justification,
+optical margins and the other `typography` keys apply to an RTL paragraph from its own
+margin.
 
 ## Recipes
 
@@ -134,7 +161,8 @@ across pages remains one `/P` structure element.
   space (U+00A0) before `:` and inside `« »`.
 - `'fr-CA'` sets the colon and the guillemets only, as Canadian French usage does.
 - Without `embedFonts: true` the text is set in base-14 Helvetica, which has no U+202F
-  glyph: `'fr'` then **degrades to `'fr-CA'`**.
+  glyph: since pdfnative 1.9 the narrow space is then a `TJ` adjustment of 167/1000 em
+  (engine ledger C10) — the same width, no glyph; before 1.9, `'fr'` degraded to `'fr-CA'`.
 - Any other convention is an explicit rule list:
 
 ```json
@@ -280,10 +308,10 @@ pretends otherwise:
   or with this server. `hyphenationLanguage` is validated and recorded, and has **no
   effect** here. Put soft hyphens (U+00AD, `\u00AD` in JSON) in long words: they are
   honoured as break opportunities and are drawn only when a line breaks there.
-- **`kerning`, `fontFeatures` and the `'fr'` narrow no-break space need
-  `embedFonts: true`** (or `add_international_text`, which always embeds its fonts).
-  Base-14 Helvetica has no GPOS / GSUB tables and no U+202F glyph: kerning and features
-  do nothing there, and `'fr'` degrades to `'fr-CA'`.
+- **`kerning` and `fontFeatures` need `embedFonts: true`** (or `add_international_text`,
+  which always embeds its fonts). Base-14 Helvetica has no GPOS / GSUB tables: kerning and
+  features do nothing there. The `'fr'` narrow no-break space is a `TJ` adjustment on
+  base-14 (pdfnative 1.9, C10) and the U+202F glyph on an embedded font.
 - **`metrics: 'exact'` acts on base-14 text only.** With `embedFonts: true` it changes
   nothing.
 - **`tnum` and `lnum` are no-ops on the bundled Noto Sans**, whose default figures
@@ -298,8 +326,10 @@ pretends otherwise:
 - Justification distributes space between words only — no letter-spacing, no glyph
   scaling. Features are single substitutions; complex-script shaping is done by the
   script shapers, independently of `fontFeatures`.
-- No custom fonts: the embedded Latin face is the bundled Noto Sans, so "which tags
-  change anything" is a property of that font.
+- Custom fonts come from the operator, not from the call: `font: '<slug>'` draws a face
+  registered through `PDFNATIVE_MCP_FONT_DIR` (v1.8.0, see [FONTS.md](FONTS.md)) first and
+  the bundled Noto Sans after it. Which tags change anything is a property of the font in
+  use; `TYPOGRAPHY_FEATURE_INEFFECTIVE` tells you when one does not.
 
 ```json
 { "tool": "generate_basic_pdf", "arguments": {
@@ -318,7 +348,8 @@ and no PDF is produced.
 
 ## See also
 
-- [PRINT.md](PRINT.md) — page boxes, CMYK, PDF/X-4.
+- [PRINT.md](PRINT.md) — page boxes, CMYK and spot colours, PDF/X-4.
+- [FONTS.md](FONTS.md) — operator fonts and the `font` input.
 - [PDFA.md](PDFA.md) — `embedFonts`, `strict` and the diagnostics under a PDF/A claim.
 - [REPRODUCIBLE.md](REPRODUCIBLE.md) — typography is deterministic: the same inputs and
   the same pinned instant give the same bytes.

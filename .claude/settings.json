@@ -40,6 +40,8 @@
       "Read(test-output/**)",
       "Read(package-lock.json)",
       "Read(node_modules/**)",
+      "Read(.audit/**)",
+      "Read(.clusterfuzzlite/engine/package-lock.json)",
       "Bash(npm publish*)",
       "Bash(git push --force*)",
       "Bash(git push -f*)",

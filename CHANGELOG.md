@@ -7,6 +7,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-01
+
+A minor, backward-compatible release that aligns the server with
+[pdfnative v1.9.0](https://github.com/Nizoka/pdfnative) and ports the engine's release
+pipeline, workflow lint and coverage-guided fuzzing. The catalogue stays at **28 tools**:
+spot colours and ink mixes on every colour input, a base text direction with `/ActualText`
+on untagged right-to-left and shaped runs, the PDF/X-4 + PDF/A-2 dual claim, JPEG 2000
+images, a `link` annotation on existing documents, per-value chart colours, five more Indic
+scripts (32), four more engine diagnostics (13), an operator font sandbox
+(`PDFNATIVE_MCP_FONT_DIR`), a public URL on every file-mode result
+(`PDFNATIVE_MCP_OUTPUT_BASE_URL`, #66) and the governance contract served as resources.
+Every ROADMAP *Next* item shipped. Default tool outputs stay byte-identical except where
+pdfnative 1.9.0 corrected previously-wrong output or where a silent data loss became a coded
+error (see `release-notes/v1.8.0.md` → Upgrade); the superset gate against the published
+1.5.0 catalogue proves nothing was removed or narrowed.
+
+### Added
+
+#### Engine 1.9.0 surface
+
+- **feat(color):** spot colours and ink mixes — `print.spotColours[]` (`{ name, alternate }`, ≤ 32 inks) on the nine document tools; `{ spot, tint? }` (`/Separation`) and `{ inks }` (`/DeviceN`) accepted at all 46 colour sites of the catalogue. An undeclared ink is `VALIDATION_ERROR` naming it; a blank or duplicate declaration is `PRINT_ERROR` (an empty name is `VALIDATION_ERROR` at the boundary).
+- **feat(layout):** `direction` (`auto` | `ltr` | `rtl`) and `actualText` (default true) on the nine document tools and `inspect_layout`; `paragraph.direction` overrides the document setting. Omitted, the bytes are those of 1.7.0.
+- **feat(print):** the PDF/X-4 + PDF/A-2 dual claim — `pdfx: 'pdfx4'` with `pdfA: 'pdfa2b' | 'pdfa2u'`; `pdfa1b` and `pdfa3b` refused before the build with the engine's level-specific messages.
+- **feat(validate):** `validate_pdf { standard: 'pdf-x-4' }` reads colour inside Form XObjects, images and Separation / DeviceN / Indexed alternates (engine 1.9.0); the stale caveat is gone and `caveats[]` states the new scope.
+- **feat(image):** `mimeType: 'image/jp2'` (JP2 file or raw codestream, magic bytes checked, passed through as `/JPXDecode`) on `embed_image`, the `image` block and `watermark.image`; `PDFA1_JPX_IMAGE` under `pdfa1b`, `PDFA_JPX_IMAGE` for an opacity channel.
+- **feat(annotate):** `annotate_pdf` type `link` — `{ page, type: 'link', rect, url }` (`http:` / `https:` / `mailto:`), the incremental-update twin of the `link` block.
+- **feat(chart):** `series[].colors` (one colour per bar on the four bar types; a length mismatch is `CHART_ERROR`) and an optional series `label` (`Series N`).
+- **feat(i18n):** `lang` gains `gu`, `pa`, `kn`, `ml`, `or` — 32 scripts; every shaper reports its glyphs to ToUnicode, so the five claim PDF/A-2u under `strict` and extract logically untagged.
+- **feat(diagnostics):** `PDFA1_JPX_IMAGE`, `PDFA_JPX_IMAGE`, `PDFA_GLYPH_WITHOUT_UNICODE` (reported behind its root cause `TEXT_GLYPH_NOT_COVERED`, so `strict` escalates to `DIAGNOSTIC_ESCALATED`), `TEXT_GLYPH_NOT_COVERED` — 13 codes, each with an executed trigger; `PDFA1_*` escalates like `PDFA_*`.
+- **feat(extract):** `extract_text.onStreamError` — `'limit'` (default) fails an over-cap stream with `PDF_PARSE_FAILED` naming `PDFNATIVE_MCP_MAX_INFLATE_BYTES`; `'skip'` restores the empty page of 1.7.0; `'throw'` fails the call on any undecodable stream (the engine's third policy). `PdfStreamLimitError` is classified by its `code`, never by its message; the remedy keeps the engine's per-filter text and names `onStreamError: 'skip'` beside the FlateDecode variable.
+- **feat(ltv):** `add_ltv mode: 'offline'` composes `/DSS` + `/VRI` through `composeLtvData()`; new input `match: 'all' | 'chain'`.
+- **feat(verify):** `verify_pdf` verifies ECDSA through the engine's `ecdsaVerifyHash()`; the local P-256 verifier is deleted.
+- **feat(inspect):** `inspect_pdf` decodes `/Info` text strings (`decodePdfTextString`).
+- **docs:** eight new executable examples (51 in total); `examples/README.md` indexes them.
+
+#### Operator knobs
+
+- **feat(fonts):** `PDFNATIVE_MCP_FONT_DIR` — `.ttf` / `.otf` files (≤ 64, ≤ 16 MiB each) parsed by the engine's `parseFontData` and registered at boot under the slug of their file name; the `font` input of `add_international_text`, `generate_basic_pdf` and `inspect_layout` names one (primary entry, bundled faces as fallbacks). New code **`FONT_NOT_FOUND`**. An invalid directory or file refuses to start; the schema is static and no tool argument carries a path. The registry's fingerprint (slug, size, SHA-256 of every file) joins the response-cache namespace, so a face replaced on disk is never served from an earlier render.
+- **feat(output):** `PDFNATIVE_MCP_OUTPUT_BASE_URL` (#66) — every file-mode result (`emitPdf`, each `split_pdf` part, the governance draft) carries `url` = base + percent-encoded sandbox-relative path and the text names it instead of the host path; `filePath` stays. Validated at boot, refused without `PDFNATIVE_MCP_OUTPUT_DIR`; the server never requests it.
+- **feat(governance):** `pdfnative://governance/policy` and `pdfnative://governance/rules` serve the contract byte for byte from `src/governance-embed.ts` (`npm run agents:governance`; `verify:docs` rule `governance-embed`), listed with or without an output sandbox; `verification.validator_covered_by` in the policy.
+
+#### Repository hardening (aligned with pdfnative 1.9.0)
+
+- **ci(publish):** guard → build → publish → attest → registry: tag-only guard before the environment, one pack with recorded digests, a publish job that installs nothing (npm client pinned by SHA-512, tarball re-verified) and mints the only npm token, the registry's bytes attested with three SBOMs and the Sigstore bundle attached to the release, then `server.json` published to the MCP registry with the workflow's OIDC identity through a version-, SHA-256- and cosign-verified `mcp-publisher`.
+- **ci:** `ci.yml` without `paths-ignore`, a `workflow-lint` job (zizmor + checksummed actionlint) required in `rulesets/main.json`; egress block mode on every Linux job whose hosts are known, dated reasons elsewhere; `codeql.yml` scans `actions` + TypeScript with `security-extended`, `security-events` scoped to the job; event values through `env:`; Dependabot 7-day cooldown and the two fuzz ecosystems; `setup-verapdf` returns `home`. `node-current.yml` runs the gate on Node 26 (advisory).
+- **ci(fuzz):** ClusterFuzzLite over five boundary targets (`fuzz/`: tools/call arguments, base64, images, the output sandbox, the HTTP guards), seeded by `tests/fuzzing/_fuzz-seeds.ts`, proved locally by `tests/fuzzing/targets.test.ts`; the Jazzer.js engine in `.clusterfuzzlite/engine`, never in `package.json`.
+- **feat(gate):** `pack-manifest` — the files `npm pack` ships held to `tests/_fixtures/pack-manifest.json`, two packs byte-identical.
+- **test(conformance):** veraPDF corpus 41 → 45 files (JPEG 2000, spot colours, the dual claim, the Indic scripts); the Tai Tham PDF/A-2u canary flipped to compliant. veraPDF 1.30.2: 32 PASS, 5 expected failures, 0 unexpected; PDF/X-4: 5 PASS, 2 expected failures. JPEG 2000 under PDF/A-1b is not a canary (veraPDF 1.30.2 accepts it; the engine diagnostic has its own trigger).
+- **test:** `tests/_fixtures/engine-surface.json` ties the 72 bullets of the 1.9.0 changelog to tests (37) or waivers (35); `tests/engine-1-9.test.ts`; `tests/client-compat.test.ts` (#65); a unit test holds `scripts/lib/synthetic-icc.ts` to `pdfnative/tools`.
+- **feat(docs-as-code):** `verify:docs` rules `governance-embed`, `keyword-count`, `third-party-ranges` (the notices quote the dependency ranges of `package.json`) and `release-date-parity` (the release note, the CHANGELOG heading, the PR draft and every "Verified on" stamp carry the manifest's date); `THIRD-PARTY-NOTICES.md` in the verified set; `scripts/release-prepare.ts` restamps every dated surface, the release note and the PR draft included; `.git-blame-ignore-revs` names the 1.7.0 renormalisation commit; `package.json` exports `./package.json`; the Developer Certificate of Origin paragraph in CONTRIBUTING.
+
+### Changed
+
+- **deps:** `pdfnative` `^1.8.0` → `^1.9.0`; `@modelcontextprotocol/server` `^2.0.0` → `^2.4.0`; `zod` `^4.2.0` → `^4.6.0`; vitest / coverage 4.1.12, vite 8.3.5. Still exactly three runtime dependencies; the dev majors stay.
+- **api:** `TOOL_API_VERSION` `1.7.0` → `1.8.0` (new optional inputs, enum values, one new error code); the cache namespace follows.
+- **cache:** a call carrying `password` is never persisted to the response cache.
+- **registry:** `server.json` declares fourteen operator variables.
+- **catalogue size:** `tools/list` ≈ 357 kB (306 kB in 1.7.0); the budget moves from 320 to 384 KiB, deliberately (46 colour sites × 2 members, 5 options × 9 tools). `serverInfo.instructions` ≈ 8.4 kB (its budget 8 → 10 KiB): the decision tree names every 1.9.0 behaviour.
+- **#65:** `prepare_signature_placeholder.blocks` takes 5000 items (2000 broke llama.cpp's grammar compiler); no bound sits between 1000 and 5000.
+- **test:** 1804 tests across 103 files; coverage 94.02 % / 87.08 % / 99.13 % / 95.77 % (statements / branches / functions / lines); thresholds raised to 90 / 83 / 95 / 92.
+- **samples:** 112 entries (16 new); 52 of the 96 inherited entries moved under the engine ledger C1–C28 (C9–C12 reach base-14 documents too), 43 byte-identical, one equal by its semantic fingerprint.
+- **upstream limits:** twelve of the thirteen limits pinned at 1.7.0 lifted (ten untagged-extraction limits, `ecdsaVerifyHash`, the swallowed decode failure); markers deleted, assertions kept; the Thai pair remains and one new limit (form values) is pinned.
+- **SDK:** with `@modelcontextprotocol/server` 2.4 a modern request without the `MCP-Protocol-Version` header is `400` / `-32020`.
+
+### Fixed
+
+- **fix(security):** CodeQL — `escapeRegExp` (`scripts/lib/escape-regexp.ts`) at the three incomplete-sanitization sites, a generic `400` body in the mock TSA, the password cache policy.
+- **fix(extract):** an over-cap content stream fails with `PDF_PARSE_FAILED` instead of reading as an empty page; the remedy keeps the engine's per-filter message (the FlateDecode cap follows `PDFNATIVE_MCP_MAX_INFLATE_BYTES`; ASCIIHex / ASCII85 / LZW / RunLength carry a fixed 256 MiB cap) and names `onStreamError: 'skip'` beside it.
+- **fix(ci):** the release pull request's first run — CodeQL regex injection on the CHANGELOG restamp (`escapeRegExp`) and the font file race (`src/font-dir.ts` sizes and reads through one descriptor); zizmor `github-env` on `setup-verapdf` (no `GITHUB_ENV` / `GITHUB_PATH` write, the `home` output is its only export); `dependency-review`'s allow-list gains the Scorecard hosts `api.deps.dev` and `api.securityscorecards.dev` and its licence list BlueOak-1.0.0 / CC-BY-4.0 (the fuzz engine's tree, never the package's); the `http-guards` fuzz oracle reads a Host the way the SDK's URL parser does (trailing C0 control dropped) and checks the bearer credential rather than its spelling.
+- **fix(surface):** `serverInfo.instructions` still quoted pdfnative v1.8 and Tool API 1.7.0, and the `print_ready` prompt called PDF/X-4 exclusive with `pdfA`: both, the `extract_text` / `annotate_pdf` / `add_chart` descriptions and the typography texts now describe the 1.8.0 behaviour; the test derives the versions from `package.json` and `_meta.apiVersion` instead of pinning literals (found by the release audit).
+- **fix(cache):** the font sandbox fingerprint joins the response-cache namespace — a face replaced on disk was served from cache under its unchanged slug.
+- **fix(embed_image):** a strict diagnostic keeps its own code instead of `VALIDATION_ERROR`; `PDFA1_*` escalates like `PDFA_*`.
+- **fix(docs):** the ROADMAP quoted a keyword figure nearly twice the real one; `keyword-count` holds the figure to `package.json`.
+
+### Security
+
+- **deps:** every open Dependabot alert closed — `@modelcontextprotocol/server` 2.4.0 (GHSA-jm63-cq47-j5jp, GHSA-46jr-4wx8-v453, GHSA-rvq5-wwqv-78pq), vitest / `@vitest/mocker` 4.1.12 (GHSA-qxg6-89mg-rqv8, GHSA-xp26-3454-mjgp), vite 8.3.5 / launch-editor (GHSA-rq7h-c2jc-7f22, GHSA-9jrq-w75r-8gcw, GHSA-vfpm-58rq-9qcg, GHSA-r825-w8mm-5pxw, GHSA-587h-7wmj-h5pm, GHSA-698v-4r3x-3vcv), `brace-expansion` (GHSA-q2hr-2g5m-vwhr), `source-map-js` (GHSA-68fv-2mgg-jv7q); `npm audit --audit-level=high` clean.
+- **inherited(pdfnative 1.9.0):** CWE-682, CWE-835, CWE-125 (the `parseFontData` bound that now guards `PDFNATIVE_MCP_FONT_DIR`).
+- **supply chain:** npm client by SHA-512, the registry's bytes attested, `mcp-publisher` verified by SHA-256 and Sigstore, egress blocked where known, workflows linted; SECURITY.md states supported runtimes and accepted Scorecard findings.
+
+### Inherited from pdfnative 1.9.0
+
+Closed upstream, and therefore closed here (all listed as blocked in the 1.7.0 ROADMAP): `ecdsaVerifyHash` exported; `extractText()` throws `PdfStreamLimitError`; `composeLtvData()`; logical-order extraction on untagged output (ten `it.fails` markers deleted); `/Link` in `MarkupAnnotation`; #80 / #83 (descenders, paginated table of contents); #82 (unlabelled chart series); #85 (text strings decoded); #86 (synthetic profiles on `pdfnative/tools`); #90 (`extraCertificates` in every `/VRI`); #91 (unknown annotation type throws).
+
+### Upgrade notes
+
+No breaking changes. Drop-in replacement for v1.7.0. The sample baseline was rebaselined once: 52 of the 96 inherited entries moved under pdfnative 1.9.0's ledger C1–C28 (font subsets, `/ActualText` spans, one text object per line, the danda routing, unused fonts), 43 are byte-identical, one is equal by its semantic fingerprint, 16 are new; four causes (C9 long TOC, C10 base-14 narrow space, C11 page transparency group, C12 tagged tables) reach base-14 documents too.
+
+#### Migrating from 1.7.0
+
+1. **Rebaseline once if you compare bytes** — every document embedding a font (C6, C21, C28), every untagged document with right-to-left or reordered shaped text (C20, C27), every shaped run or font change (C25), every danda-terminated Indic line (C26), every unused registered font (C18); base-14 documents without those features are byte-identical.
+2. **`extract_text` fails on an over-cap stream** (`PDF_PARSE_FAILED`); `onStreamError: 'skip'` restores the empty page.
+3. **`extract_text` returns logical order untagged**; `actualText: false` restores the bare runs.
+4. **`verify_pdf` on the engine's ECDSA** — same verdicts.
+5. **One new error code**, `FONT_NOT_FOUND` (only with `font`); `PDF_PARSE_FAILED`, `VALIDATION_ERROR`, `PRINT_ERROR`, `CHART_ERROR` gained triggers. 48 codes.
+6. **`strict` on `embed_image`** keeps the diagnostic's own code.
+7. **Protected documents are never cached.**
+8. **The catalogue is ≈ 357 kB** under a 384 KiB budget.
+9. **`TOOL_API_VERSION` is `1.8.0`.**
+10. **`resources/list` always carries the two governance resources** (first; `text`, not `blob`).
+11. **Operators:** `PDFNATIVE_MCP_FONT_DIR`, `PDFNATIVE_MCP_OUTPUT_BASE_URL`; an invalid value refuses to start.
+12. **SDK 2.4:** send the `MCP-Protocol-Version` header.
+
+### Deferred by design
+
+- **Blocked upstream** (pinned by `it.fails`, listed in ROADMAP.md): a Thai above vowel + tone mark pair extracts in geometric order on untagged output (`tests/scripts.test.ts`); non-Latin-1 form values under `fill_form { nonWinAnsi: 'needAppearances' }` do not round-trip — the engine writes the low byte of each UTF-16 code unit into `/V` (`tests/upstream-limits.test.ts`; a new limit found by this release).
+- **`redact_pdf`**, per-tool HTTP page streaming, OCR and the opt-in telemetry hook are unchanged. <!-- verify-docs:allow tool-parity -->
+- New *Next* items: the dev-toolchain majors, the Tier-2 catalogue compaction, a storage repository for the fuzz corpora, the remaining audit-mode jobs, the OpenSSF Best Practices badge, ORCID / DOI in `CITATION.cff`.
+
 ## [1.7.0] - 2026-09-21
 
 A minor, backward-compatible release that aligns the server with
@@ -552,7 +661,8 @@ stability via the new per-tool `_meta.apiVersion` field. Built on top of
 - Strict JSON Schema + Zod validation at every tool boundary.
 - Vitest test suite with sandbox security checks.
 
-[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/Nizoka/pdfnative-mcp/compare/v1.4.0...v1.5.0

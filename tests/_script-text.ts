@@ -1,8 +1,8 @@
 /**
  * One short native-script sample per `lang` code of add_international_text.
  *
- * Shared by tests/scripts-27.test.ts and the engine-surface matrix, which
- * holds this table to `SCRIPT_CODES` (27 scripts, pdfnative 1.8.0): a script
+ * Shared by tests/scripts.test.ts and the engine-surface matrix, which
+ * holds this table to `SCRIPT_CODES` (32 scripts, pdfnative 1.9.0): a script
  * added to the tool without a sample here fails the suite.
  */
 export const SCRIPT_SAMPLES: Readonly<Record<string, { readonly name: string; readonly text: string }>> = {
@@ -34,6 +34,12 @@ export const SCRIPT_SAMPLES: Readonly<Record<string, { readonly name: string; re
     khb: { name: 'New Tai Lue', text: 'ᦎᦷᦑᦺᦟᦹᧉ' },
     tdd: { name: 'Tai Le', text: 'ᥖᥭᥰ ᥖᥬᥲ ᥑᥨᥒᥰ' },
     cjm: { name: 'Cham', text: 'ꨀꨇꩉ ꨌꩌ' },
+    // pdfnative 1.9.0
+    gu: { name: 'Gujarati', text: 'નમસ્તે દુનિયા' },
+    pa: { name: 'Gurmukhi (Punjabi)', text: 'ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ਦੁਨੀਆ' },
+    kn: { name: 'Kannada', text: 'ನಮಸ್ಕಾರ ಜಗತ್ತು' },
+    ml: { name: 'Malayalam', text: 'നമസ്കാരം ലോകം' },
+    or: { name: 'Odia', text: 'ନମସ୍କାର ବିଶ୍ୱ' },
 };
 
 /** Latin-script languages served by the `latin` module through an alias (pdfnative 1.8.0 latin-marks shaper). */

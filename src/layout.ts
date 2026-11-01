@@ -1,7 +1,9 @@
 /**
  * Shared page-layout schema (pdfnative `PdfLayoutOptions`): page size preset,
  * margins, header / footer templates with `{page}` `{pages}` `{date}` `{title}`
- * placeholders, FlateDecode stream compression and the layout debug overlay.
+ * placeholders, the base text `direction` and the untagged `/ActualText`
+ * opt-out (pdfnative 1.9), FlateDecode stream compression and the layout
+ * debug overlay.
  *
  * Every document-producing tool spreads {@link LAYOUT_INPUT_PROPERTIES} into its
  * JSON Schema and {@link LayoutInputShape} into its Zod object, then forwards
@@ -21,7 +23,7 @@
  *   - `debug` is honoured by the document backend only; the overlay is plain
  *     stroked rectangles (no transparency), so PDF/A builds are not rejected.
  */
-import type { PageTemplate, PdfLayoutOptions } from 'pdfnative';
+import type { PageTemplate, PdfLayoutOptions, TextDirection } from 'pdfnative';
 import { z } from 'zod';
 import { colorSchema, colorZod, toEngineColor } from './color.js';
 import { TYPOGRAPHY_INPUT_SCHEMA, TypographySchema, toTypographyOptions, type TypographyInput } from './typography.js';
@@ -41,6 +43,9 @@ export const PAGE_SIZE_PRESETS = {
 export type PageSizePreset = keyof typeof PAGE_SIZE_PRESETS;
 
 const PAGE_SIZE_KEYS = ['A4', 'Letter', 'Legal', 'A3', 'Tabloid'] as const;
+
+/** `TextDirection` of pdfnative 1.9: the document-level base direction and the per-paragraph override share it. */
+export const TEXT_DIRECTIONS = ['auto', 'ltr', 'rtl'] as const satisfies readonly TextDirection[];
 
 const MARGIN_SCHEMA = { type: 'number', minimum: 0, maximum: 200 } as const;
 
@@ -89,6 +94,17 @@ export const LAYOUT_INPUT_PROPERTIES = {
     headerTemplate: TEMPLATE_SCHEMA('top'),
     footerTemplate: TEMPLATE_SCHEMA('bottom'),
     typography: TYPOGRAPHY_INPUT_SCHEMA,
+    direction: {
+        type: 'string',
+        enum: [...TEXT_DIRECTIONS],
+        description:
+            "Base text direction (UAX #9): 'auto' reads each paragraph's first strong character and right-aligns RTL ones; 'ltr' / 'rtl' force it. A paragraph's own direction overrides it. Omitted = LTR (1.7.0 bytes).",
+    },
+    actualText: {
+        type: 'boolean',
+        description:
+            'Untagged output: wrap reordered shaped runs and RTL runs in /ActualText so extract_text returns reading order. Default true; false = bare 1.7.0 glyph runs. No effect on tagged (pdfA) output.',
+    },
     compress: {
         type: 'boolean',
         description: 'FlateDecode the streams (smaller file, different bytes; PDF/A unaffected, XMP stays plain). Default false.',
@@ -125,6 +141,8 @@ export const LayoutInputShape = {
     headerTemplate: TemplateSchema.optional(),
     footerTemplate: TemplateSchema.optional(),
     typography: TypographySchema.optional(),
+    direction: z.enum(TEXT_DIRECTIONS).optional(),
+    actualText: z.boolean().optional(),
     compress: z.boolean().optional(),
     debug: z.boolean().optional(),
     encrypt: EncryptSchema.optional(),
@@ -139,6 +157,8 @@ export interface LayoutInput {
     headerTemplate?: TemplateInput;
     footerTemplate?: TemplateInput;
     typography?: TypographyInput;
+    direction?: TextDirection;
+    actualText?: boolean;
     compress?: boolean;
     debug?: boolean;
     encrypt?: z.infer<typeof EncryptSchema>;
@@ -151,7 +171,7 @@ export function assertLayoutPdfACompatible(layout: Pick<LayoutInput, 'encrypt'>,
     }
 }
 
-type LayoutFragment = Pick<PdfLayoutOptions, 'pageWidth' | 'pageHeight' | 'margins' | 'headerTemplate' | 'footerTemplate' | 'typography' | 'compress' | 'debug' | 'encryption'>;
+type LayoutFragment = Pick<PdfLayoutOptions, 'pageWidth' | 'pageHeight' | 'margins' | 'headerTemplate' | 'footerTemplate' | 'typography' | 'direction' | 'actualText' | 'compress' | 'debug' | 'encryption'>;
 
 function toTemplate(t: TemplateInput): PageTemplate {
     return {
@@ -182,6 +202,8 @@ export function toLayoutOptions(input: LayoutInput): LayoutFragment {
     if (input.footerTemplate !== undefined) out.footerTemplate = toTemplate(input.footerTemplate);
     const typography = toTypographyOptions(input.typography);
     if (typography !== undefined) out.typography = typography;
+    if (input.direction !== undefined) out.direction = input.direction;
+    if (input.actualText !== undefined) out.actualText = input.actualText;
     if (input.compress !== undefined) out.compress = input.compress;
     if (input.debug !== undefined) out.debug = input.debug;
     if (input.encrypt !== undefined) out.encryption = toEncryptionOptions(input.encrypt);

@@ -23,6 +23,7 @@ import {
 import { z } from 'zod';
 import { emitPdf, type OutputResult } from '../output.js';
 import { ToolError } from '../errors.js';
+import { FONT_INPUT_PROPERTY, FontInputShape, resolveCustomFont } from '../font-dir.js';
 import { importFontModule } from '../fonts.js';
 import { splitParagraphSegments } from '../text.js';
 import { PDF_A_ENUM, PdfASchema } from '../pdfa.js';
@@ -70,6 +71,12 @@ const LANG_TO_FONT_FILE: Readonly<Record<string, string>> = {
     km: 'noto-khmer-data.js',
     my: 'noto-myanmar-data.js',
     am: 'noto-ethiopic-data.js',
+    // Added in v1.8.0 / pdfnative v1.9.0 — five more Indic scripts:
+    gu: 'noto-gujarati-data.js',
+    pa: 'noto-gurmukhi-data.js',
+    kn: 'noto-kannada-data.js',
+    ml: 'noto-malayalam-data.js',
+    or: 'noto-oriya-data.js',
     // COLRv1 colour emoji (pdfnative v1.3.0). Falls back to monochrome glyphs
     // automatically inside pdfnative when a colour table is unavailable.
     emoji: 'noto-color-emoji-data.js',
@@ -97,7 +104,7 @@ export const LANG_ALIASES: Readonly<Record<string, string>> = Object.freeze({ ha
 /** Faces that are not scripts: the Latin base, colour emoji and math symbols. */
 const UTILITY_LANGS: readonly string[] = ['latin', 'emoji', 'math'];
 
-/** The 27 script codes (every font-backed code that is not a utility face) — pdfnative 1.8.0. */
+/** The 32 script codes (every font-backed code that is not a utility face) — pdfnative 1.9.0. */
 export const SCRIPT_CODES: readonly string[] = Object.keys(LANG_TO_FONT_FILE).filter((k) => !UTILITY_LANGS.includes(k));
 
 /** Every value `lang` accepts: the font-backed codes, then the aliases. */
@@ -130,7 +137,7 @@ export const ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA = {
         },
         lang: {
             description:
-                "Language / script identifier. Either a single code (e.g. 'ar'), a comma-separated list ('ar,emoji'), or an array (['ar','emoji']). Multiple codes enable multi-font run splitting (script + emoji + Latin fallback). 27 scripts; ha / yo / ig / sw (Hausa, Yoruba, Igbo, Swahili) are aliases of latin, whose combining marks are anchored.",
+                "Language / script identifier. Either a single code (e.g. 'ar'), a comma-separated list ('ar,emoji'), or an array (['ar','emoji']). Multiple codes enable multi-font run splitting (script + emoji + Latin fallback). 32 scripts (gu / pa / kn / ml / or — Gujarati, Gurmukhi, Kannada, Malayalam, Odia — since 1.8.0); ha / yo / ig / sw (Hausa, Yoruba, Igbo, Swahili) are aliases of latin, whose combining marks are anchored.",
             // anyOf (not oneOf): a single code also satisfies the comma-separated string branch.
             anyOf: [
                 { type: 'string', enum: [...SUPPORTED_LANGS] },
@@ -143,6 +150,7 @@ export const ADD_INTERNATIONAL_TEXT_INPUT_SCHEMA = {
                 { type: 'string', minLength: 2, maxLength: 80, description: 'Comma-separated list of supported codes.' },
             ],
         },
+        ...FONT_INPUT_PROPERTY,
         paragraphs: {
             type: 'array',
             minItems: 1,
@@ -182,6 +190,7 @@ const LangInput = z.union([
 const InputSchema = z.strictObject({
     title: z.string().min(1).max(200),
     lang: LangInput,
+    font: FontInputShape.font,
     paragraphs: z.array(z.string().min(1).max(50000)).min(1).max(1000),
     pdfA: PdfASchema.optional(),
     normalize: NormalizeSchema.optional(),
@@ -226,7 +235,7 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { title, lang, paragraphs, pdfA, normalize, viewerPreferences, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt, pdfx, strict, includeDiagnostics, outputMode, outputPath } = parsed.data;
+    const { title, lang, font, paragraphs, pdfA, normalize, viewerPreferences, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, direction, actualText, compress, debug, encrypt, pdfx, strict, includeDiagnostics, outputMode, outputPath } = parsed.data;
     assertPrintPdfACompatible(print, pdfA);
     assertLayoutPdfACompatible({ encrypt }, pdfA);
     assertPdfXCompatible({ pdfx, pdfA, encrypt, outputIntent, metadata, print });
@@ -238,10 +247,13 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
         langs.push('latin');
     }
 
+    // An operator-registered face (`font`) is the primary entry — drawn first, the
+    // script faces named by `lang` serving as fallbacks for what it does not cover.
+    const faces: string[] = [...(font !== undefined ? [resolveCustomFont(font)] : []), ...langs];
     const fontEntries: FontEntry[] = [];
-    for (let i = 0; i < langs.length; i += 1) {
-        const code = langs[i] as string;
-        ensureFontRegistered(code);
+    for (let i = 0; i < faces.length; i += 1) {
+        const code = faces[i] as string;
+        if (i > 0 || font === undefined) ensureFontRegistered(code);
         const fontData = await loadFontData(code);
         if (fontData === null) {
             throw new ToolError('FONT_LOAD_FAILED', `Failed to load font data for lang '${code}'.`);
@@ -267,7 +279,7 @@ export async function addInternationalText(rawInput: unknown): Promise<OutputRes
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
                 ...(viewerPreferences !== undefined ? { viewerPreferences: toViewerPreferences(viewerPreferences) } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
-                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, direction, actualText, compress, debug, encrypt }),
                 ...toPdfXLayout(pdfx),
                 ...collector.layout,
             },

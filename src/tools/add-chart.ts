@@ -73,7 +73,7 @@ export async function addChart(rawInput: unknown): Promise<OutputResult> {
     if (!parsed.success) {
         throw new ToolError('VALIDATION_ERROR', `Invalid arguments: ${parsed.error.message}`);
     }
-    const { intro, pdfA, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt, pdfx, strict, includeDiagnostics, embedFonts, outputMode, outputPath, ...chartBody } = parsed.data;
+    const { intro, pdfA, print, outputIntent, metadata, creationDate, pageSize, margins, headerTemplate, footerTemplate, typography, direction, actualText, compress, debug, encrypt, pdfx, strict, includeDiagnostics, embedFonts, outputMode, outputPath, ...chartBody } = parsed.data;
     assertPrintPdfACompatible(print, pdfA);
     assertLayoutPdfACompatible({ encrypt }, pdfA);
     assertPdfXCompatible({ pdfx, pdfA, encrypt, outputIntent, metadata, print });
@@ -98,7 +98,7 @@ export async function addChart(rawInput: unknown): Promise<OutputResult> {
             {
                 ...(pdfA !== undefined ? { tagged: pdfA } : {}),
                 ...toPrintLayout({ print, outputIntent, creationDate }),
-                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, compress, debug, encrypt }),
+                ...toLayoutOptions({ pageSize, margins, headerTemplate, footerTemplate, typography, direction, actualText, compress, debug, encrypt }),
                 ...toPdfXLayout(pdfx),
                 ...collector.layout,
             },
