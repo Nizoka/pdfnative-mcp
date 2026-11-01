@@ -10,7 +10,7 @@ import path from 'node:path';
 
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
-import { FONT_DIR_ENV, __resetCustomFonts, customFontSlugs, fontSlug, loadCustomFonts, resolveCustomFont } from '../src/font-dir.js';
+import { FONT_DIR_ENV, MAX_FONT_FILES, MAX_FONT_FILE_BYTES, __resetCustomFonts, customFontCacheTag, customFontSlugs, fontSlug, loadCustomFonts, resolveCustomFont } from '../src/font-dir.js';
 import { importFontModule } from '../src/fonts.js';
 import { callToolDirect, ensureCompressionReady, listToolsPayload } from '../src/server.js';
 import { addInternationalText } from '../src/tools/add-international-text.js';
@@ -76,6 +76,37 @@ describe('loadCustomFonts — the boot validator', () => {
     ])('refuses to start on %s', (_label, make, message) => {
         expect(() => loadCustomFonts({ [FONT_DIR_ENV]: make() })).toThrow(message);
         expect(customFontSlugs()).toEqual([]);
+    });
+
+    it(`refuses to start on more than ${MAX_FONT_FILES} files, and on a file over ${MAX_FONT_FILE_BYTES} bytes`, () => {
+        const many = freshDir();
+        for (let i = 0; i <= MAX_FONT_FILES; i++) writeFileSync(path.join(many, `face-${String(i).padStart(2, '0')}.ttf`), ttf);
+        expect(() => loadCustomFonts({ [FONT_DIR_ENV]: many })).toThrow(new RegExp(`holds ${MAX_FONT_FILES + 1} font files; at most ${MAX_FONT_FILES}`));
+        expect(customFontSlugs()).toEqual([]);
+
+        const big = freshDir();
+        writeFileSync(path.join(big, 'huge.ttf'), Buffer.alloc(MAX_FONT_FILE_BYTES + 1));
+        expect(() => loadCustomFonts({ [FONT_DIR_ENV]: big })).toThrow(/over the \d+-byte limit/);
+        expect(customFontSlugs()).toEqual([]);
+    });
+
+    it('fingerprints the registry for the response cache: empty without fonts, moved by a replaced file', () => {
+        expect(loadCustomFonts({})).toEqual([]);
+        expect(customFontCacheTag()).toBe('');
+        const d = freshDir();
+        writeFileSync(path.join(d, 'brand.ttf'), ttf);
+        loadCustomFonts({ [FONT_DIR_ENV]: d });
+        const first = customFontCacheTag();
+        expect(first).toMatch(/^\/fonts:[0-9a-f]{12}$/);
+        // Same bytes under the same slug: the same tag (a restart never invalidates a valid cache).
+        loadCustomFonts({ [FONT_DIR_ENV]: d });
+        expect(customFontCacheTag()).toBe(first);
+        // The face replaced on disk (one byte of trailing padding): a different tag.
+        writeFileSync(path.join(d, 'brand.ttf'), Buffer.concat([ttf, Buffer.from([0])]));
+        loadCustomFonts({ [FONT_DIR_ENV]: d });
+        expect(customFontCacheTag()).not.toBe(first);
+        __resetCustomFonts();
+        expect(customFontCacheTag()).toBe('');
     });
 
     it('FONT_NOT_FOUND names the registered slugs, or says the variable is unset', () => {

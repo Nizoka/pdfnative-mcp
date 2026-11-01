@@ -1,5 +1,7 @@
 # Fonts — the bundled faces and the operator's own (v1.8.0)
 
+Applies to pdfnative-mcp v1.8.0 · pdfnative 1.9.0.
+
 pdfnative-mcp draws text with three kinds of font, and the choice is made per call:
 
 | Face | Who provides it | How a call selects it |
@@ -97,6 +99,10 @@ never a path.
   predictable; they are not operator-tunable.
 - The same policy as the output sandbox and the network allow-list: operator knobs are
   read once, validated strictly, and an invalid value is a refusal, never a fallback.
+
+- The response cache (`PDFNATIVE_MCP_CACHE_DIR`) namespaces its keys by a fingerprint of the
+  registry (slug, size and SHA-256 of every file), so a face replaced on disk and a restart never
+  serve a PDF rendered with the earlier bytes — a `font` call names the face by its slug only.
 
 ## See also
 

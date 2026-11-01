@@ -18,6 +18,7 @@
  * silently incomplete registry. The directory itself is never listed to a
  * client: results and errors name slugs, never paths.
  */
+import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
@@ -45,6 +46,14 @@ interface CustomFont {
 }
 
 let registry: ReadonlyMap<string, CustomFont> = new Map();
+/**
+ * SHA-256 (first 12 hex digits) over every registered file — slug, size and
+ * the digest of its bytes — or `''` when no font is registered. It joins the
+ * response-cache namespace (`cacheNamespace()` in src/server.ts): a `font`
+ * call is identified by its slug only, so without it a face replaced on disk
+ * and a restart would keep serving PDFs rendered with the earlier bytes.
+ */
+let fingerprint = '';
 
 /** Fold a file's base name to a slug: `Brand Sans-Bold.ttf` → `brand-sans-bold`. */
 export function fontSlug(fileName: string): string {
@@ -66,6 +75,7 @@ export function loadCustomFonts(env: NodeJS.ProcessEnv = process.env): readonly 
     const raw = env[FONT_DIR_ENV];
     if (raw === undefined || raw.trim() === '') {
         registry = new Map();
+        fingerprint = '';
         return [];
     }
     const dir = raw.trim();
@@ -89,15 +99,18 @@ export function loadCustomFonts(env: NodeJS.ProcessEnv = process.env): readonly 
     // process-global, so a refusal on a later file must leave nothing of the earlier ones behind.
     const parsed: Array<{ font: CustomFont; data: FontData }> = [];
     const taken = new Set<string>();
+    const digest = createHash('sha256');
     for (const { name: file, slug } of files) {
         if (!FONT_SLUG_RE.test(slug)) throw new Error(`${FONT_DIR_ENV}: "${file}" folds to an empty or invalid slug — rename it to letters, digits and dashes.`);
         if (taken.has(slug)) throw new Error(`${FONT_DIR_ENV}: "${file}" folds to the slug "${slug}" already taken by another file — rename one of them.`);
         const full = path.join(dir, file);
         const size = statSync(full).size;
         if (size > MAX_FONT_FILE_BYTES) throw new Error(`${FONT_DIR_ENV}: "${file}" is ${size} bytes, over the ${MAX_FONT_FILE_BYTES}-byte limit.`);
+        const bytes = readFileSync(full);
+        digest.update(`${slug}\0${bytes.length}\0${createHash('sha256').update(bytes).digest('hex')}\n`);
         let data: FontData;
         try {
-            data = parseFontData(new Uint8Array(readFileSync(full))) as unknown as FontData;
+            data = parseFontData(new Uint8Array(bytes)) as unknown as FontData;
         } catch (err) {
             throw new Error(`${FONT_DIR_ENV}: "${file}" is not a TrueType / OpenType font the engine can parse: ${err instanceof Error ? err.message : String(err)}`);
         }
@@ -110,12 +123,21 @@ export function loadCustomFonts(env: NodeJS.ProcessEnv = process.env): readonly 
         next.set(font.slug, font);
     }
     registry = next;
+    fingerprint = digest.digest('hex').slice(0, 12);
     return [...next.keys()];
 }
 
 /** The registered slugs, in registration order. */
 export function customFontSlugs(): readonly string[] {
     return [...registry.keys()];
+}
+
+/**
+ * The response-cache namespace segment of the font sandbox: `''` without
+ * operator fonts, `/fonts:<12 hex>` otherwise (see {@link fingerprint}).
+ */
+export function customFontCacheTag(): string {
+    return fingerprint === '' ? '' : `/fonts:${fingerprint}`;
 }
 
 /**
@@ -152,6 +174,7 @@ export async function customFontEntry(slug: string | undefined, fontRef = '/F3')
 /** Test-only: forget every registered face (the engine registry keeps its loaders). */
 export function __resetCustomFonts(): void {
     registry = new Map();
+    fingerprint = '';
 }
 
 /** JSON Schema fragment — spread into a tool's `properties`. */

@@ -2,13 +2,15 @@
  * Server-level cache policy: what the opt-in response
  * cache may serve, how a hit is signalled, and what the key is namespaced by.
  */
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { callToolDirect, ensureCompressionReady } from '../src/server.js';
+import { callToolDirect, cacheNamespace, ensureCompressionReady } from '../src/server.js';
+import { FONT_DIR_ENV, __resetCustomFonts, customFontCacheTag, loadCustomFonts } from '../src/font-dir.js';
+import { importFontModule } from '../src/fonts.js';
 import { PDFNATIVE_MCP_VERSION } from '../src/version.js';
 import { generateBasicPdf } from '../src/tools/generate-basic-pdf.js';
 import { buildRsaSelfSignedCert } from './_cert-fixtures.js';
@@ -50,6 +52,33 @@ describe('response cache policy', () => {
         const entry = JSON.parse(readFileSync(join(cacheDir, file!), 'utf8')) as { apiVersion: string; tool: string };
         expect(entry.tool).toBe('generate_basic_pdf');
         expect(entry.apiVersion).toMatch(new RegExp(`^\\d+\\.\\d+\\.\\d+/${escapeRegExp(PDFNATIVE_MCP_VERSION)}$`));
+    });
+
+    it('namespaces the key by the font sandbox fingerprint, so a face replaced on disk is never served from an earlier render', async () => {
+        // No operator font: the namespace is the bare version pair.
+        expect(cacheNamespace()).toMatch(new RegExp(`^\\d+\\.\\d+\\.\\d+/${escapeRegExp(PDFNATIVE_MCP_VERSION)}$`));
+        const fontDir = mkdtempSync(join(tmpdir(), 'pdfnative-cache-fonts-'));
+        try {
+            const mod = (await importFontModule('noto-polish-data.js')) as { ttfBase64: string };
+            const ttf = Buffer.from(mod.ttfBase64, 'base64');
+            writeFileSync(join(fontDir, 'brand.ttf'), ttf);
+            loadCustomFonts({ [FONT_DIR_ENV]: fontDir });
+            const tagged = cacheNamespace();
+            expect(tagged.endsWith(customFontCacheTag())).toBe(true);
+            expect(tagged).toMatch(/\/fonts:[0-9a-f]{12}$/);
+            // The same call under the two namespaces produces two cache entries, never one hit.
+            const first = await callToolDirect('generate_basic_pdf', { ...DOC, font: 'brand' });
+            expect(first.isError).not.toBe(true);
+            writeFileSync(join(fontDir, 'brand.ttf'), Buffer.concat([ttf, Buffer.from([0])]));
+            loadCustomFonts({ [FONT_DIR_ENV]: fontDir });
+            expect(cacheNamespace()).not.toBe(tagged);
+            const second = await callToolDirect('generate_basic_pdf', { ...DOC, font: 'brand' });
+            expect((second._meta as Record<string, unknown> | undefined)?.['cached']).toBeUndefined();
+            expect(readdirSync(cacheDir).filter((f) => f.endsWith('.json'))).toHaveLength(2);
+        } finally {
+            __resetCustomFonts();
+            rmSync(fontDir, { recursive: true, force: true });
+        }
     });
 
     it('never caches sign_pdf (wall-clock signingTime, key material) even with a pinned signingTime', async () => {

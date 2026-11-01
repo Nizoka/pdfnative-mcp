@@ -29,7 +29,7 @@ applyTo: "src/output.ts,src/network.ts,src/http.ts,src/auth.ts,src/image.ts,src/
 - Images go through `src/image.ts` (magic bytes — JPEG, PNG, JP2 signature box or raw J2K codestream — + PNG IHDR checks, 24 MiB per-call budget); `embed_image.imageBase64` has no length bound (1.5.0 contract) — do not add one. ICC profiles go through `decodeBase64Field` and the engine's `acsp` / size checks.
 
 ## Response cache
-- Never cache secret-, time- or network-dependent output (`NON_CACHEABLE_TOOLS`, any call carrying `encrypt` or `password`, any `outputMode: 'file'`): a secret never feeds a cache key and a protected document's content never lands on disk in plaintext. The namespace carries the API version, the server version and the pinned creation instant.
+- Never cache secret-, time- or network-dependent output (`NON_CACHEABLE_TOOLS`, any call carrying `encrypt` or `password`, any `outputMode: 'file'`): a secret never feeds a cache key and a protected document's content never lands on disk in plaintext. The namespace carries the API version, the server version, the pinned creation instant and the fingerprint of the font sandbox (`customFontCacheTag()`), so a face replaced on disk is never served from an earlier render.
 
 ## Dependency and CI security
 - Exactly three runtime dependencies (pdfnative, `@modelcontextprotocol/server`, zod); adding one is a governance blocker. The fuzzing engine (Jazzer.js) lives in `.clusterfuzzlite/engine/` with its own lockfile and never in `package.json`.
